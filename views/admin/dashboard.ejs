@@ -1,0 +1,159 @@
+<%
+function peso(centavos) {
+  return '&#8369;' + (centavos / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function actionBadgeClass(action) {
+  const green = ['PAYMENT_SUCCEEDED', 'REFUND_SUCCEEDED', 'PAYMENT_RECONCILED'];
+  const red = ['PAYMENT_FAILED', 'WEBHOOK_REJECTED', 'REFUND_FAILED', 'UNAUTHORIZED_PAYMENT_ACCESS', 'SUSPICIOUS_PAYMENT_MISMATCH'];
+  const slate = ['WEBHOOK_DUPLICATE'];
+  if (green.includes(action)) return 'badge-green';
+  if (red.includes(action)) return 'badge-red';
+  if (slate.includes(action)) return 'badge-slate';
+  return 'badge-amber';
+}
+function actorLabel(actor) {
+  if (!actor) return 'System';
+  return `${actor.firstName} ${actor.lastName}`;
+}
+%>
+<div class="max-w-6xl">
+  <h1 class="admin-h1 mb-6">Dashboard</h1>
+
+  <% if (isMainAdmin) { %>
+    <div class="grid grid-cols-2 gap-4 mb-6 sm:grid-cols-4">
+      <a href="/admin/users/all" class="admin-card p-5 hover:shadow-md transition">
+        <p class="text-3xl font-bold text-slate-900"><%= totals.totalMembers %></p>
+        <p class="text-sm text-slate-500">Total members</p>
+      </a>
+      <a href="/admin/users/approvals" class="admin-card p-5 hover:shadow-md transition">
+        <p class="text-3xl font-bold text-amber-600"><%= totals.pendingApprovals %></p>
+        <p class="text-sm text-slate-500">Pending approvals</p>
+      </a>
+      <a href="/admin/events" class="admin-card p-5 hover:shadow-md transition">
+        <p class="text-3xl font-bold text-slate-900"><%= totals.totalEvents %></p>
+        <p class="text-sm text-slate-500">Total events</p>
+      </a>
+      <a href="/admin/payments" class="admin-card p-5 hover:shadow-md transition">
+        <p class="text-3xl font-bold text-green-700"><%- peso(totals.totalRevenueCentavos) %></p>
+        <p class="text-sm text-slate-500">Total revenue</p>
+      </a>
+    </div>
+
+    <div class="grid gap-4 mb-6 lg:grid-cols-2">
+      <div class="admin-card p-5">
+        <h2 class="font-semibold text-slate-900 mb-4">New Members (last 6 months)</h2>
+        <% const maxReg = Math.max(1, ...registrationsByMonth.map(m => m.count)); %>
+        <div class="flex items-end justify-between gap-2 h-40">
+          <% registrationsByMonth.forEach(m => { %>
+            <div class="flex-1 flex flex-col items-center gap-2 h-full justify-end">
+              <span class="text-xs font-semibold text-slate-600"><%= m.count %></span>
+              <div class="w-full bg-indigo-500 rounded-t-md" style="height: <%= Math.max(4, Math.round((m.count / maxReg) * 100)) %>%"></div>
+              <span class="text-xs text-slate-400"><%= m.label %></span>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+
+      <div class="admin-card p-5">
+        <h2 class="font-semibold text-slate-900 mb-4">Revenue (last 6 months)</h2>
+        <% const maxRev = Math.max(1, ...revenueByMonth.map(m => m.amount)); %>
+        <div class="flex items-end justify-between gap-2 h-40">
+          <% revenueByMonth.forEach(m => { %>
+            <div class="flex-1 flex flex-col items-center gap-2 h-full justify-end">
+              <span class="text-xs font-semibold text-slate-600"><%- peso(m.amount) %></span>
+              <div class="w-full bg-green-500 rounded-t-md" style="height: <%= Math.max(4, Math.round((m.amount / maxRev) * 100)) %>%"></div>
+              <span class="text-xs text-slate-400"><%= m.label %></span>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid gap-4 mb-6 lg:grid-cols-2">
+      <div class="admin-card p-5">
+        <h2 class="font-semibold text-slate-900 mb-4">Members by Chapter</h2>
+        <% if (membersByChapter.length === 0) { %>
+          <p class="empty-state">No chapters yet.</p>
+        <% } else { %>
+          <% const maxChapter = Math.max(1, ...membersByChapter.map(c => c.count)); %>
+          <div class="space-y-3">
+            <% membersByChapter.forEach(c => { %>
+              <div>
+                <div class="flex items-center justify-between text-sm mb-1">
+                  <span class="text-slate-700 truncate pr-2"><%= c.name %></span>
+                  <span class="text-slate-500 font-medium shrink-0"><%= c.count %></span>
+                </div>
+                <div class="w-full bg-slate-100 rounded-full h-2">
+                  <div class="bg-indigo-500 h-2 rounded-full" style="width: <%= Math.max(3, Math.round((c.count / maxChapter) * 100)) %>%"></div>
+                </div>
+              </div>
+            <% }) %>
+          </div>
+        <% } %>
+      </div>
+
+      <div class="admin-card p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-semibold text-slate-900">Recent Activity</h2>
+          <a href="/admin/audit-log" class="text-xs text-indigo-600 hover:underline">View all &rarr;</a>
+        </div>
+        <% if (recentActivity.length === 0) { %>
+          <p class="empty-state">No activity yet.</p>
+        <% } else { %>
+          <div class="space-y-3">
+            <% recentActivity.forEach(log => { %>
+              <div class="flex items-start justify-between gap-3 text-sm">
+                <div class="min-w-0">
+                  <span class="<%= actionBadgeClass(log.action) %>"><%= log.action %></span>
+                  <p class="text-xs text-slate-400 mt-1"><%= actorLabel(log.actor) %> &middot; <%= new Date(log.createdAt).toLocaleString() %></p>
+                </div>
+              </div>
+            <% }) %>
+          </div>
+        <% } %>
+      </div>
+    </div>
+  <% } else { %>
+    <div class="grid grid-cols-2 gap-4 mb-6 max-w-lg">
+      <a href="/admin/chapter-members" class="admin-card p-5 hover:shadow-md transition">
+        <p class="text-3xl font-bold text-slate-900"><%= totals.totalMembers %></p>
+        <p class="text-sm text-slate-500">Members in my chapter</p>
+      </a>
+      <a href="/admin/chapter-members" class="admin-card p-5 hover:shadow-md transition">
+        <p class="text-3xl font-bold text-amber-600"><%= totals.pendingApprovals %></p>
+        <p class="text-sm text-slate-500">Pending approvals</p>
+      </a>
+    </div>
+  <% } %>
+
+  <div class="admin-card p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-semibold text-slate-900">Upcoming Events</h2>
+      <a href="/admin/events" class="text-xs text-indigo-600 hover:underline">View all &rarr;</a>
+    </div>
+    <% if (upcomingEvents.length === 0) { %>
+      <p class="empty-state">No upcoming published events.</p>
+    <% } else { %>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead class="admin-table-head">
+            <tr>
+              <th class="admin-th">Event</th>
+              <th class="admin-th">Date</th>
+              <th class="admin-th">Registrations</th>
+            </tr>
+          </thead>
+          <tbody class="admin-tbody">
+            <% upcomingEvents.forEach(e => { %>
+              <tr class="admin-tr">
+                <td class="admin-td"><a href="/admin/events/<%= e.id %>/registrations" class="hover:text-indigo-600"><%= e.title %></a></td>
+                <td class="admin-td whitespace-nowrap"><%= new Date(e.startDate).toLocaleDateString() %></td>
+                <td class="admin-td"><%= e._count.registrations %><%= e.capacity ? ' / ' + e.capacity : '' %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </div>
+</div>

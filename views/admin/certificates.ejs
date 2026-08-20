@@ -1,0 +1,44 @@
+<div id="membership-certificate-module" class="max-w-3xl">
+  <div class="mb-6">
+    <h1 class="admin-h1">Membership Certificate</h1>
+    <p class="admin-subtitle">This template is used for the "Certificate of Membership" every approved member can download from their profile.</p>
+  </div>
+
+  <section class="admin-card p-6 mb-6">
+    <h2 class="font-semibold mb-4">Background Image</h2>
+    <% if (template.backgroundImage) { %>
+      <img id="membership-cert-bg-preview" src="<%= template.backgroundImage %>" alt="Certificate background" class="mb-4 h-40 rounded border border-slate-200 object-contain bg-slate-50">
+    <% } else { %>
+      <div id="membership-cert-bg-preview-empty" class="mb-4 flex h-40 items-center justify-center rounded border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-400">No background set — a plain bordered card is used instead</div>
+      <img id="membership-cert-bg-preview" src="" alt="Certificate background" class="mb-4 hidden h-40 rounded border border-slate-200 object-contain bg-slate-50">
+    <% } %>
+    <form id="membership-cert-bg-form" class="space-y-3">
+      <input type="file" name="background" accept="image/png,image/jpeg" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
+      <p class="text-xs text-slate-400">PNG or JPEG only. Landscape orientation recommended (e.g. 1600&times;1131).</p>
+      <button type="submit" class="btn-primary">Upload Background</button>
+    </form>
+  </section>
+
+  <section class="admin-card p-6">
+    <h2 class="font-semibold mb-1">Certificate Text</h2>
+    <p class="mb-4 text-xs text-slate-500">Available tokens: <code>{{fullName}}</code>, <code>{{firstName}}</code>, <code>{{lastName}}</code>, <code>{{middleInitial}}</code>, <code>{{chapterName}}</code>, <code>{{issuedDate}}</code></p>
+    <form id="membership-cert-text-form" class="space-y-4">
+      <div>
+        <label for="membership-cert-title" class="form-label">Title</label>
+        <input id="membership-cert-title" name="title" value="<%= template.title %>" maxlength="200" class="form-input">
+      </div>
+      <div>
+        <label for="membership-cert-body" class="form-label">Body</label>
+        <textarea id="membership-cert-body" name="bodyText" rows="4" maxlength="2000" class="form-input"><%= template.bodyText %></textarea>
+      </div>
+      <div>
+        <label for="membership-cert-color" class="form-label">Text Color</label>
+        <input id="membership-cert-color" name="textColor" type="color" value="<%= template.textColor %>" class="h-10 w-20 rounded border border-slate-300">
+      </div>
+      <div class="flex items-center gap-3">
+        <button type="submit" class="btn-primary">Save Changes</button>
+        <a href="/api/admin/certificates/membership-template/preview" target="_blank" rel="noopener" class="text-sm text-indigo-600 hover:underline">Preview PDF</a>
+      </div>
+    </form>
+  </section>
+</div>

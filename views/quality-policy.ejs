@@ -1,0 +1,73 @@
+<%
+/* ---------------------------------------------------------
+   Quality Policy content. Displayed as an embedded AnyFlip
+   flipbook, same pattern as the Code of Ethics page.
+
+   IMPORTANT: flipbookEmbedUrl below is a PLACEHOLDER. Get the
+   real embed URL from AnyFlip (Publish > Embed > copy the
+   iframe "src" value — it looks like
+   https://online.anyflip.com/xxxxx/yyyyy/mobile/index.html)
+   and pass it in from the controller, e.g.:
+
+     res.render('quality-policy', {
+       title: 'About',
+       flipbookEmbedUrl: 'https://online.anyflip.com/xxxxx/yyyyy/mobile/index.html'
+     });
+
+   Until then this falls back to the same placeholder embed
+   used below, which will not show your actual document.
+--------------------------------------------------------- */
+const flipbookEmbedUrl = locals.flipbookEmbedUrl || '';
+
+const timelineYears = locals.timelineYears || [
+  { year: "2024", href: "/events?year=2024", label: "See Events & Highlights" },
+];
+%>
+
+<!-- ===================== QUALITY POLICY (FLIPBOOK) ===================== -->
+<section class="bg-gradient-to-b from-indigo-50 to-white py-16 sm:py-20">
+  <div class="max-w-4xl mx-auto px-4 sm:px-6">
+    <div class="bg-white rounded-2xl shadow-lg p-8 sm:p-12">
+
+      <h1 class="text-3xl sm:text-4xl font-extrabold text-indigo-950 text-center">Quality Policy</h1>
+
+      <div class="mt-8 rounded-lg overflow-hidden shadow-inner bg-gray-100" style="aspect-ratio: 16 / 10;">
+        <% if (flipbookEmbedUrl) { %>
+          <iframe
+            src="<%= flipbookEmbedUrl %>"
+            title="Quality Policy"
+            class="w-full h-full border-0"
+            allow="fullscreen"
+            allowfullscreen>
+          </iframe>
+        <% } else { %>
+          <div class="w-full h-full flex items-center justify-center text-center px-6">
+            <p class="text-sm text-gray-500">
+              Flipbook not configured yet &mdash; pass <code class="bg-gray-200 px-1.5 py-0.5 rounded">flipbookEmbedUrl</code>
+              from the controller to show the Quality Policy document here.
+            </p>
+          </div>
+        <% } %>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ===================== THROUGH THE YEARS =====================
+     Same shared block as About / Code of Ethics.
+================================================================ -->
+<section class="bg-gray-100 py-16">
+  <div class="max-w-4xl mx-auto px-4 sm:px-6 text-center">
+    <h2 class="text-2xl sm:text-3xl font-extrabold text-indigo-950">JPSME National Through the Years</h2>
+
+    <div class="mt-10 flex flex-wrap justify-center gap-6">
+      <% timelineYears.forEach(y => { %>
+        <a href="<%= y.href %>" class="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow px-10 py-8 w-full sm:w-56">
+          <p class="text-3xl font-extrabold text-indigo-950"><%= y.year %></p>
+          <p class="mt-2 text-sm font-semibold text-indigo-600"><%= y.label %></p>
+        </a>
+      <% }) %>
+    </div>
+  </div>
+</section>

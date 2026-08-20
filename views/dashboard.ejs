@@ -1,0 +1,188 @@
+<% const userProfile = userProfile || locals.currentUser || {}; %>
+
+<div class="space-y-8">
+  <section class="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+    <div class="bg-indigo-950 px-6 py-5 text-white">
+      <h1 class="text-2xl font-bold">My Profile</h1>
+      <p class="text-indigo-100 mt-1">Welcome back, <%= userProfile.firstName || 'Member' %>.</p>
+    </div>
+
+    <div class="p-6 md:p-8">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+        <div class="flex items-center gap-4">
+          <img
+            id="profile-image-preview"
+            src="<%= userProfile.profileImage || '/img/default-avatar.svg' %>"
+            alt="<%= userProfile.firstName || 'User' %> profile image"
+            class="h-20 w-20 rounded-full object-cover border-4 border-indigo-100 bg-gray-100"
+          >
+          <div>
+            <h2 class="text-2xl font-bold text-gray-900">
+              <%= userProfile.firstName %> <%= userProfile.middleInitial ? userProfile.middleInitial + '.' : '' %> <%= userProfile.lastName %>
+            </h2>
+            <p class="text-sm text-gray-500"><%= userProfile.email %></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">School</p>
+          <p class="mt-2 text-sm font-medium text-gray-900"><%= userProfile.school || 'Not provided' %></p>
+        </div>
+
+        <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Chapter</p>
+          <p class="mt-2 text-sm font-medium text-gray-900">
+            <% if (userProfile.chapter && userProfile.chapter.name) { %>
+              <%= userProfile.chapter.name %>
+            <% } else { %>
+              Not assigned yet
+            <% } %>
+          </p>
+        </div>
+
+        <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Phone</p>
+          <p class="mt-2 text-sm font-medium text-gray-900"><%= userProfile.phone || 'Not provided' %></p>
+        </div>
+
+        <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Member Status</p>
+          <p class="mt-2 text-sm font-medium text-gray-900"><%= userProfile.status || 'PENDING' %></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="rounded-2xl border border-gray-200 bg-white shadow-sm p-6">
+    <h2 class="text-xl font-semibold mb-4">Update Your Profile</h2>
+
+    <div class="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
+      <form id="profile-form" class="space-y-4">
+        <div class="grid gap-4 md:grid-cols-2">
+          <div>
+            <label for="middleInitial" class="block text-sm font-medium mb-1">Middle Initial</label>
+            <input id="middleInitial" name="middleInitial" value="<%= userProfile.middleInitial || '' %>" maxlength="2" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+
+          <div>
+            <label for="chapterId" class="block text-sm font-medium mb-1">Chapter</label>
+            <select id="chapterId" name="chapterId" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="">Not assigned</option>
+              <% chapters.forEach(chapter => { %>
+                <option value="<%= chapter.id %>" <%= String(userProfile.chapterId) === String(chapter.id) ? 'selected' : '' %>><%= chapter.name %></option>
+              <% }) %>
+            </select>
+          </div>
+
+          <div class="md:col-span-2">
+            <label for="school" class="block text-sm font-medium mb-1">School</label>
+            <input id="school" name="school" value="<%= userProfile.school || '' %>" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+
+          <div class="md:col-span-2">
+            <label for="phone" class="block text-sm font-medium mb-1">Phone Number</label>
+            <input id="phone" name="phone" value="<%= userProfile.phone || '' %>" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+        </div>
+
+        <button type="submit" class="bg-indigo-600 text-white px-5 py-2.5 rounded-md hover:bg-indigo-500 font-semibold">Save Changes</button>
+      </form>
+
+      <form id="profile-image-form" class="space-y-4">
+        <div>
+          <label for="profileImage" class="block text-sm font-medium mb-1">Profile Image</label>
+          <input id="profileImage" name="profileImage" type="file" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+        </div>
+        <button type="submit" class="bg-amber-400 text-indigo-950 px-5 py-2.5 rounded-md hover:bg-amber-300 font-semibold">Upload Image</button>
+      </form>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="text-xl font-semibold mb-3">My Event Registrations</h2>
+    <% if (registrations.length === 0) { %>
+      <p class="text-gray-500">You haven't registered for any events yet. <a href="/events" class="text-indigo-600 hover:underline">Browse events</a>.</p>
+    <% } else { %>
+      <div class="space-y-3">
+        <% registrations.forEach(reg => { %>
+          <div class="border border-gray-200 rounded-lg p-4 flex items-center justify-between bg-white shadow-sm">
+            <div>
+              <p class="font-medium">
+                <a href="/events/<%= reg.event.id %>" class="hover:text-indigo-600"><%= reg.event.title %></a>
+              </p>
+              <p class="text-sm text-gray-500"><%= new Date(reg.event.startDate).toLocaleString() %></p>
+              <p class="text-xs mt-1 inline-block px-2 py-0.5 rounded-full <%= reg.status === 'REGISTERED' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500' %>">
+                <%= reg.status %>
+              </p>
+            </div>
+            <% if (reg.status === 'REGISTERED') { %>
+              <button data-cancel-registration="<%= reg.eventId %>" class="text-sm text-red-600 hover:underline">Cancel</button>
+            <% } %>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+  </section>
+</div>
+
+<script src="/js/events.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const profileForm = document.getElementById('profile-form');
+    if (profileForm) {
+      profileForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        const formData = new FormData(profileForm);
+        const payload = {
+          middleInitial: formData.get('middleInitial')?.toString().trim() || null,
+          school: formData.get('school')?.toString().trim() || null,
+          phone: formData.get('phone')?.toString().trim() || null,
+          chapterId: formData.get('chapterId') || null,
+        };
+
+        try {
+          const res = await apiFetch('/api/auth/me/profile', {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+          });
+          showToast(res.message || 'Profile updated');
+          setTimeout(() => window.location.reload(), 300);
+        } catch (err) {
+          showToast(err.errors?.[0]?.msg || err.message, 'error');
+        }
+      });
+    }
+
+    const profileImageForm = document.getElementById('profile-image-form');
+    if (profileImageForm) {
+      profileImageForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const fileInput = profileImageForm.querySelector('input[name="profileImage"]');
+
+        if (!fileInput || !fileInput.files || !fileInput.files.length) {
+          showToast('Please select an image first', 'error');
+          return;
+        }
+
+        try {
+          const formData = new FormData(profileImageForm);
+          const res = await apiFetch('/api/auth/me/profile/image', {
+            method: 'POST',
+            body: formData,
+          });
+          showToast(res.message || 'Profile image updated');
+          const preview = document.getElementById('profile-image-preview');
+          if (preview) {
+            preview.src = `${res.data.profileImage}?t=${Date.now()}`;
+          }
+          profileImageForm.reset();
+        } catch (err) {
+          showToast(err.message, 'error');
+        }
+      });
+    }
+  });
+</script>

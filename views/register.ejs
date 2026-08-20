@@ -1,0 +1,234 @@
+<style nonce="<%= cspNonce %>">
+  /* Blueprint grid backdrop for the dark registration section */
+  .jpsme-blueprint {
+    background:
+      linear-gradient(160deg, #0b0c24 0%, #1e1b4b 55%, #14123a 100%);
+  }
+  .jpsme-blueprint::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+  }
+
+  /* Slow-spinning gear watermark; respects reduced-motion */
+  .jpsme-gear-watermark {
+    animation: jpsme-spin 90s linear infinite;
+    transform-origin: center;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .jpsme-gear-watermark { animation: none; }
+  }
+  @keyframes jpsme-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  /* Corner tick marks on the drawing-sheet card */
+  .jpsme-tick { position: absolute; width: 18px; height: 18px; border-color: #1e1b4b; opacity: 0.35; }
+  .jpsme-tick--tl { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; }
+  .jpsme-tick--tr { top: -1px; right: -1px; border-top: 2px solid; border-right: 2px solid; }
+  .jpsme-tick--bl { bottom: -1px; left: -1px; border-bottom: 2px solid; border-left: 2px solid; }
+  .jpsme-tick--br { bottom: -1px; right: -1px; border-bottom: 2px solid; border-right: 2px solid; }
+
+  /* Custom select chevron so it matches the text inputs instead of the
+     browser default, which looked out of place next to the other fields. */
+  .jpsme-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236b7280'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.19l3.71-3.96a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1.1em;
+  }
+</style>
+
+<section class="relative left-1/2 -ml-[50vw] w-screen jpsme-blueprint overflow-hidden">
+  <!-- faint gear watermark, purely decorative -->
+  <svg class="jpsme-gear-watermark absolute -right-24 -top-24 h-[420px] w-[420px] opacity-[0.06] pointer-events-none" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <g fill="none" stroke="white" stroke-width="6">
+      <circle cx="100" cy="100" r="58" />
+      <circle cx="100" cy="100" r="18" />
+      <% const teeth = 12; %>
+      <% for (let i = 0; i < teeth; i++) { const angle = (360 / teeth) * i; %>
+        <rect x="94" y="18" width="12" height="26" transform="rotate(<%= angle %> 100 100)" />
+      <% } %>
+    </g>
+  </svg>
+
+  <div class="relative max-w-5xl mx-auto px-4 py-16 sm:py-24">
+    <p class="font-mono text-[11px] tracking-[0.25em] uppercase text-amber-300/80 mb-2">JPSME &middot; Membership</p>
+    <h1 class="text-2xl sm:text-3xl font-extrabold text-white mb-10">Create Your Account</h1>
+
+    <div class="relative bg-white shadow-2xl">
+      <div class="jpsme-tick jpsme-tick--tl"></div>
+      <div class="jpsme-tick jpsme-tick--tr"></div>
+      <div class="jpsme-tick jpsme-tick--bl"></div>
+      <div class="jpsme-tick jpsme-tick--br"></div>
+
+      <div class="grid lg:grid-cols-3">
+        <!-- Form column -->
+        <div class="lg:col-span-2 p-8 sm:p-10">
+          <p class="text-sm text-slate-500 mb-8 max-w-md">
+            Your account will need email verification and admin approval before you can log in.
+            Once approved, your details are saved so event registration is a single click.
+          </p>
+
+          <form id="register-form" class="space-y-8" novalidate>
+            <div>
+              <p class="font-mono text-xs tracking-[0.2em] uppercase text-indigo-950/60 border-b border-indigo-950/10 pb-2 mb-4">
+                01 &mdash; Personal Details
+              </p>
+              <div class="grid grid-cols-6 sm:grid-cols-6 gap-4">
+                <div class="col-span-6 sm:col-span-2">
+                  <label class="block text-sm font-medium mb-1" for="firstName">First name</label>
+                  <input type="text" id="firstName" name="firstName" required
+                    pattern="[A-Za-z\s'-]+" title="Letters only"
+                    class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="col-span-2 sm:col-span-1">
+                  <label class="block text-sm font-medium mb-1" for="middleInitial">M.I.</label>
+                  <input type="text" id="middleInitial" name="middleInitial" maxlength="2" required
+                    pattern="[A-Za-z]+" title="Letters only"
+                    class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="col-span-4 sm:col-span-3">
+                  <label class="block text-sm font-medium mb-1" for="lastName">Last name</label>
+                  <input type="text" id="lastName" name="lastName" required
+                    pattern="[A-Za-z\s'-]+" title="Letters only"
+                    class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+              </div>
+
+              <div class="mt-4">
+                <label class="block text-sm font-medium mb-1" for="email">Email</label>
+                <input type="email" id="email" name="email" required
+                  class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <p id="email-error" class="hidden text-xs text-red-600 mt-1">Enter a valid email address.</p>
+              </div>
+            </div>
+
+            <div>
+              <p class="font-mono text-xs tracking-[0.2em] uppercase text-indigo-950/60 border-b border-indigo-950/10 pb-2 mb-4">
+                02 &mdash; Chapter Assignment
+              </p>
+              <label class="block text-sm font-medium mb-1" for="chapterId">Chapter</label>
+              <select id="chapterId" name="chapterId" required
+                class="jpsme-select w-full border border-gray-300 rounded-md px-3 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                <option value="" disabled selected>Select your chapter</option>
+                <% (typeof chapters !== 'undefined' ? chapters : []).forEach(chapter => { %>
+                  <option value="<%= chapter.id %>">
+                    <%= chapter.name %><% if (chapter.area) { %> &mdash; <%= chapter.area.name %><% } %>
+                  </option>
+                <% }) %>
+              </select>
+              <p class="text-xs text-slate-500 mt-1.5">
+                This determines which chapter's events and leadership you're associated with.
+              </p>
+              <p id="chapter-error" class="hidden text-xs text-red-600 mt-1">Please select a chapter.</p>
+            </div>
+
+            <div>
+              <p class="font-mono text-xs tracking-[0.2em] uppercase text-indigo-950/60 border-b border-indigo-950/10 pb-2 mb-4">
+                03 &mdash; Account Security
+              </p>
+
+              <div class="mb-4">
+                <label class="block text-sm font-medium mb-1" for="password">Password</label>
+                <div class="relative">
+                  <input type="password" id="password" name="password" required minlength="8"
+                    class="w-full border border-gray-300 rounded-md px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <button type="button" data-toggle-password="password"
+                    class="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600"
+                    aria-label="Show password" aria-pressed="false">
+                    <svg data-icon="eye" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M10 3.5c-4.14 0-7.5 3.5-7.5 6.5s3.36 6.5 7.5 6.5 7.5-3.5 7.5-6.5-3.36-6.5-7.5-6.5zm0 11c-2.485 0-4.5-2.015-4.5-4.5S7.515 5.5 10 5.5s4.5 2.015 4.5 4.5-2.015 4.5-4.5 4.5zm0-7a2.5 2.5 0 100 5 2.5 2.5 0 000-5z"/>
+                    </svg>
+                    <svg data-icon="eye-slash" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 hidden" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M3.28 2.22a.75.75 0 00-1.06 1.06l14.5 14.5a.75.75 0 101.06-1.06l-1.86-1.86A9.4 9.4 0 0019.5 10c-1.2-3-4.6-6.5-9.5-6.5-1.5 0-2.86.33-4.06.9L3.28 2.22zM7.4 6.35 9.1 8.05a2.5 2.5 0 003.35 3.35l1.5 1.5A4.5 4.5 0 017.4 6.35zM.94 10s3.36 6.5 9.06 6.5c1.13 0 2.18-.19 3.13-.53l-1.5-1.5a4.5 4.5 0 01-5.86-5.86L3.9 6.74A9.65 9.65 0 00.94 10z"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium mb-1" for="confirmPassword">Confirm password</label>
+                <div class="relative">
+                  <input type="password" id="confirmPassword" name="confirmPassword" required minlength="8"
+                    class="w-full border border-gray-300 rounded-md px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <button type="button" data-toggle-password="confirmPassword"
+                    class="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600"
+                    aria-label="Show password" aria-pressed="false">
+                    <svg data-icon="eye" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M10 3.5c-4.14 0-7.5 3.5-7.5 6.5s3.36 6.5 7.5 6.5 7.5-3.5 7.5-6.5-3.36-6.5-7.5-6.5zm0 11c-2.485 0-4.5-2.015-4.5-4.5S7.515 5.5 10 5.5s4.5 2.015 4.5 4.5-2.015 4.5-4.5 4.5zm0-7a2.5 2.5 0 100 5 2.5 2.5 0 000-5z"/>
+                    </svg>
+                    <svg data-icon="eye-slash" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 hidden" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M3.28 2.22a.75.75 0 00-1.06 1.06l14.5 14.5a.75.75 0 101.06-1.06l-1.86-1.86A9.4 9.4 0 0019.5 10c-1.2-3-4.6-6.5-9.5-6.5-1.5 0-2.86.33-4.06.9L3.28 2.22zM7.4 6.35 9.1 8.05a2.5 2.5 0 003.35 3.35l1.5 1.5A4.5 4.5 0 017.4 6.35zM.94 10s3.36 6.5 9.06 6.5c1.13 0 2.18-.19 3.13-.53l-1.5-1.5a4.5 4.5 0 01-5.86-5.86L3.9 6.74A9.65 9.65 0 00.94 10z"/>
+                    </svg>
+                  </button>
+                </div>
+                <p id="confirm-password-error" class="hidden text-xs text-red-600 mt-1">Passwords do not match.</p>
+              </div>
+            </div>
+
+            <div class="flex justify-end">
+              <button type="submit"
+                class="bg-amber-400 text-indigo-950 font-bold px-8 py-3 rounded-md hover:bg-amber-300 transition">
+                Submit Registration
+              </button>
+            </div>
+          </form>
+
+          <div id="register-success" class="hidden text-center py-6">
+            <h2 class="text-lg font-semibold mb-2">Check your email</h2>
+            <p class="text-sm text-gray-600">
+              We sent a verification link to your inbox. Verify your email, then wait for an admin
+              to approve your account before logging in.
+            </p>
+          </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="lg:col-span-1 bg-gradient-to-br from-indigo-950 via-indigo-900 to-gray-900 text-white p-8 flex flex-col">
+          <img src="<%= locals.logoUrl || '/img/jpsme-logo.svg' %>" alt="JPSME logo" class="h-14 w-14 object-contain mb-4">
+          <p class="italic text-indigo-100 text-sm mb-8">
+            &ldquo;Connecting members, one event at a time.&rdquo;
+          </p>
+
+          <p class="font-mono text-[11px] tracking-[0.2em] uppercase text-amber-300/80 mb-3">Member Benefits</p>
+          <ul class="space-y-3 text-sm text-indigo-100 mb-8">
+            <li class="flex items-start gap-2">
+              <span class="mt-1 h-1.5 w-1.5 shrink-0 bg-amber-400"></span>
+              Professional development workshops and seminars
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="mt-1 h-1.5 w-1.5 shrink-0 bg-amber-400"></span>
+              Networking with peers and industry mentors
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="mt-1 h-1.5 w-1.5 shrink-0 bg-amber-400"></span>
+              One-click registration for every chapter event
+            </li>
+          </ul>
+
+          <p class="mt-auto text-sm text-indigo-200">
+            Already have an account?
+            <a href="/login" class="text-amber-300 font-semibold hover:underline">Login</a>
+          </p>
+        </div>
+      </div>
+
+      <!-- Title block footer -->
+      <div class="bg-indigo-950 text-white/70 font-mono text-[10px] tracking-[0.2em] uppercase px-6 py-2 flex justify-between">
+        <span>JPSME Membership Form</span>
+        <span>Rev. 2026</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script src="/js/auth.js"></script>

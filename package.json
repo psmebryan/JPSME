@@ -1,0 +1,46 @@
+{
+  "name": "jpsme2.0",
+  "version": "1.0.0",
+  "description": "JPSME web application - Node.js/Express + Prisma (MySQL/XAMPP) backend, AJAX + Tailwind frontend",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/cluster.js",
+    "start:cluster": "node src/cluster.js",
+    "dev": "node --watch src/server.js",
+    "build:css": "tailwindcss -i ./src/styles/tailwind.css -o ./public/css/tailwind.css --minify",
+    "watch:css": "tailwindcss -i ./src/styles/tailwind.css -o ./public/css/tailwind.css --watch",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "db:seed": "node prisma/seed.js",
+    "test:paymongo": "node tests/paymongo.service.test.js"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@prisma/client": "^5.20.0",
+    "bcryptjs": "^2.4.3",
+    "compression": "^1.8.1",
+    "connect-flash": "^0.1.1",
+    "dotenv": "^16.4.5",
+    "ejs": "^3.1.10",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.0",
+    "express-ejs-layouts": "^2.5.1",
+    "express-mysql-session": "^3.0.3",
+    "express-rate-limit": "^8.6.2",
+    "express-session": "^1.18.0",
+    "express-validator": "^7.2.0",
+    "googleapis": "^176.0.0",
+    "helmet": "^8.3.0",
+    "multer": "^2.2.0",
+    "mysql2": "^3.23.3",
+    "nodemailer": "^9.0.5",
+    "pdfkit": "^0.19.1"
+  },
+  "devDependencies": {
+    "prisma": "^5.20.0",
+    "tailwindcss": "^3.4.19"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  }
+}

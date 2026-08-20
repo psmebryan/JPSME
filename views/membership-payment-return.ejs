@@ -1,0 +1,33 @@
+<%
+// This page ONLY reflects the current server-side Payment status — it is never
+// what marks a payment as paid. Only the PayMongo webhook (verified server-side)
+// can do that. Whatever query string PayMongo appends to this redirect is ignored.
+const status = payment ? payment.status : null;
+%>
+<div class="max-w-lg mx-auto">
+  <div class="rounded-2xl border border-gray-200 bg-white shadow-sm p-8 text-center" id="payment-return-panel" data-status="<%= status || 'NONE' %>">
+    <% if (status === 'PAID') { %>
+      <div class="text-5xl mb-4">&#10003;</div>
+      <h1 class="text-2xl font-bold text-green-700 mb-2">Payment Successful</h1>
+      <p class="text-gray-600 mb-1">Event:</p>
+      <p class="font-semibold text-gray-900 mb-4">JPSME Membership Registration</p>
+      <p class="text-gray-600 mb-1">Amount:</p>
+      <p class="text-2xl font-extrabold text-gray-900 mb-4">&#8369;<%= (payment.amount / 100).toFixed(2) %></p>
+      <p class="text-gray-600 mb-1">Registration:</p>
+      <p class="font-semibold text-amber-600 mb-6">Awaiting Admin Approval</p>
+      <a href="/profile" class="inline-block bg-indigo-600 text-white px-6 py-2.5 rounded-md hover:bg-indigo-500 font-semibold">View Profile</a>
+    <% } else if (status === 'PENDING' || status === 'PROCESSING') { %>
+      <div class="text-5xl mb-4">&#8987;</div>
+      <h1 class="text-2xl font-bold text-amber-700 mb-2">Payment Processing</h1>
+      <p class="text-gray-600 mb-6">We are waiting for confirmation from the payment provider. Please do not make another payment. This page will update automatically once it's confirmed.</p>
+      <a href="/membership-payment" class="inline-block text-indigo-600 hover:underline text-sm">Back to Membership Payment</a>
+    <% } else { %>
+      <div class="text-5xl mb-4 text-red-600">&times;</div>
+      <h1 class="text-2xl font-bold text-red-700 mb-2">Payment Not Confirmed</h1>
+      <p class="text-gray-600 mb-6">Your payment could not be confirmed. No registration has been confirmed.</p>
+      <a href="/membership-payment" class="inline-block bg-indigo-600 text-white px-6 py-2.5 rounded-md hover:bg-indigo-500 font-semibold">Try Again</a>
+    <% } %>
+  </div>
+</div>
+
+<script src="/js/payment.js"></script>

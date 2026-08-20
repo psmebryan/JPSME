@@ -1,0 +1,47 @@
+<%
+/*
+  Reusable pagination partial.
+
+  Expected locals when including this partial:
+    - currentPage   (Number) 1-indexed current page
+    - totalPages    (Number) total number of pages
+    - baseQuery     (Object) all query params to preserve EXCEPT the page param itself
+                     e.g. { search: 'seminar', modality: 'ONLINE' }
+    - pageParam     (String) name of the query param this pagination controls.
+                     Defaults to "page". Use distinct names ("upcomingPage",
+                     "endedPage") when two paginated lists appear on the same view.
+
+  Include it from a view one level below views/ (e.g. views/events.ejs) as:
+    partials/pagination
+  Include it from a view nested one level deeper (e.g. views/admin/events.ejs) as:
+    ../partials/pagination
+  passing currentPage, totalPages, baseQuery, and pageParam as above.
+*/
+const _pageParam = typeof pageParam !== 'undefined' ? pageParam : 'page';
+const _baseQuery = typeof baseQuery !== 'undefined' ? baseQuery : {};
+
+function _buildPageUrl(targetPage) {
+  const params = new URLSearchParams(_baseQuery);
+  params.set(_pageParam, targetPage);
+  return '?' + params.toString();
+}
+%>
+<% if (totalPages > 1) { %>
+  <nav class="flex items-center justify-center gap-1 mt-6" aria-label="Pagination">
+    <a href="<%= _buildPageUrl(Math.max(1, currentPage - 1)) %>"
+       class="px-3 py-1.5 text-sm rounded-md border border-gray-200 <%= currentPage === 1 ? 'pointer-events-none text-gray-300' : 'text-gray-600 hover:bg-gray-50' %>"
+       aria-label="Previous page">&larr;</a>
+
+    <% for (let p = 1; p <= totalPages; p++) { %>
+      <a href="<%= _buildPageUrl(p) %>"
+         class="px-3 py-1.5 text-sm rounded-md border <%= p === currentPage ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50' %>"
+         <%= p === currentPage ? 'aria-current="page"' : '' %>>
+        <%= p %>
+      </a>
+    <% } %>
+
+    <a href="<%= _buildPageUrl(Math.min(totalPages, currentPage + 1)) %>"
+       class="px-3 py-1.5 text-sm rounded-md border border-gray-200 <%= currentPage === totalPages ? 'pointer-events-none text-gray-300' : 'text-gray-600 hover:bg-gray-50' %>"
+       aria-label="Next page">&rarr;</a>
+  </nav>
+<% } %>

@@ -1,0 +1,36 @@
+<div class="max-w-2xl mx-auto">
+  <a href="/events" class="inline-block text-sm text-indigo-600 hover:underline py-2 -my-2">&larr; Back to events</a>
+  <h1 class="text-3xl font-bold mt-3 mb-2"><%= event.title %></h1>
+  <p class="text-gray-500 mb-1"><%= new Date(event.startDate).toLocaleString() %></p>
+  <% if (event.location) { %><p class="text-gray-500 mb-4"><%= event.location %></p><% } %>
+  <% if (event.description) { %>
+    <p class="text-gray-700 whitespace-pre-line mb-6"><%= event.description %></p>
+  <% } %>
+
+  <% const registered = typeof isRegistered !== 'undefined' && isRegistered; %>
+  <% const status = typeof registrationStatus !== 'undefined' ? registrationStatus : null; %>
+  <% const hasFee = event.feeCentavos > 0; %>
+  <% if (hasFee) { %>
+    <p class="text-lg font-semibold text-gray-900 mb-3">Registration Fee: &#8369;<%= (event.feeCentavos / 100).toFixed(2) %></p>
+  <% } %>
+
+  <% if (status === 'PENDING_PAYMENT') { %>
+    <button data-pay-event="<%= event.id %>" class="bg-amber-500 text-white px-5 py-3 rounded-md hover:bg-amber-600">
+      Payment Pending &mdash; Pay Now
+    </button>
+  <% } else { %>
+    <button
+      data-register-event="<%= event.id %>"
+      data-logged-in="<%= !!locals.currentUser %>"
+      data-registered="<%= registered %>"
+      <%= registered ? 'disabled aria-disabled="true"' : '' %>
+      class="bg-indigo-600 text-white px-5 py-3 rounded-md hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed">
+      <%= registered ? 'Registered' : (hasFee ? 'Register & Pay' : 'Register for this event') %>
+    </button>
+  <% } %>
+  <% if (!locals.currentUser) { %>
+    <p class="text-sm text-gray-500 mt-2">You'll need to log in first — we'll use your saved profile to register you instantly.</p>
+  <% } %>
+</div>
+
+<script src="/js/events.js"></script>

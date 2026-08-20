@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="<%= csrfToken %>">
+  <title><%= title %> | JPSME Admin</title>
+  <link rel="stylesheet" href="/css/tailwind.css">
+</head>
+<body class="min-h-screen flex bg-slate-50 text-slate-900">
+  <% const isMainAdmin = locals.currentUser && currentUser.role === 'ADMIN'; %>
+  <% const isChapterAdmin = locals.currentUser && currentUser.role === 'CHAPTER_ADMIN'; %>
+
+  <aside class="sticky top-0 h-screen w-56 overflow-y-auto bg-slate-900 text-slate-200 flex-shrink-0 flex flex-col">
+    <div class="px-4 py-5 border-b border-white/10">
+      <div class="font-semibold text-white">JPSME Admin</div>
+      <% if (isChapterAdmin) { %>
+        <div class="text-[11px] text-slate-400 mt-0.5">Chapter Admin</div>
+      <% } %>
+    </div>
+
+    <nav id="admin-nav" class="px-2 py-4 space-y-1 text-sm flex-1">
+      <a href="/admin/dashboard" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Dashboard</a>
+
+      <% if (isMainAdmin) { %>
+        <!-- User Management main menu (click to expand/collapse) -->
+        <div class="px-3 py-2">
+          <button id="user-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between text-left px-0 py-1 text-xs text-slate-400 uppercase tracking-wide focus:outline-none">
+            <span>Users</span>
+            <svg id="user-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+          </button>
+          <div id="user-submenu" class="mt-1 space-y-1 hidden">
+            <a href="/admin/users/all" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Users</a>
+            <a href="/admin/users/approvals" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">User Approvals</a>
+          </div>
+        </div>
+      <% } %>
+
+      <a href="/admin/events" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Events</a>
+
+      <% if (isMainAdmin) { %>
+        <a href="/admin/payments" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Payments</a>
+        <a href="/admin/audit-log" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Audit Log</a>
+
+        <!-- Chapter Management main menu (click to expand/collapse) -->
+        <div class="px-3 py-2">
+          <button id="chapter-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between text-left px-0 py-1 text-xs text-slate-400 uppercase tracking-wide focus:outline-none">
+            <span>Chapter Management</span>
+            <svg id="chapter-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+          </button>
+          <div id="chapter-submenu" class="mt-1 space-y-1 hidden">
+            <a href="/admin/chapters" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Chapters</a>
+            <a href="/admin/chapter-admins" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Chapter Admins</a>
+          </div>
+        </div>
+      <% } else if (isChapterAdmin) { %>
+        <a href="/admin/chapter-members" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">My Chapter Members</a>
+      <% } %>
+
+      <% if (isMainAdmin) { %>
+        <!-- Certificates main menu (click to expand/collapse) -->
+        <div class="px-3 py-2">
+          <button id="certificate-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between text-left px-0 py-1 text-xs text-slate-400 uppercase tracking-wide focus:outline-none">
+            <span>Certificates</span>
+            <svg id="certificate-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+          </button>
+          <div id="certificate-submenu" class="mt-1 space-y-1 hidden">
+            <a href="/admin/certificates" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Membership Template</a>
+            <a href="/admin/event-certificates" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Event Certificates</a>
+          </div>
+        </div>
+
+        <!-- Emails main menu (click to expand/collapse) -->
+        <div class="px-3 py-2">
+          <button id="email-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between text-left px-0 py-1 text-xs text-slate-400 uppercase tracking-wide focus:outline-none">
+            <span>Emails</span>
+            <svg id="email-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+          </button>
+          <div id="email-submenu" class="mt-1 space-y-1 hidden">
+            <a href="/admin/emails" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Membership Email</a>
+            <a href="/admin/event-emails" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Event Emails</a>
+            <a href="/admin/broadcasts" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Broadcast Email</a>
+          </div>
+        </div>
+
+        <a href="/admin/settings" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Site Settings</a>
+        <a href="/admin/sponsors" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Sponsors</a>
+      <% } %>
+    </nav>
+
+    <div class="px-2 py-4 border-t border-white/10 space-y-1 text-sm">
+      <a href="/" class="flex items-center gap-2 px-3 py-2 rounded-md text-amber-400 hover:bg-white/5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        View Website
+      </a>
+      <a href="/admin/logout" class="block px-3 py-2 rounded-md text-red-300 hover:bg-white/5">Logout</a>
+    </div>
+  </aside>
+  <main id="admin-content" class="flex-1 px-8 py-8">
+    <%- body %>
+  </main>
+  <script src="/js/api.js"></script>
+  <script src="/js/admin.js"></script>
+  <script src="/js/admin-nav.js"></script>
+</body>
+</html>

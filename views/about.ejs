@@ -1,0 +1,90 @@
+<%
+/* ---------------------------------------------------------
+   About page content. Move this into the controller (or a
+   settingsService/aboutService call) once you want this
+   editable outside the view — see aboutController.
+--------------------------------------------------------- */
+const coreValues = locals.coreValues || [
+  { label: "Leadership", text: "Cultivating change-makers through example and engagement." },
+  { label: "Innovation", text: "Empowering students to solve real-world challenges." },
+  { label: "Unity",      text: "Creating strong networks between chapters across the country." },
+];
+
+// Shared across About, Code of Ethics, etc. — a natural candidate for
+// views/partials/through-the-years.ejs once more than one page uses it.
+const timelineYears = locals.timelineYears || [
+  { year: "2024", href: "/events?year=2024", label: "See Events & Highlights" },
+];
+%>
+
+<!-- ===================== ABOUT CONTENT ===================== -->
+<section class="bg-gradient-to-b from-indigo-50 to-white py-16 sm:py-20">
+  <div class="max-w-4xl mx-auto px-4 sm:px-6">
+    <div class="bg-white rounded-2xl shadow-lg p-8 sm:p-12">
+
+      <h1 class="text-3xl sm:text-4xl font-extrabold text-indigo-950 text-center">About JPSME National</h1>
+
+      <p class="mt-6 text-center text-sm sm:text-base leading-relaxed text-gray-600">
+        The <strong>Junior Philippine Society of Mechanical Engineers &ndash; National</strong>
+        <%= locals.introText || `is the premier student organization recognized by the Philippine Society of
+        Mechanical Engineers. We are dedicated to nurturing aspiring mechanical engineers by promoting technical
+        excellence, leadership, and a strong commitment to social responsibility.` %>
+      </p>
+
+      <div class="mt-10">
+        <h2 class="flex items-center gap-2 text-xl font-bold text-indigo-600">
+          <span aria-hidden="true">📖</span> Our Story
+        </h2>
+        <p class="mt-3 text-sm leading-relaxed text-gray-600">
+          Founded in <strong><%= locals.foundedYear || '2011' %></strong>,
+          <%= locals.storyText || `JPSME National has been empowering thousands of students nationwide. Through
+          leadership summits, technical training, and competitions, we continue to cultivate the next generation
+          of Filipino mechanical engineers.` %>
+        </p>
+      </div>
+
+      <div class="mt-10">
+        <h2 class="flex items-center gap-2 text-xl font-bold text-indigo-600">
+          <span aria-hidden="true">🎯</span> Our Mission
+        </h2>
+        <p class="mt-3 text-sm leading-relaxed text-gray-600">
+          <%= locals.missionText || `To nurture future mechanical engineers through programs that develop
+          <em>leadership, technical mastery, and community involvement</em>.` %>
+        </p>
+      </div>
+
+      <div class="mt-10">
+        <h2 class="flex items-center gap-2 text-xl font-bold text-indigo-600">
+          <span aria-hidden="true">💡</span> Core Values
+        </h2>
+        <ul class="mt-3 space-y-2 text-sm leading-relaxed text-gray-600 list-disc list-inside">
+          <% coreValues.forEach(v => { %>
+            <li><strong class="text-gray-800"><%= v.label %>:</strong> <%= v.text %></li>
+          <% }) %>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ===================== THROUGH THE YEARS =====================
+     Reused on About, Code of Ethics, and other About-family pages.
+     Once a second page needs it, pull this block out into
+     views/partials/through-the-years.ejs and include() it, passing
+     `timelineYears` from each controller.
+================================================================ -->
+<section class="bg-gray-100 py-16">
+  <div class="max-w-4xl mx-auto px-4 sm:px-6 text-center">
+    <h2 class="text-2xl sm:text-3xl font-extrabold text-indigo-950">JPSME National Through the Years</h2>
+
+    <div class="mt-10 flex flex-wrap justify-center gap-6">
+      <% timelineYears.forEach(y => { %>
+        <a href="<%= y.href %>" class="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow px-10 py-8 w-full sm:w-56">
+          <p class="text-3xl font-extrabold text-indigo-950"><%= y.year %></p>
+          <p class="mt-2 text-sm font-semibold text-indigo-600"><%= y.label %></p>
+        </a>
+      <% }) %>
+    </div>
+  </div>
+</section>

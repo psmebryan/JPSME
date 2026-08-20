@@ -1,0 +1,19 @@
+<div class="admin-card p-8 w-full max-w-sm">
+  <h1 class="admin-h1 text-center mb-6">Admin Login</h1>
+  <form id="login-form" class="space-y-4">
+    <input type="hidden" name="context" value="admin">
+    <div>
+      <label class="form-label" for="email">Email</label>
+      <input type="email" id="email" name="email" required class="form-input">
+    </div>
+    <div>
+      <label class="form-label" for="password">Password</label>
+      <input type="password" id="password" name="password" required class="form-input">
+    </div>
+    <button type="submit" class="btn-primary w-full">
+      Login
+    </button>
+  </form>
+</div>
+
+<script src="/js/auth.js"></script>

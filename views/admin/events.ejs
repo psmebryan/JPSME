@@ -1,0 +1,256 @@
+<%
+// Expected locals from the controller:
+//   featuredEvents, upcomingEvents/upcomingPage/upcomingTotalPages,
+//   endedEvents/endedPage/endedTotalPages   — as before, respecting search/modality/published filters
+//   tableEvents        (Array) SAME filtered dataset (search/modality/published), flat, 5 per page,
+//                        NOT split into featured/upcoming/ended — includes drafts so admins can manage them
+//   tablePage          (Number) current page for the management table
+//   tableTotalPages    (Number) total pages for the management table
+
+function modalityLabel(m) {
+  return m === 'ONLINE' ? 'Online' : 'Face to Face';
+}
+function modalityBadgeClass(m) {
+  return m === 'ONLINE' ? 'badge-sky' : 'badge-emerald';
+}
+%>
+
+<div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
+  <h1 class="admin-h1">Manage Events</h1>
+
+  <div class="flex flex-col sm:flex-row gap-3">
+    <a href="/admin/events/new" class="btn-primary">Add Event</a>
+  </div>
+</div>
+
+<form method="GET" action="/admin/events" class="mb-8 admin-card p-4">
+  <div class="grid gap-3 md:grid-cols-[1.2fr_180px_180px_auto]">
+    <input
+      type="search"
+      name="search"
+      value="<%= typeof search !== 'undefined' ? search : '' %>"
+      placeholder="Search events"
+      class="form-input" />
+
+    <select name="modality" class="form-input">
+      <option value="">All modalities</option>
+      <option value="FACE_TO_FACE" <%= typeof modality !== 'undefined' && modality === 'FACE_TO_FACE' ? 'selected' : '' %>>Face to Face</option>
+      <option value="ONLINE" <%= typeof modality !== 'undefined' && modality === 'ONLINE' ? 'selected' : '' %>>Online</option>
+    </select>
+
+    <select name="published" class="form-input">
+      <option value="">All status</option>
+      <option value="true" <%= typeof published !== 'undefined' && published === 'true' ? 'selected' : '' %>>Published</option>
+      <option value="false" <%= typeof published !== 'undefined' && published === 'false' ? 'selected' : '' %>>Draft</option>
+    </select>
+
+    <button type="submit" class="btn-primary">Apply Filters</button>
+  </div>
+</form>
+
+<% if (typeof featuredEvents !== 'undefined' && featuredEvents.length > 0) { %>
+  <div class="mb-10">
+    <p class="text-xs font-semibold tracking-wide uppercase text-amber-600 mb-3">Featured</p>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <% featuredEvents.forEach(event => { %>
+        <a href="/events/<%= event.id %>"
+           class="relative block border-2 border-amber-300 bg-amber-50 rounded-xl overflow-hidden hover:shadow-md transition">
+          <% if (event.imageUrl) { %>
+            <img src="<%= event.imageUrl %>" alt="" class="w-full h-40 object-cover">
+          <% } else { %>
+            <div class="w-full h-40 bg-amber-100 flex items-center justify-center text-amber-400">
+              <svg class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3 20.25h18A1.5 1.5 0 0022.5 18.75V5.25A1.5 1.5 0 0021 3.75H3a1.5 1.5 0 00-1.5 1.5v13.5A1.5 1.5 0 003 20.25z" />
+              </svg>
+            </div>
+          <% } %>
+          <div class="p-4">
+            <span class="inline-block text-[11px] font-bold uppercase tracking-wide text-amber-600 mb-1">Featured Event</span>
+            <h3 class="font-semibold text-lg text-slate-900"><%= event.title %></h3>
+            <p class="text-sm text-slate-500 mt-1"><%= new Date(event.startDate).toLocaleString() %></p>
+            <span class="inline-block mt-2 <%= modalityBadgeClass(event.modality) %>">
+              <%= modalityLabel(event.modality) %>
+            </span>
+          </div>
+        </a>
+      <% }) %>
+    </div>
+  </div>
+<% } %>
+
+<section class="mb-12">
+  <h2 class="text-lg font-semibold mb-4">Upcoming Events</h2>
+  <% if (upcomingEvents.length === 0) { %>
+    <p class="text-slate-500">No upcoming events right now.</p>
+  <% } else { %>
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <% upcomingEvents.forEach(event => { %>
+        <div class="admin-card overflow-hidden flex flex-col justify-between hover:shadow-md transition">
+          <a href="/events/<%= event.id %>">
+            <% if (event.imageUrl) { %>
+              <img src="<%= event.imageUrl %>" alt="" class="w-full h-36 object-cover">
+            <% } else { %>
+              <div class="w-full h-36 bg-slate-100 flex items-center justify-center text-slate-300">
+                <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3 20.25h18A1.5 1.5 0 0022.5 18.75V5.25A1.5 1.5 0 0021 3.75H3a1.5 1.5 0 00-1.5 1.5v13.5A1.5 1.5 0 003 20.25z" />
+                </svg>
+              </div>
+            <% } %>
+          </a>
+          <div class="p-4 flex-1">
+            <span class="inline-block mb-2 <%= modalityBadgeClass(event.modality) %>">
+              <%= modalityLabel(event.modality) %>
+            </span>
+            <h3 class="font-semibold text-lg">
+              <a href="/events/<%= event.id %>" class="hover:text-indigo-600"><%= event.title %></a>
+            </h3>
+            <p class="text-sm text-slate-500 mt-1"><%= new Date(event.startDate).toLocaleString() %></p>
+            <% if (event.location) { %><p class="text-sm text-slate-500"><%= event.location %></p><% } %>
+            <% if (event.description) { %>
+              <p class="text-sm text-slate-500 mt-2 line-clamp-2"><%= event.description %></p>
+            <% } %>
+          </div>
+          <div class="p-4 pt-0">
+            <% if (!locals.currentUser || locals.currentUser.role !== 'ADMIN') { %>
+              <button
+                data-register-event="<%= event.id %>"
+                data-logged-in="<%= !!locals.currentUser %>"
+                data-user-role="<%= locals.currentUser ? 'USER' : '' %>"
+                class="btn-primary w-full">
+                Register
+              </button>
+            <% } else { %>
+              <a href="/admin/events/<%= event.id %>/registrations" class="btn-secondary w-full">View registrations</a>
+            <% } %>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+    <%- include('../partials/pagination', {
+      currentPage: upcomingPage,
+      totalPages: upcomingTotalPages,
+      baseQuery: {},
+      pageParam: 'upcomingPage'
+    }) %>
+  <% } %>
+</section>
+
+<section class="mb-16">
+  <h2 class="text-lg font-semibold mb-4 text-slate-500">Past Events</h2>
+  <% if (endedEvents.length === 0) { %>
+    <p class="text-slate-400">No past events yet.</p>
+  <% } else { %>
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <% endedEvents.forEach(event => { %>
+        <div class="admin-card overflow-hidden opacity-75">
+          <a href="/events/<%= event.id %>">
+            <% if (event.imageUrl) { %>
+              <img src="<%= event.imageUrl %>" alt="" class="w-full h-32 object-cover grayscale">
+            <% } %>
+          </a>
+          <div class="p-4">
+            <span class="inline-block badge-slate mb-2">
+              <%= modalityLabel(event.modality) %> &middot; Ended
+            </span>
+            <h3 class="font-semibold">
+              <a href="/events/<%= event.id %>" class="hover:text-indigo-600"><%= event.title %></a>
+            </h3>
+            <p class="text-sm text-slate-500 mt-1"><%= new Date(event.startDate).toLocaleString() %></p>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+    <%- include('../partials/pagination', {
+      currentPage: endedPage,
+      totalPages: endedTotalPages,
+      baseQuery: {},
+      pageParam: 'endedPage'
+    }) %>
+  <% } %>
+</section>
+
+<!-- Flat management table: same filters as above, includes drafts, with Edit/Delete -->
+<section>
+  <h2 class="text-lg font-semibold mb-4">All Events</h2>
+
+  <div class="admin-table-wrap">
+    <table id="events-table" class="admin-table">
+      <colgroup>
+        <col class="w-16">
+        <col>
+        <col class="w-28">
+        <col class="w-40">
+        <col class="w-28">
+        <col class="w-24">
+        <col class="w-24">
+        <col class="w-px">
+      </colgroup>
+      <thead class="admin-table-head">
+        <tr>
+          <th class="admin-th">Image</th>
+          <th class="admin-th">Title</th>
+          <th class="admin-th">Modality</th>
+          <th class="admin-th">Start</th>
+          <th class="admin-th">Registrations</th>
+          <th class="admin-th">Published</th>
+          <th class="admin-th">Featured</th>
+          <th class="admin-th text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="admin-tbody">
+        <% tableEvents.forEach(event => { %>
+          <tr data-event-id="<%= event.id %>"
+              data-title="<%= event.title %>"
+              data-description="<%= event.description || '' %>"
+              data-location="<%= event.location || '' %>"
+              data-start-date="<%= event.startDate ? event.startDate.toISOString().slice(0,16) : '' %>"
+              data-end-date="<%= event.endDate ? event.endDate.toISOString().slice(0,16) : '' %>"
+              data-capacity="<%= event.capacity || '' %>"
+              class="admin-tr align-top">
+            <td class="admin-td">
+              <% if (event.imageUrl) { %>
+                <img src="<%= event.imageUrl %>" alt="" class="h-10 w-10 rounded object-cover">
+              <% } else { %>
+                <div class="h-10 w-10 rounded bg-slate-100 flex items-center justify-center text-slate-300">
+                  <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3 20.25h18A1.5 1.5 0 0022.5 18.75V5.25A1.5 1.5 0 0021 3.75H3a1.5 1.5 0 00-1.5 1.5v13.5A1.5 1.5 0 003 20.25z" />
+                  </svg>
+                </div>
+              <% } %>
+            </td>
+            <td class="admin-td max-w-[220px] truncate"><%= event.title %></td>
+            <td class="admin-td"><span class="<%= modalityBadgeClass(event.modality) %>"><%= modalityLabel(event.modality) %></span></td>
+            <td class="admin-td"><%= event.startDate.toLocaleString() %></td>
+            <td class="admin-td"><%= event._count ? event._count.registrations : 0 %></td>
+            <td class="admin-td"><span class="<%= event.isPublished ? 'badge-green' : 'badge-slate' %>"><%= event.isPublished ? 'Yes' : 'No' %></span></td>
+            <td class="admin-td"><span class="<%= event.featured ? 'badge-amber' : 'badge-slate' %>"><%= event.featured ? 'Yes' : 'No' %></span></td>
+            <td class="admin-td text-right">
+              <div class="flex flex-wrap justify-end items-center gap-2">
+                <a href="/admin/events/<%= event.id %>/edit" class="text-indigo-600 hover:underline text-sm font-medium">Edit</a>
+                <a href="/admin/events/<%= event.id %>/registrations" class="text-slate-600 hover:underline text-sm font-medium">Registrations</a>
+                <a href="/admin/events/<%= event.id %>/certificate" class="text-emerald-600 hover:underline text-sm font-medium">Certificate</a>
+                <a href="/admin/events/<%= event.id %>/email" class="text-sky-600 hover:underline text-sm font-medium">Email</a>
+                <button type="button"
+                  data-delete-event="<%= event.id %>"
+                  data-event-title="<%= event.title %>"
+                  class="text-red-600 hover:underline text-sm font-medium">Delete</button>
+              </div>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <% if (tableEvents.length === 0) { %>
+      <p class="empty-state">No events match these filters.</p>
+    <% } %>
+  </div>
+
+  <%- include('../partials/pagination', {
+    currentPage: tablePage,
+    totalPages: tableTotalPages,
+    baseQuery: { search: typeof search !== 'undefined' ? search : '', modality: typeof modality !== 'undefined' ? modality : '', published: typeof published !== 'undefined' ? published : '' },
+    pageParam: 'tablePage'
+  }) %>
+</section>
+
+<script src="/js/events.js"></script>

@@ -1,0 +1,52 @@
+<div id="event-email-module" class="max-w-3xl" data-event-id="<%= event.id %>">
+  <a href="/admin/event-emails" class="text-sm text-indigo-600 hover:underline">&larr; Back to event emails</a>
+  <div class="mb-6 mt-2 flex flex-wrap items-center justify-between gap-3">
+    <h1 class="admin-h1">Email — <%= event.title %></h1>
+    <div class="flex gap-3 text-sm">
+      <a href="/admin/events/<%= event.id %>/edit" class="text-indigo-600 hover:underline">Edit Event</a>
+      <a href="/admin/events/<%= event.id %>/registrations" class="text-indigo-600 hover:underline">View Registrations</a>
+    </div>
+  </div>
+
+  <p class="mb-6 text-sm text-slate-500">Sent automatically when a member registers for this event.</p>
+
+  <section class="admin-card p-6 mb-6">
+    <h2 class="font-semibold mb-1">Attached Image</h2>
+    <p class="mb-4 text-xs text-slate-500">Optional — if left unset, this event's own photo (from Manage Events) is attached instead.</p>
+    <% if (template.attachmentImage) { %>
+      <img id="event-email-attachment-preview" src="<%= template.attachmentImage %>" alt="Email attachment" class="mb-4 h-40 rounded border border-slate-200 object-contain bg-slate-50">
+    <% } else { %>
+      <div id="event-email-attachment-empty" class="mb-4 flex h-40 items-center justify-center rounded border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-400">
+        <% if (event.imageUrl) { %>Using this event's photo<% } else { %>No image set<% } %>
+      </div>
+      <img id="event-email-attachment-preview" src="" alt="Email attachment" class="mb-4 hidden h-40 rounded border border-slate-200 object-contain bg-slate-50">
+    <% } %>
+    <form id="event-email-attachment-form" class="space-y-3">
+      <input type="file" name="attachment" accept="image/png,image/jpeg,image/webp,image/svg+xml" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
+      <button type="submit" class="btn-primary">Upload Image</button>
+    </form>
+  </section>
+
+  <section class="admin-card p-6">
+    <h2 class="font-semibold mb-1">Email Content</h2>
+    <p class="mb-4 text-xs text-slate-500">
+      Available tokens: <code>{{fullName}}</code>, <code>{{firstName}}</code>, <code>{{lastName}}</code>,
+      <code>{{eventTitle}}</code>, <code>{{eventDate}}</code>, <code>{{eventLocation}}</code>, <code>{{zoomLink}}</code>
+      <% if (event.modality !== 'ONLINE' || !event.zoomLink) { %>
+        <br><span class="text-amber-600">{{zoomLink}} will be empty — this event is <%= event.modality === 'ONLINE' ? 'online but has no Zoom link set (edit the event to add one)' : 'not marked as Online' %>.</span>
+      <% } %>
+    </p>
+    <form id="event-email-text-form" class="space-y-4">
+      <div>
+        <label for="event-email-subject" class="form-label">Subject</label>
+        <input id="event-email-subject" name="subject" value="<%= template.subject %>" maxlength="200" class="form-input">
+      </div>
+      <div>
+        <label for="event-email-body" class="form-label">Body</label>
+        <textarea id="event-email-body" name="bodyHtml" rows="8" maxlength="5000" class="form-input"><%= template.bodyHtml %></textarea>
+        <p class="mt-1 text-xs text-slate-400">Plain text — line breaks are preserved in the sent email.</p>
+      </div>
+      <button type="submit" class="btn-primary">Save Changes</button>
+    </form>
+  </section>
+</div>

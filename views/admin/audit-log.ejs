@@ -1,0 +1,136 @@
+<%
+function actionBadgeClass(action) {
+  const green = ['PAYMENT_SUCCEEDED', 'REFUND_SUCCEEDED', 'PAYMENT_RECONCILED'];
+  const red = ['PAYMENT_FAILED', 'WEBHOOK_REJECTED', 'REFUND_FAILED', 'UNAUTHORIZED_PAYMENT_ACCESS', 'SUSPICIOUS_PAYMENT_MISMATCH'];
+  const slate = ['WEBHOOK_DUPLICATE'];
+  if (green.includes(action)) return 'badge-green';
+  if (red.includes(action)) return 'badge-red';
+  if (slate.includes(action)) return 'badge-slate';
+  return 'badge-amber'; // PAYMENT_CREATED, PAYMENT_PROCESSING, WEBHOOK_RECEIVED, REFUND_REQUESTED, USER_STATUS_CHANGED
+}
+
+function actorLabel(actor) {
+  if (!actor) return 'System';
+  return `${actor.firstName} ${actor.lastName}`;
+}
+
+function userLabel(user) {
+  if (!user) return '-';
+  return `${user.firstName} ${user.lastName}`;
+}
+
+// Metadata is stored as a flat JSON object (amounts, IDs, reasons — never
+// secrets) — flattened to "key: value" pairs for a compact, readable cell
+// rather than building bespoke per-action-type formatting.
+function formatMetadata(raw) {
+  if (!raw) return '-';
+  let obj;
+  try { obj = JSON.parse(raw); } catch (err) { return raw; }
+  if (!obj || typeof obj !== 'object') return String(obj);
+  return Object.entries(obj)
+    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .map(([k, v]) => `${k}: ${v}`)
+    .join(' · ');
+}
+%>
+<div class="max-w-6xl">
+  <div class="mb-6">
+    <h1 class="admin-h1">Audit Log</h1>
+    <p class="admin-subtitle">Every payment, webhook, refund, reconciliation, and membership status change — who did it (or "System" for automatic actions) and why.</p>
+  </div>
+
+  <form method="GET" action="/admin/audit-log" class="admin-card p-4 mb-6">
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+      <div>
+        <label class="form-label">Action</label>
+        <select name="action" class="form-input">
+          <option value="">All actions</option>
+          <% auditActions.forEach(a => { %>
+            <option value="<%= a %>" <%= filters.action === a ? 'selected' : '' %>><%= a %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Actor</label>
+        <select name="actor" class="form-input">
+          <option value="">All actors</option>
+          <option value="system" <%= filters.actor === 'system' ? 'selected' : '' %>>System (automatic)</option>
+          <% admins.forEach(a => { %>
+            <option value="<%= a.id %>" <%= filters.actor === String(a.id) ? 'selected' : '' %>><%= a.firstName %> <%= a.lastName %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Target User ID</label>
+        <input type="number" name="targetUserId" value="<%= filters.targetUserId %>" class="form-input" placeholder="e.g. 42">
+      </div>
+      <div>
+        <label class="form-label">Payment ID</label>
+        <input type="number" name="paymentId" value="<%= filters.paymentId %>" class="form-input" placeholder="e.g. 28">
+      </div>
+      <div>
+        <label class="form-label">From</label>
+        <input type="date" name="dateFrom" value="<%= filters.dateFrom %>" class="form-input">
+      </div>
+      <div>
+        <label class="form-label">To</label>
+        <input type="date" name="dateTo" value="<%= filters.dateTo %>" class="form-input">
+      </div>
+    </div>
+    <div class="mt-3 flex items-center gap-3">
+      <button type="submit" class="btn-primary">Apply Filters</button>
+      <a href="/admin/audit-log" class="text-sm text-slate-500 hover:underline">Clear</a>
+    </div>
+  </form>
+
+  <div class="admin-table-wrap">
+    <table class="admin-table">
+      <colgroup>
+        <col class="w-40">
+        <col class="w-44">
+        <col class="w-40">
+        <col class="w-40">
+        <col class="w-20">
+        <col>
+      </colgroup>
+      <thead class="admin-table-head">
+        <tr>
+          <th class="admin-th">When</th>
+          <th class="admin-th">Action</th>
+          <th class="admin-th">Actor</th>
+          <th class="admin-th">Target</th>
+          <th class="admin-th">Payment</th>
+          <th class="admin-th">Details</th>
+        </tr>
+      </thead>
+      <tbody class="admin-tbody">
+        <% logs.forEach(log => { %>
+          <tr class="admin-tr align-top">
+            <td class="admin-td whitespace-nowrap text-xs text-slate-500"><%= new Date(log.createdAt).toLocaleString() %></td>
+            <td class="admin-td"><span class="<%= actionBadgeClass(log.action) %>"><%= log.action %></span></td>
+            <td class="admin-td">
+              <%= actorLabel(log.actor) %>
+              <% if (log.actor) { %><br><span class="text-xs text-slate-400"><%= log.actor.email %></span><% } %>
+            </td>
+            <td class="admin-td">
+              <%= userLabel(log.targetUser) %>
+              <% if (log.targetUser) { %><br><span class="text-xs text-slate-400"><%= log.targetUser.email %></span><% } %>
+            </td>
+            <td class="admin-td"><%= log.paymentId ? '#' + log.paymentId : '-' %></td>
+            <td class="admin-td text-xs text-slate-600 break-words"><%= formatMetadata(log.metadata) %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <% if (logs.length === 0) { %>
+      <p class="empty-state">No audit entries match these filters.</p>
+    <% } %>
+  </div>
+
+  <%- include('../partials/pagination', {
+    currentPage: page,
+    totalPages: totalPages,
+    baseQuery: filters,
+    pageParam: 'page'
+  }) %>
+</div>

@@ -1,0 +1,43 @@
+<div class="max-w-5xl">
+  <div class="mb-6">
+    <h1 class="admin-h1">Event Emails</h1>
+    <p class="admin-subtitle">Each event has its own customizable registration-confirmation email.</p>
+  </div>
+
+  <div class="admin-table-wrap">
+    <table class="admin-table">
+      <colgroup>
+        <col>
+        <col class="w-32">
+        <col class="w-32">
+        <col class="w-28">
+        <col class="w-px">
+      </colgroup>
+      <thead class="admin-table-head">
+        <tr>
+          <th class="admin-th">Event</th>
+          <th class="admin-th">Date</th>
+          <th class="admin-th">Modality</th>
+          <th class="admin-th">Registrants</th>
+          <th class="admin-th text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="admin-tbody">
+        <% events.forEach(event => { %>
+          <tr class="admin-tr">
+            <td class="admin-td font-medium max-w-[260px] truncate"><%= event.title %></td>
+            <td class="admin-td"><%= new Date(event.startDate).toLocaleDateString() %></td>
+            <td class="admin-td"><%= event.modality === 'ONLINE' ? 'Online' : 'Face to Face' %></td>
+            <td class="admin-td"><%= event._count ? event._count.registrations : 0 %></td>
+            <td class="admin-td text-right">
+              <a href="/admin/events/<%= event.id %>/email" class="text-indigo-600 hover:underline text-sm font-medium">Manage &rarr;</a>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <% if (events.length === 0) { %>
+      <p class="empty-state">No events yet.</p>
+    <% } %>
+  </div>
+</div>

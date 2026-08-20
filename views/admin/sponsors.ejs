@@ -1,0 +1,51 @@
+<div id="sponsors-module" class="max-w-4xl">
+  <div class="mb-6">
+    <h1 class="admin-h1">Manage Sponsors</h1>
+    <p class="admin-subtitle">Sponsor logos are displayed on the public homepage.</p>
+  </div>
+
+  <section class="admin-card p-6">
+    <h2 class="font-semibold">Add Sponsor</h2>
+    <form id="sponsor-form" class="mt-4 grid gap-4 sm:grid-cols-2">
+      <div>
+        <label class="form-label" for="sponsor-name">Sponsor Name</label>
+        <input id="sponsor-name" name="name" required class="form-input uppercase" oninput="this.value = this.value.toUpperCase()">
+      </div>
+      <div>
+        <label class="form-label" for="sponsor-website">Website (optional)</label>
+        <input id="sponsor-website" name="websiteUrl" type="url" placeholder="https://example.com" class="form-input">
+      </div>
+      <div class="sm:col-span-2">
+        <label class="form-label" for="sponsor-logo">Logo</label>
+        <input id="sponsor-logo" name="logo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" required class="block w-full text-sm">
+      </div>
+      <div class="sm:col-span-2">
+        <button class="btn-primary">Add Sponsor</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="mt-8 admin-card p-6">
+    <h2 class="font-semibold">Current Sponsors</h2>
+    <% if (!sponsors.length) { %>
+      <p class="mt-4 empty-state">No sponsors have been added yet.</p>
+    <% } else { %>
+      <div id="sponsor-list" class="mt-4 divide-y divide-slate-200">
+        <% sponsors.forEach(sponsor => { %>
+          <div class="flex items-center justify-between gap-4 py-4" data-sponsor-id="<%= sponsor.id %>">
+            <div class="flex items-center gap-4">
+              <img src="<%= sponsor.logoUrl %>" alt="<%= sponsor.name %>" class="h-12 w-20 object-contain">
+              <div>
+                <p class="font-medium uppercase"><%= sponsor.name %></p>
+                <% if (sponsor.websiteUrl) { %>
+                  <a href="<%= sponsor.websiteUrl %>" target="_blank" rel="noopener" class="text-sm text-indigo-600 hover:underline"><%= sponsor.websiteUrl %></a>
+                <% } %>
+              </div>
+            </div>
+            <button type="button" data-delete-sponsor="<%= sponsor.id %>" class="text-sm text-red-600 hover:underline font-medium">Remove</button>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+  </section>
+</div>

@@ -1,0 +1,128 @@
+<%
+function statusBadge(r) {
+  if (!r.generated) return '<span class="badge-amber">Not generated</span>';
+  const genDate = r.generatedAt ? ' &middot; ' + new Date(r.generatedAt).toLocaleDateString() : '';
+  return r.released
+    ? `<span class="badge-green">Generated &middot; Download allowed${genDate}</span>`
+    : `<span class="badge-slate">Generated &middot; Locked${genDate}</span>`;
+}
+%>
+<div id="event-certificate-module" class="max-w-5xl" data-event-id="<%= event.id %>">
+  <a href="/admin/events" class="text-sm text-indigo-600 hover:underline">&larr; Back to events</a>
+  <div class="mb-6 mt-2 flex flex-wrap items-center justify-between gap-3">
+    <h1 class="admin-h1">Certificate — <%= event.title %></h1>
+    <div class="flex gap-3 text-sm">
+      <a href="/admin/events/<%= event.id %>/edit" class="text-indigo-600 hover:underline">Edit Event</a>
+      <a href="/admin/events/<%= event.id %>/registrations" class="text-indigo-600 hover:underline">View Registrations</a>
+    </div>
+  </div>
+
+  <section class="admin-card p-6 mb-6">
+    <h2 class="font-semibold mb-4">Background Image</h2>
+    <% if (template.backgroundImage) { %>
+      <img id="event-cert-bg-preview" src="<%= template.backgroundImage %>" alt="Certificate background" class="mb-4 h-40 rounded border border-slate-200 object-contain bg-slate-50">
+    <% } else { %>
+      <div id="event-cert-bg-preview-empty" class="mb-4 flex h-40 items-center justify-center rounded border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-400">No background set — a plain bordered card is used instead</div>
+      <img id="event-cert-bg-preview" src="" alt="Certificate background" class="mb-4 hidden h-40 rounded border border-slate-200 object-contain bg-slate-50">
+    <% } %>
+    <form id="event-cert-bg-form" class="space-y-3">
+      <input type="file" name="background" accept="image/png,image/jpeg" required class="w-full text-sm border border-slate-300 rounded-md px-3 py-2">
+      <p class="text-xs text-slate-400">PNG or JPEG only. Landscape orientation recommended (e.g. 1600&times;1131).</p>
+      <button type="submit" class="btn-primary">Upload Background</button>
+    </form>
+  </section>
+
+  <section class="admin-card p-6 mb-6">
+    <h2 class="font-semibold mb-1">Certificate Text</h2>
+    <p class="mb-4 text-xs text-slate-500">Available tokens: <code>{{fullName}}</code>, <code>{{firstName}}</code>, <code>{{lastName}}</code>, <code>{{middleInitial}}</code>, <code>{{chapterName}}</code>, <code>{{eventTitle}}</code>, <code>{{eventDate}}</code></p>
+    <form id="event-cert-text-form" class="space-y-4">
+      <div>
+        <label for="event-cert-title" class="form-label">Title</label>
+        <input id="event-cert-title" name="title" value="<%= template.title %>" maxlength="200" class="form-input">
+      </div>
+      <div>
+        <label for="event-cert-body" class="form-label">Body</label>
+        <textarea id="event-cert-body" name="bodyText" rows="4" maxlength="2000" class="form-input"><%= template.bodyText %></textarea>
+      </div>
+      <div>
+        <label for="event-cert-color" class="form-label">Text Color</label>
+        <input id="event-cert-color" name="textColor" type="color" value="<%= template.textColor %>" class="h-10 w-20 rounded border border-slate-300">
+      </div>
+      <div class="flex items-center gap-3">
+        <button type="submit" class="btn-primary">Save Changes</button>
+        <a href="/api/admin/certificates/events/<%= event.id %>/template/preview" target="_blank" rel="noopener" class="text-sm text-indigo-600 hover:underline">Preview PDF</a>
+      </div>
+    </form>
+  </section>
+
+  <section class="admin-card p-6">
+    <div class="mb-1 flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h2 class="font-semibold">Registrants</h2>
+        <p class="mt-1 text-sm text-slate-500">
+          <span id="cert-total-registrants"><%= registrants.length %></span> registered member(s)
+          &middot; <span id="cert-selected-count">0</span> selected
+        </p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="flex rounded-lg border border-slate-200 text-sm overflow-hidden" id="cert-filter-tabs">
+          <button type="button" data-cert-filter="all" class="cert-filter-tab px-3 py-1.5 bg-indigo-600 text-white">All</button>
+          <button type="button" data-cert-filter="generated" class="cert-filter-tab px-3 py-1.5 hover:bg-slate-50">Generated</button>
+          <button type="button" data-cert-filter="not_generated" class="cert-filter-tab px-3 py-1.5 hover:bg-slate-50">Not Generated</button>
+        </div>
+        <button type="button" id="generate-selected" disabled class="btn-primary px-4 py-1.5">Generate Selected</button>
+        <button type="button" id="generate-all-pending" class="btn px-4 py-1.5 bg-emerald-600 text-white hover:bg-emerald-700">Generate All Pending</button>
+        <a href="/api/admin/certificates/events/<%= event.id %>/export" class="btn-secondary px-4 py-1.5">Export Excel</a>
+      </div>
+    </div>
+
+    <div class="mt-4 admin-table-wrap">
+      <table id="cert-registrants-table" class="admin-table">
+        <colgroup>
+          <col class="w-8">
+          <col>
+          <col>
+          <col class="w-56">
+          <col class="w-px">
+        </colgroup>
+        <thead class="admin-table-head">
+          <tr>
+            <th class="admin-th"><input type="checkbox" id="cert-select-all" aria-label="Select all"></th>
+            <th class="admin-th">Name</th>
+            <th class="admin-th">Email</th>
+            <th class="admin-th">Status</th>
+            <th class="admin-th text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="admin-tbody">
+          <% registrants.forEach(r => { %>
+            <tr data-user-id="<%= r.userId %>" class="admin-tr align-top">
+              <td class="admin-td"><input type="checkbox" class="cert-row-checkbox" value="<%= r.userId %>"></td>
+              <td class="admin-td"><%= r.fullName %></td>
+              <td class="admin-td max-w-[220px] truncate"><%= r.email %></td>
+              <td class="admin-td cert-status-cell"><%- statusBadge(r) %></td>
+              <td class="admin-td text-right cert-actions-cell">
+                <div class="flex flex-wrap justify-end items-center gap-2">
+                  <% if (r.generated) { %>
+                    <a href="/api/admin/certificates/events/<%= event.id %>/registrants/<%= r.userId %>/download" class="text-indigo-600 hover:underline text-sm font-medium">Download</a>
+                    <% if (r.released) { %>
+                      <button type="button" data-revoke-cert="<%= r.userId %>" class="text-slate-600 hover:underline text-sm font-medium">Revoke</button>
+                    <% } else { %>
+                      <button type="button" data-allow-cert="<%= r.userId %>" class="text-emerald-600 hover:underline text-sm font-medium">Allow Download</button>
+                    <% } %>
+                    <button type="button" data-regenerate-cert="<%= r.userId %>" class="text-amber-600 hover:underline text-sm font-medium">Regenerate</button>
+                  <% } else { %>
+                    <button type="button" data-generate-cert="<%= r.userId %>" class="text-emerald-600 hover:underline text-sm font-medium">Generate</button>
+                  <% } %>
+                </div>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+      <% if (registrants.length === 0) { %>
+        <p id="cert-registrants-empty" class="empty-state">No registered members for this event yet.</p>
+      <% } %>
+    </div>
+  </section>
+</div>

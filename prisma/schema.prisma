@@ -1,0 +1,485 @@
+// Prisma schema for JPSME
+// Run `npm run prisma:generate` after changes, and `npm run prisma:migrate` to apply to your local XAMPP MySQL database.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+  CHAPTER_ADMIN
+}
+
+enum UserStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RegistrationStatus {
+  REGISTERED
+  PENDING_PAYMENT
+  CANCELLED
+}
+
+enum Modality {
+  FACE_TO_FACE
+  ONLINE
+}
+
+enum CertificateTemplateType {
+  MEMBERSHIP
+  EVENT
+}
+
+enum PaymentPurpose {
+  MEMBERSHIP_REGISTRATION
+  EVENT_REGISTRATION
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+  EXPIRED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentAttemptStatus {
+  CREATED
+  AWAITING_PAYMENT
+  SUCCEEDED
+  FAILED
+}
+
+enum RefundStatus {
+  REQUESTED
+  PROCESSING
+  SUCCEEDED
+  FAILED
+}
+
+enum AuditAction {
+  PAYMENT_CREATED
+  PAYMENT_PROCESSING
+  PAYMENT_SUCCEEDED
+  PAYMENT_FAILED
+  WEBHOOK_RECEIVED
+  WEBHOOK_REJECTED
+  WEBHOOK_DUPLICATE
+  REFUND_REQUESTED
+  REFUND_SUCCEEDED
+  REFUND_FAILED
+  UNAUTHORIZED_PAYMENT_ACCESS
+  SUSPICIOUS_PAYMENT_MISMATCH
+  PAYMENT_RECONCILED
+  USER_STATUS_CHANGED
+}
+
+model User {
+  id              Int      @id @default(autoincrement())
+  firstName       String
+  middleInitial   String?
+  lastName        String
+  email           String   @unique
+  password        String
+  phone           String?
+  school          String?
+  profileImage    String?
+  chapterId       Int?
+  role            Role     @default(USER)
+  status          UserStatus @default(PENDING)
+  emailVerifiedAt DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  chapter         Chapter? @relation("UserChapter", fields: [chapterId], references: [id], onDelete: SetNull)
+  registrations   EventRegistration[]
+  emailVerificationToken EmailVerificationToken?
+
+  chapterAdmin            ChapterAdmin?
+  chapterAdminAuditsOld   ChapterAdminAudit[] @relation("old_user")
+  chapterAdminAuditsNew   ChapterAdminAudit[] @relation("new_user")
+  chapterAdminAuditsMade  ChapterAdminAudit[] @relation("changed_by")
+
+  eventCertificates EventCertificate[]
+
+  payments          Payment[]
+  refundsRequested  Refund[]   @relation("refund_requested_by")
+  auditLogsAsActor  AuditLog[] @relation("audit_actor")
+  auditLogsAsTarget AuditLog[] @relation("audit_target")
+  broadcastsCreated EmailBroadcast[]
+
+  @@index([status])
+  @@index([chapterId])
+}
+
+// Single active token per user; a new verification request replaces the previous one.
+model EmailVerificationToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Event {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String?  @db.Text
+  location    String?
+  modality    Modality @default(FACE_TO_FACE)
+  imageUrl    String?
+  zoomLink    String?
+  featured    Boolean  @default(false)
+  startDate   DateTime
+  endDate     DateTime?
+  capacity    Int?
+  isPublished Boolean  @default(true)
+  // 0 = free (unchanged default behavior). Charged via GCash, same PayMongo
+  // flow already used for membership registration — see Payment.eventId.
+  feeCentavos Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  registrations EventRegistration[]
+  certificateTemplate CertificateTemplate?
+  certificates        EventCertificate[]
+  emailTemplate       EmailTemplate?
+  payments            Payment[]
+}
+
+model EventRegistration {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  eventId   Int
+  fullName  String
+  email     String
+  phone     String?
+  school    String?
+  status    RegistrationStatus @default(REGISTERED)
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventId])
+}
+
+model Sponsor {
+  id        Int      @id @default(autoincrement())
+  name      String
+  logoUrl   String
+  websiteUrl String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@map("sponsors")
+}
+
+// Key/value store for site-wide content the admin can change, e.g. site_logo path.
+model SiteSetting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+}
+
+model ChapterRegion {
+  id        Int           @id @default(autoincrement())
+  name      String        @unique
+  slug      String        @unique
+  order     Int           @default(0)
+  areas     ChapterArea[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@map("chapter_regions")
+}
+
+model ChapterArea {
+  id        Int           @id @default(autoincrement())
+  name      String
+  slug      String        @unique
+  order     Int           @default(0)
+  region    ChapterRegion @relation(fields: [regionId], references: [id], onDelete: Cascade)
+  regionId  Int
+  chapters  Chapter[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([regionId])
+  @@map("chapter_areas")
+}
+
+model Chapter {
+  id          Int         @id @default(autoincrement())
+  name        String
+  yearFounded Int
+  isActive    Boolean     @default(true)
+  order       Int         @default(0)
+  area        ChapterArea @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  areaId      Int
+  users       User[]      @relation("UserChapter")
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  chapterAdmin       ChapterAdmin?
+  chapterAdminAudits ChapterAdminAudit[]
+
+  @@index([areaId])
+  @@map("chapters")
+}
+
+model ChapterAdmin {
+  id         Int      @id @default(autoincrement())
+  chapterId  Int      @unique
+  userId     Int      @unique
+  assignedAt DateTime @default(now())
+
+  chapter Chapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([chapterId])
+  @@index([userId])
+  @@map("chapter_admins")
+}
+
+model ChapterAdminAudit {
+  id         Int      @id @default(autoincrement())
+  chapterId  Int
+  oldUserId  Int?
+  newUserId  Int?
+  changedBy  Int
+  changedAt  DateTime @default(now())
+  note       String?
+
+  chapter Chapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  oldUser  User?   @relation("old_user", fields: [oldUserId], references: [id], onDelete: SetNull)
+  newUser  User?   @relation("new_user", fields: [newUserId], references: [id], onDelete: SetNull)
+  changedByUser User @relation("changed_by", fields: [changedBy], references: [id], onDelete: Cascade)
+
+  @@map("chapter_admin_audit")
+}
+
+// One global row (eventId null) for the membership certificate; one row per
+// event (eventId set) for that event's certificate. Both customizable only
+// by the main ADMIN.
+model CertificateTemplate {
+  id              Int      @id @default(autoincrement())
+  type            CertificateTemplateType
+  eventId         Int?     @unique
+  backgroundImage String?
+  title           String   @default("Certificate")
+  bodyText        String   @db.Text
+  textColor       String   @default("#1a1a2e")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  event Event? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("certificate_templates")
+}
+
+// A generated event certificate PDF for one user. Membership certificates
+// are generated on demand from live profile data and not stored here.
+model EventCertificate {
+  id          Int      @id @default(autoincrement())
+  eventId     Int
+  userId      Int
+  filePath    String
+  generatedAt DateTime @default(now())
+  generatedBy Int
+  released    Boolean  @default(false)
+  releasedAt  DateTime?
+  releasedBy  Int?
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+  @@map("event_certificates")
+}
+
+// A membership-registration payment. Amounts are stored in centavos (PayMongo's
+// own smallest-unit convention) to avoid float rounding. A user can have more
+// than one Payment over time (e.g. a REFUNDED one followed by a new PAID one),
+// so userId is intentionally not unique — "at most one active payment" is
+// enforced in payment.service.js inside a transaction, not by a DB constraint.
+model Payment {
+  id                Int            @id @default(autoincrement())
+  userId            Int
+  purpose           PaymentPurpose @default(MEMBERSHIP_REGISTRATION)
+  // Null for MEMBERSHIP_REGISTRATION payments; set for EVENT_REGISTRATION
+  // payments. onDelete: Restrict means an event with any payment history
+  // (pending, processing, paid, or refunded) can never be deleted out from
+  // under its financial records — event.service.js's deleteEvent() also
+  // checks this explicitly before touching anything, so the app-level error
+  // is friendly; this is the DB-level backstop.
+  eventId           Int?
+  gateway           String         @default("paymongo")
+  gatewayCheckoutId String?        @unique
+  gatewayPaymentId  String?        @unique
+  amount            Int
+  currency          String         @default("PHP")
+  status            PaymentStatus  @default(PENDING)
+  expiresAt         DateTime?
+  paidAt            DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event    Event?           @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  attempts PaymentAttempt[]
+  webhooks PaymentWebhook[]
+  refund   Refund?
+
+  @@index([userId])
+  @@index([status])
+  @@index([eventId])
+  @@map("payments")
+}
+
+// One row per gateway checkout attempt for a given Payment, so retries after
+// a FAILED attempt are tracked individually instead of overwriting history.
+model PaymentAttempt {
+  id               Int                  @id @default(autoincrement())
+  paymentId        Int
+  attemptNumber    Int
+  gatewayReference String?
+  status           PaymentAttemptStatus @default(CREATED)
+  failureCode      String?
+  createdAt        DateTime             @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@unique([paymentId, attemptNumber])
+  @@map("payment_attempts")
+}
+
+// Records every inbound gateway webhook. The (gateway, webhookId) unique
+// constraint is what makes replayed/duplicate webhook deliveries a guaranteed
+// database-level no-op, not just an application-level check.
+model PaymentWebhook {
+  id          Int       @id @default(autoincrement())
+  gateway     String    @default("paymongo")
+  webhookId   String
+  eventType   String
+  paymentId   Int?
+  payload     String    @db.Text
+  processed   Boolean   @default(false)
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  payment Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@unique([gateway, webhookId])
+  @@map("payment_webhooks")
+}
+
+// A refund only ever reaches SUCCEEDED once the gateway's own refund webhook
+// confirms it — never from the synchronous refund-request API response alone.
+model Refund {
+  id              Int          @id @default(autoincrement())
+  paymentId       Int          @unique
+  requestedBy     Int
+  reason          String?      @db.Text
+  amount          Int
+  gatewayRefundId String?      @unique
+  status          RefundStatus @default(REQUESTED)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  payment         Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  requestedByUser User    @relation("refund_requested_by", fields: [requestedBy], references: [id], onDelete: Restrict)
+
+  @@map("refunds")
+}
+
+// General-purpose audit trail (distinct from ChapterAdminAudit, which only
+// covers chapter-admin reassignment). metadata is a JSON string of plain
+// values only — amounts, IDs, reasons — never secrets or credentials.
+model AuditLog {
+  id           Int         @id @default(autoincrement())
+  action       AuditAction
+  actorId      Int?
+  targetUserId Int?
+  paymentId    Int?
+  metadata     String?     @db.Text
+  ipAddress    String?
+  createdAt    DateTime    @default(now())
+
+  actor      User? @relation("audit_actor", fields: [actorId], references: [id], onDelete: SetNull)
+  targetUser User? @relation("audit_target", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([action])
+  @@index([actorId])
+  @@index([targetUserId])
+  @@map("audit_logs")
+}
+
+enum EmailTemplatePurpose {
+  MEMBER_APPROVED
+  EVENT_REGISTRATION
+}
+
+// One global row (eventId null, purpose=MEMBER_APPROVED) for the "you're
+// approved" email; one row per event (eventId set, purpose=EVENT_REGISTRATION)
+// for that event's registration-confirmation email. Both customizable only by
+// the main ADMIN — same shape as CertificateTemplate.
+model EmailTemplate {
+  id              Int                  @id @default(autoincrement())
+  purpose         EmailTemplatePurpose
+  eventId         Int?                 @unique
+  subject         String
+  bodyHtml        String               @db.Text
+  attachmentImage String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  event Event? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("email_templates")
+}
+
+enum BroadcastStatus {
+  PENDING
+  SENDING
+  COMPLETED
+  FAILED
+}
+
+// An admin-composed one-off email blast to all members or a hand-picked
+// subset. No per-recipient tracking table — this row IS the audit trail
+// (who sent what, to how many, aggregate outcome).
+model EmailBroadcast {
+  id              Int             @id @default(autoincrement())
+  subject         String
+  bodyHtml        String          @db.Text
+  attachmentImage String?
+  audienceFilter  String          @db.Text
+  totalRecipients Int             @default(0)
+  sentCount       Int             @default(0)
+  failedCount     Int             @default(0)
+  failedEmails    String?         @db.Text
+  status          BroadcastStatus @default(PENDING)
+  createdBy       Int
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  creator User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@map("email_broadcasts")
+}

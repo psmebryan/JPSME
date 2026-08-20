@@ -1,0 +1,33 @@
+<h1 class="admin-h1 mb-6"><%= title %></h1>
+
+<div id="users-module" data-view-mode="<%= viewMode %>" data-chapters='<%- JSON.stringify(chapters || []) %>' data-current-user='<%- JSON.stringify(currentUser || {}) %>' class="admin-table-wrap">
+  <table id="users-table" class="admin-table">
+    <colgroup>
+      <col>
+      <col>
+      <col>
+      <col>
+      <col class="w-28">
+      <col class="w-36">
+      <col class="w-px">
+    </colgroup>
+    <thead class="admin-table-head">
+      <tr>
+        <th class="admin-th">Name</th>
+        <th class="admin-th">Email</th>
+        <th class="admin-th">School</th>
+        <th class="admin-th">Chapter</th>
+        <th class="admin-th">Email Status</th>
+        <th class="admin-th">Payment</th>
+        <th class="admin-th text-right">Actions</th>
+      </tr>
+    </thead>
+    <tbody class="admin-tbody"></tbody>
+  </table>
+  <p id="users-empty-state" class="hidden empty-state">No users found.</p>
+</div>
+
+<script nonce="<%= cspNonce %>">
+  // chapters data for client-side assign UI
+  window.adminChapters = <%- JSON.stringify(chapters || []) %>;
+</script>

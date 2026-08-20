@@ -1,0 +1,136 @@
+<%
+function statusBadgeHtml(status) {
+  const styles = {
+    PAID: 'badge-green',
+    PENDING: 'badge-amber',
+    PROCESSING: 'badge-blue',
+    FAILED: 'badge-red',
+    EXPIRED: 'badge-slate',
+    CANCELLED: 'badge-slate',
+    REFUNDED: 'badge-purple',
+  };
+  return `<span class="${styles[status] || 'badge-slate'}">${status}</span>`;
+}
+function peso(centavos) {
+  return '&#8369;' + (centavos / 100).toFixed(2);
+}
+%>
+<div id="payments-module" class="max-w-6xl" data-is-main-admin="<%= isMainAdmin ? '1' : '0' %>">
+  <div class="mb-6">
+    <h1 class="admin-h1">Payments</h1>
+    <p class="admin-subtitle"><%= isMainAdmin ? 'All membership and event-fee payments.' : 'Payments for your chapter.' %></p>
+  </div>
+
+  <div class="grid grid-cols-2 gap-4 mb-6 sm:grid-cols-3 lg:grid-cols-5">
+    <div class="admin-card p-4">
+      <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Total Revenue</p>
+      <p id="summary-revenue" class="mt-1 text-xl font-extrabold text-slate-900"><%- peso(summary.totalRevenueCentavos) %></p>
+    </div>
+    <div class="admin-card p-4">
+      <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Paid</p>
+      <p id="summary-paid" class="mt-1 text-xl font-extrabold text-green-700"><%= summary.counts.PAID %></p>
+    </div>
+    <div class="admin-card p-4">
+      <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Pending</p>
+      <p id="summary-pending" class="mt-1 text-xl font-extrabold text-amber-700"><%= summary.counts.PENDING %></p>
+    </div>
+    <div class="admin-card p-4">
+      <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Failed</p>
+      <p id="summary-failed" class="mt-1 text-xl font-extrabold text-red-700"><%= summary.counts.FAILED %></p>
+    </div>
+    <div class="admin-card p-4">
+      <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Refunded</p>
+      <p id="summary-refunded" class="mt-1 text-xl font-extrabold text-purple-700"><%= summary.counts.REFUNDED %></p>
+    </div>
+  </div>
+
+  <section class="admin-card overflow-hidden">
+    <form id="payments-filter-form" class="flex flex-wrap items-end gap-3 border-b border-slate-200 p-4">
+      <div>
+        <label class="form-label">Status</label>
+        <select name="status" class="form-input">
+          <option value="">All</option>
+          <option value="PAID">Paid</option>
+          <option value="PENDING">Pending</option>
+          <option value="PROCESSING">Processing</option>
+          <option value="FAILED">Failed</option>
+          <option value="EXPIRED">Expired</option>
+          <option value="CANCELLED">Cancelled</option>
+          <option value="REFUNDED">Refunded</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Purpose</label>
+        <select name="purpose" class="form-input">
+          <option value="">All</option>
+          <option value="MEMBERSHIP_REGISTRATION">Membership</option>
+          <option value="EVENT_REGISTRATION">Event Fees</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">From</label>
+        <input type="date" name="dateFrom" class="form-input">
+      </div>
+      <div>
+        <label class="form-label">To</label>
+        <input type="date" name="dateTo" class="form-input">
+      </div>
+      <button type="submit" class="btn-primary">Apply</button>
+    </form>
+
+    <div class="overflow-x-auto">
+      <table id="payments-table" class="admin-table">
+        <colgroup>
+          <col>
+          <col class="w-32">
+          <col class="w-36">
+          <col class="w-24">
+          <col class="w-32">
+          <col class="w-28">
+          <col class="w-40">
+          <col class="w-px">
+        </colgroup>
+        <thead class="admin-table-head">
+          <tr>
+            <th class="admin-th">User</th>
+            <th class="admin-th">Chapter</th>
+            <th class="admin-th">Event</th>
+            <th class="admin-th">Amount</th>
+            <th class="admin-th">Status</th>
+            <th class="admin-th">Date</th>
+            <th class="admin-th">Reference</th>
+            <th class="admin-th text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="admin-tbody">
+          <% payments.forEach(p => { %>
+            <tr data-payment-id="<%= p.id %>" class="admin-tr align-top">
+              <td class="admin-td"><%= p.user.firstName %> <%= p.user.lastName %><br><span class="text-xs text-slate-400"><%= p.user.email %></span></td>
+              <td class="admin-td max-w-[140px] truncate"><%= (p.user.chapter && p.user.chapter.name) || '-' %></td>
+              <td class="admin-td max-w-[160px] truncate"><%= p.event ? p.event.title : 'Membership' %></td>
+              <td class="admin-td"><%- peso(p.amount) %></td>
+              <td class="admin-td payment-status-cell"><%- statusBadgeHtml(p.status) %></td>
+              <td class="admin-td"><%= new Date(p.createdAt).toLocaleDateString() %></td>
+              <td class="admin-td text-xs text-slate-500 max-w-[160px] truncate"><%= p.gatewayPaymentId || p.gatewayCheckoutId || '-' %></td>
+              <td class="admin-td text-right payment-actions-cell">
+                <% if (isMainAdmin && p.status === 'PAID' && !p.refund) { %>
+                  <button type="button" data-refund="<%= p.id %>" class="text-red-600 hover:underline text-sm font-medium">Refund</button>
+                <% } else if (p.refund) { %>
+                  <span class="text-xs text-slate-400">Refund: <%= p.refund.status %></span>
+                <% } %>
+                <% if (isMainAdmin && (p.status === 'PENDING' || p.status === 'PROCESSING')) { %>
+                  <button type="button" data-reconcile="<%= p.id %>" class="text-sky-600 hover:underline text-sm font-medium ml-2">Reconcile</button>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+      <% if (payments.length === 0) { %>
+        <p id="payments-empty-state" class="empty-state">No payments found.</p>
+      <% } %>
+    </div>
+
+    <div id="payments-pagination" class="flex items-center justify-center gap-1 p-4" data-page="<%= page %>" data-total-pages="<%= totalPages %>"></div>
+  </section>
+</div>

@@ -1,0 +1,1072 @@
+function initAdminPage() {
+  initUserApprovals();
+  initLogoUpload();
+  initMembershipFeeForm();
+  initPaymentsEnabledToggle();
+  initEventsTable();
+  initChapterAdmins();
+  initSponsors();
+  initCertificates();
+  initPaymentsModule();
+  initEmailTemplates();
+  initBroadcastModule();
+}
+
+// --- Email templates (admin/emails and admin/event-email pages) ---
+function initEmailTemplates() {
+  initMemberEmailModule();
+  initEventEmailModule();
+}
+
+function initMemberEmailModule() {
+  const module = document.getElementById('member-email-module');
+  if (!module) return;
+
+  const attachmentForm = document.getElementById('member-email-attachment-form');
+  attachmentForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const res = await apiFetch('/api/admin/emails/member-approved/attachment', {
+        method: 'POST',
+        body: new FormData(attachmentForm),
+      });
+      showToast('Attachment updated');
+      const preview = document.getElementById('member-email-attachment-preview');
+      const emptyState = document.getElementById('member-email-attachment-empty');
+      if (preview) {
+        preview.src = `${res.data.template.attachmentImage}?t=${Date.now()}`;
+        preview.classList.remove('hidden');
+      }
+      emptyState?.classList.add('hidden');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+
+  const textForm = document.getElementById('member-email-text-form');
+  textForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(textForm);
+    try {
+      await apiFetch('/api/admin/emails/member-approved', {
+        method: 'PUT',
+        body: JSON.stringify(Object.fromEntries(formData)),
+      });
+      showToast('Email updated');
+    } catch (err) {
+      showToast(err.errors?.[0]?.msg || err.message, 'error');
+    }
+  });
+}
+
+function initEventEmailModule() {
+  const module = document.getElementById('event-email-module');
+  if (!module) return;
+
+  const eventId = module.dataset.eventId;
+
+  const attachmentForm = document.getElementById('event-email-attachment-form');
+  attachmentForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const res = await apiFetch(`/api/admin/emails/events/${eventId}/template/attachment`, {
+        method: 'POST',
+        body: new FormData(attachmentForm),
+      });
+      showToast('Attachment updated');
+      const preview = document.getElementById('event-email-attachment-preview');
+      const emptyState = document.getElementById('event-email-attachment-empty');
+      if (preview) {
+        preview.src = `${res.data.template.attachmentImage}?t=${Date.now()}`;
+        preview.classList.remove('hidden');
+      }
+      emptyState?.classList.add('hidden');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+
+  const textForm = document.getElementById('event-email-text-form');
+  textForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(textForm);
+    try {
+      await apiFetch(`/api/admin/emails/events/${eventId}/template`, {
+        method: 'PUT',
+        body: JSON.stringify(Object.fromEntries(formData)),
+      });
+      showToast('Email updated');
+    } catch (err) {
+      showToast(err.errors?.[0]?.msg || err.message, 'error');
+    }
+  });
+}
+
+// --- Broadcast email (admin/broadcasts page) ---
+function broadcastStatusBadgeHtml(status) {
+  const styles = {
+    PENDING: 'badge-slate',
+    SENDING: 'badge-blue',
+    COMPLETED: 'badge-green',
+    FAILED: 'badge-red',
+  };
+  return `<span class="${styles[status] || 'badge-slate'}">${status}</span>`;
+}
+
+function initBroadcastModule() {
+  const module = document.getElementById('broadcast-module');
+  if (!module) return;
+
+  function getCurrentAudienceFilter() {
+    const scope = document.querySelector('input[name="audienceScope"]:checked')?.value || 'all';
+    if (scope === 'selected') {
+      const userIds = Array.from(document.querySelectorAll('.broadcast-row-checkbox:checked')).map((cb) => Number(cb.value));
+      return { scope: 'selected', userIds };
+    }
+    const chapterId = document.getElementById('audience-chapter')?.value || '';
+    return chapterId ? { scope: 'all', chapterId: Number(chapterId) } : { scope: 'all' };
+  }
+
+  async function refreshAudienceCount() {
+    const filter = getCurrentAudienceFilter();
+    const countEl = document.getElementById('broadcast-audience-count');
+    if (filter.scope === 'selected' && !filter.userIds.length) {
+      if (countEl) countEl.textContent = '0';
+      return;
+    }
+    try {
+      const res = await apiFetch(`/api/admin/broadcasts/audience-count?audience=${encodeURIComponent(JSON.stringify(filter))}`);
+      if (countEl) countEl.textContent = String(res.data.count);
+    } catch (err) {
+      // Live-count is a convenience readout; the confirm() dialog and
+      // server-side validation are the real safety net if this fails.
+    }
+  }
+
+  function updateBroadcastSelectionUI() {
+    const checkboxes = Array.from(document.querySelectorAll('.broadcast-row-checkbox'));
+    const checked = checkboxes.filter((cb) => cb.checked);
+
+    const countEl = document.getElementById('broadcast-selected-count');
+    if (countEl) countEl.textContent = String(checked.length);
+
+    const selectAll = document.getElementById('broadcast-select-all');
+    if (selectAll) {
+      selectAll.checked = checkboxes.length > 0 && checked.length === checkboxes.length;
+      selectAll.indeterminate = checked.length > 0 && checked.length < checkboxes.length;
+    }
+  }
+
+  document.querySelectorAll('input[name="audienceScope"]').forEach((radio) => {
+    radio.addEventListener('change', () => {
+      const isSelected = document.querySelector('input[name="audienceScope"]:checked')?.value === 'selected';
+      document.getElementById('audience-all-panel')?.classList.toggle('hidden', isSelected);
+      document.getElementById('audience-selected-panel')?.classList.toggle('hidden', !isSelected);
+      refreshAudienceCount();
+    });
+  });
+
+  document.getElementById('audience-chapter')?.addEventListener('change', refreshAudienceCount);
+
+  document.getElementById('broadcast-select-all')?.addEventListener('change', (e) => {
+    document.querySelectorAll('.broadcast-row-checkbox').forEach((cb) => { cb.checked = e.target.checked; });
+    updateBroadcastSelectionUI();
+    refreshAudienceCount();
+  });
+
+  document.getElementById('audience-selected-panel')?.addEventListener('change', (e) => {
+    if (e.target.classList.contains('broadcast-row-checkbox')) {
+      updateBroadcastSelectionUI();
+      refreshAudienceCount();
+    }
+  });
+
+  function prependBroadcastRow(b) {
+    const table = document.getElementById('broadcast-history-table');
+    const tbody = table?.querySelector('tbody');
+    if (!tbody) return;
+    table.parentElement?.querySelector('p.empty-state')?.remove();
+    const tr = document.createElement('tr');
+    tr.dataset.broadcastId = b.id;
+    tr.dataset.status = b.status;
+    tr.className = 'admin-tr';
+    tr.innerHTML = `
+      <td class="admin-td max-w-[280px] truncate">${escapeHtml(b.subject)}</td>
+      <td class="admin-td">${b.totalRecipients}</td>
+      <td class="admin-td broadcast-sent-cell">${b.sentCount}</td>
+      <td class="admin-td broadcast-failed-cell">${b.failedCount}</td>
+      <td class="admin-td broadcast-status-cell">${broadcastStatusBadgeHtml(b.status)}</td>
+      <td class="admin-td">${new Date(b.createdAt).toLocaleString()}</td>`;
+    tbody.prepend(tr);
+  }
+
+  function updateBroadcastRow(b) {
+    const row = document.querySelector(`#broadcast-history-table tr[data-broadcast-id="${b.id}"]`);
+    if (!row) return;
+    row.dataset.status = b.status;
+    const sentCell = row.querySelector('.broadcast-sent-cell');
+    const failedCell = row.querySelector('.broadcast-failed-cell');
+    const statusCell = row.querySelector('.broadcast-status-cell');
+    if (sentCell) sentCell.textContent = b.sentCount;
+    if (failedCell) failedCell.textContent = b.failedCount;
+    if (statusCell) statusCell.innerHTML = broadcastStatusBadgeHtml(b.status);
+  }
+
+  function pollBroadcast(id) {
+    const interval = setInterval(async () => {
+      try {
+        const res = await apiFetch(`/api/admin/broadcasts/${id}`);
+        updateBroadcastRow(res.data.broadcast);
+        if (res.data.broadcast.status === 'COMPLETED' || res.data.broadcast.status === 'FAILED') {
+          clearInterval(interval);
+        }
+      } catch (err) {
+        clearInterval(interval);
+      }
+    }, 3000);
+  }
+
+  const form = document.getElementById('broadcast-form');
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const filter = getCurrentAudienceFilter();
+    if (filter.scope === 'selected' && !filter.userIds.length) {
+      return showToast('Select at least one recipient', 'error');
+    }
+
+    const countEl = document.getElementById('broadcast-audience-count');
+    const count = countEl ? countEl.textContent : 'these';
+    if (!confirm(`Send this email to ${count} recipient(s)? This cannot be undone.`)) return;
+
+    const formData = new FormData(form);
+    formData.set('audience', JSON.stringify(filter));
+
+    const submitBtn = document.getElementById('broadcast-submit');
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+      const res = await apiFetch('/api/admin/broadcasts', { method: 'POST', body: formData });
+      showToast(res.message);
+      prependBroadcastRow(res.data.broadcast);
+      pollBroadcast(res.data.broadcast.id);
+      form.reset();
+      document.getElementById('audience-all-panel')?.classList.remove('hidden');
+      document.getElementById('audience-selected-panel')?.classList.add('hidden');
+      updateBroadcastSelectionUI();
+      refreshAudienceCount();
+    } catch (err) {
+      showToast(err.errors?.[0]?.msg || err.message, 'error');
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  });
+
+  document.querySelectorAll('#broadcast-history-table tr[data-status="SENDING"]').forEach((row) => {
+    pollBroadcast(Number(row.dataset.broadcastId));
+  });
+
+  refreshAudienceCount();
+}
+
+// --- Payments dashboard (admin/payments page) ---
+function paymentStatusBadgeHtml(status) {
+  const styles = {
+    PAID: 'badge-green',
+    PENDING: 'badge-amber',
+    PROCESSING: 'badge-blue',
+    FAILED: 'badge-red',
+    EXPIRED: 'badge-slate',
+    CANCELLED: 'badge-slate',
+    REFUNDED: 'badge-purple',
+  };
+  return `<span class="${styles[status] || 'badge-slate'}">${status}</span>`;
+}
+
+function peso(centavos) {
+  return `&#8369;${(centavos / 100).toFixed(2)}`;
+}
+
+function initPaymentsModule() {
+  const module = document.getElementById('payments-module');
+  if (!module) return;
+
+  const isMainAdmin = module.dataset.isMainAdmin === '1';
+  const table = document.getElementById('payments-table');
+  const filterForm = document.getElementById('payments-filter-form');
+  const pagination = document.getElementById('payments-pagination');
+
+  function paymentRowHtml(p) {
+    const chapter = (p.user.chapter && p.user.chapter.name) || '-';
+    const reference = p.gatewayPaymentId || p.gatewayCheckoutId || '-';
+    const eventLabel = p.event ? p.event.title : 'Membership';
+    let actions = '';
+    if (isMainAdmin && p.status === 'PAID' && !p.refund) {
+      actions = `<button type="button" data-refund="${p.id}" class="text-red-600 hover:underline text-sm font-medium">Refund</button>`;
+    } else if (p.refund) {
+      actions = `<span class="text-xs text-slate-400">Refund: ${escapeHtml(p.refund.status)}</span>`;
+    }
+    if (isMainAdmin && (p.status === 'PENDING' || p.status === 'PROCESSING')) {
+      actions += `<button type="button" data-reconcile="${p.id}" class="text-sky-600 hover:underline text-sm font-medium ml-2">Reconcile</button>`;
+    }
+    return `
+      <tr data-payment-id="${p.id}" class="admin-tr align-top">
+        <td class="admin-td">${escapeHtml(p.user.firstName)} ${escapeHtml(p.user.lastName)}<br><span class="text-xs text-slate-400">${escapeHtml(p.user.email)}</span></td>
+        <td class="admin-td max-w-[140px] truncate">${escapeHtml(chapter)}</td>
+        <td class="admin-td max-w-[160px] truncate">${escapeHtml(eventLabel)}</td>
+        <td class="admin-td">${peso(p.amount)}</td>
+        <td class="admin-td payment-status-cell">${paymentStatusBadgeHtml(p.status)}</td>
+        <td class="admin-td">${new Date(p.createdAt).toLocaleDateString()}</td>
+        <td class="admin-td text-xs text-slate-500 max-w-[160px] truncate">${escapeHtml(reference)}</td>
+        <td class="admin-td text-right payment-actions-cell">${actions}</td>
+      </tr>`;
+  }
+
+  function renderPagination(page, totalPages) {
+    if (!pagination) return;
+    pagination.dataset.page = page;
+    pagination.dataset.totalPages = totalPages;
+    if (totalPages <= 1) {
+      pagination.innerHTML = '';
+      return;
+    }
+    let html = '';
+    for (let p = 1; p <= totalPages; p += 1) {
+      html += `<button type="button" data-payments-page="${p}" class="px-3 py-1.5 text-sm rounded-md border ${p === page ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}">${p}</button>`;
+    }
+    pagination.innerHTML = html;
+  }
+
+  async function loadPayments(page) {
+    const formData = new FormData(filterForm);
+    const params = new URLSearchParams();
+    ['status', 'purpose', 'dateFrom', 'dateTo'].forEach((key) => {
+      const value = formData.get(key);
+      if (value) params.set(key, value);
+    });
+    params.set('page', page);
+
+    try {
+      const res = await apiFetch(`/api/admin/payments?${params.toString()}`);
+      const { payments, totalPages, page: currentPage } = res.data;
+      const tbody = table.querySelector('tbody');
+      tbody.innerHTML = payments.map(paymentRowHtml).join('');
+      document.getElementById('payments-empty-state')?.classList.toggle('hidden', payments.length > 0);
+      renderPagination(currentPage, totalPages);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  filterForm?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    loadPayments(1);
+  });
+
+  pagination?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-payments-page]');
+    if (!btn) return;
+    loadPayments(Number(btn.getAttribute('data-payments-page')));
+  });
+
+  table?.addEventListener('click', async (e) => {
+    const refundBtn = e.target.closest('[data-refund]');
+    if (refundBtn) {
+      const paymentId = refundBtn.getAttribute('data-refund');
+      if (!confirm('Refund this payment? This will initiate a refund through the payment gateway.')) return;
+
+      const notes = prompt('Optional note for this refund (visible in the audit log):', '') || '';
+
+      refundBtn.disabled = true;
+      try {
+        await apiFetch(`/api/admin/payments/${paymentId}/refund`, {
+          method: 'POST',
+          body: JSON.stringify({ reason: 'requested_by_customer', notes }),
+        });
+        showToast('Refund requested');
+        const currentPage = Number(pagination?.dataset.page) || 1;
+        await loadPayments(currentPage);
+      } catch (err) {
+        showToast(err.errors?.[0]?.msg || err.message, 'error');
+        refundBtn.disabled = false;
+      }
+      return;
+    }
+
+    const reconcileBtn = e.target.closest('[data-reconcile]');
+    if (reconcileBtn) {
+      const paymentId = reconcileBtn.getAttribute('data-reconcile');
+      reconcileBtn.disabled = true;
+      try {
+        const res = await apiFetch(`/api/admin/payments/${paymentId}/reconcile`, { method: 'POST' });
+        showToast(`Reconciled: ${res.data.outcome.replace(/_/g, ' ')}`);
+        const currentPage = Number(pagination?.dataset.page) || 1;
+        await loadPayments(currentPage);
+      } catch (err) {
+        showToast(err.errors?.[0]?.msg || err.message, 'error');
+        reconcileBtn.disabled = false;
+      }
+    }
+  });
+}
+
+// --- Certificates (membership template + per-event template & generation) ---
+function initCertificates() {
+  initMembershipCertificateModule();
+  initEventCertificateModule();
+}
+
+function initMembershipCertificateModule() {
+  const module = document.getElementById('membership-certificate-module');
+  if (!module) return;
+
+  const bgForm = document.getElementById('membership-cert-bg-form');
+  bgForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const res = await apiFetch('/api/admin/certificates/membership-template/background', {
+        method: 'POST',
+        body: new FormData(bgForm),
+      });
+      showToast('Background image updated');
+      const preview = document.getElementById('membership-cert-bg-preview');
+      const emptyState = document.getElementById('membership-cert-bg-preview-empty');
+      if (preview) {
+        preview.src = `${res.data.template.backgroundImage}?t=${Date.now()}`;
+        preview.classList.remove('hidden');
+      }
+      emptyState?.classList.add('hidden');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+
+  const textForm = document.getElementById('membership-cert-text-form');
+  textForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(textForm);
+    try {
+      await apiFetch('/api/admin/certificates/membership-template', {
+        method: 'PUT',
+        body: JSON.stringify(Object.fromEntries(formData)),
+      });
+      showToast('Certificate updated');
+    } catch (err) {
+      showToast(err.errors?.[0]?.msg || err.message, 'error');
+    }
+  });
+}
+
+function certStatusBadgeHtml(r) {
+  if (!r.generated) {
+    return '<span class="badge-amber">Not generated</span>';
+  }
+  const date = r.generatedAt ? ` &middot; ${new Date(r.generatedAt).toLocaleDateString()}` : '';
+  return r.released
+    ? `<span class="badge-green">Generated &middot; Download allowed${date}</span>`
+    : `<span class="badge-slate">Generated &middot; Locked${date}</span>`;
+}
+
+function certActionsHtml(eventId, r) {
+  if (r.generated) {
+    const releaseBtn = r.released
+      ? `<button type="button" data-revoke-cert="${r.userId}" class="text-slate-600 hover:underline text-sm font-medium">Revoke</button>`
+      : `<button type="button" data-allow-cert="${r.userId}" class="text-emerald-600 hover:underline text-sm font-medium">Allow Download</button>`;
+    return `
+      <a href="/api/admin/certificates/events/${eventId}/registrants/${r.userId}/download" class="text-indigo-600 hover:underline text-sm font-medium">Download</a>
+      ${releaseBtn}
+      <button type="button" data-regenerate-cert="${r.userId}" class="text-amber-600 hover:underline text-sm font-medium">Regenerate</button>`;
+  }
+  return `<button type="button" data-generate-cert="${r.userId}" class="text-emerald-600 hover:underline text-sm font-medium">Generate</button>`;
+}
+
+function initEventCertificateModule() {
+  const module = document.getElementById('event-certificate-module');
+  if (!module) return;
+
+  const eventId = module.dataset.eventId;
+  let activeFilter = 'all';
+
+  const bgForm = document.getElementById('event-cert-bg-form');
+  bgForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const res = await apiFetch(`/api/admin/certificates/events/${eventId}/template/background`, {
+        method: 'POST',
+        body: new FormData(bgForm),
+      });
+      showToast('Background image updated');
+      const preview = document.getElementById('event-cert-bg-preview');
+      const emptyState = document.getElementById('event-cert-bg-preview-empty');
+      if (preview) {
+        preview.src = `${res.data.template.backgroundImage}?t=${Date.now()}`;
+        preview.classList.remove('hidden');
+      }
+      emptyState?.classList.add('hidden');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+
+  const textForm = document.getElementById('event-cert-text-form');
+  textForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(textForm);
+    try {
+      await apiFetch(`/api/admin/certificates/events/${eventId}/template`, {
+        method: 'PUT',
+        body: JSON.stringify(Object.fromEntries(formData)),
+      });
+      showToast('Certificate updated');
+    } catch (err) {
+      showToast(err.errors?.[0]?.msg || err.message, 'error');
+    }
+  });
+
+  async function loadRegistrants(filter) {
+    activeFilter = filter;
+    document.querySelectorAll('.cert-filter-tab').forEach((tab) => {
+      const isActive = tab.getAttribute('data-cert-filter') === filter;
+      tab.classList.toggle('bg-indigo-600', isActive);
+      tab.classList.toggle('text-white', isActive);
+      tab.classList.toggle('hover:bg-slate-50', !isActive);
+    });
+
+    const table = document.getElementById('cert-registrants-table');
+    const tbody = table?.querySelector('tbody');
+    if (!tbody) return;
+
+    try {
+      const res = await apiFetch(`/api/admin/certificates/events/${eventId}/registrants?filter=${filter}`);
+      const registrants = res.data.registrants;
+      tbody.innerHTML = registrants.map((r) => `
+        <tr data-user-id="${r.userId}" class="admin-tr align-top">
+          <td class="admin-td"><input type="checkbox" class="cert-row-checkbox" value="${r.userId}"></td>
+          <td class="admin-td">${escapeHtml(r.fullName)}</td>
+          <td class="admin-td max-w-[220px] truncate">${escapeHtml(r.email)}</td>
+          <td class="admin-td cert-status-cell">${certStatusBadgeHtml(r)}</td>
+          <td class="admin-td text-right cert-actions-cell"><div class="flex flex-wrap justify-end items-center gap-2">${certActionsHtml(eventId, r)}</div></td>
+        </tr>`).join('');
+      document.getElementById('cert-registrants-empty')?.classList.toggle('hidden', registrants.length > 0);
+      updateCertSelectionUI();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  function updateCertSelectionUI() {
+    const checkboxes = Array.from(document.querySelectorAll('.cert-row-checkbox'));
+    const checked = checkboxes.filter((cb) => cb.checked);
+
+    const countEl = document.getElementById('cert-selected-count');
+    if (countEl) countEl.textContent = String(checked.length);
+
+    const generateSelectedBtn = document.getElementById('generate-selected');
+    if (generateSelectedBtn) generateSelectedBtn.disabled = checked.length === 0;
+
+    const selectAll = document.getElementById('cert-select-all');
+    if (selectAll) {
+      selectAll.checked = checkboxes.length > 0 && checked.length === checkboxes.length;
+      selectAll.indeterminate = checked.length > 0 && checked.length < checkboxes.length;
+    }
+  }
+
+  document.getElementById('cert-select-all')?.addEventListener('change', (e) => {
+    document.querySelectorAll('.cert-row-checkbox').forEach((cb) => { cb.checked = e.target.checked; });
+    updateCertSelectionUI();
+  });
+
+  document.getElementById('cert-registrants-table')?.addEventListener('change', (e) => {
+    if (e.target.classList.contains('cert-row-checkbox')) updateCertSelectionUI();
+  });
+
+  document.getElementById('generate-selected')?.addEventListener('click', () => {
+    const selected = Array.from(document.querySelectorAll('.cert-row-checkbox:checked')).map((cb) => Number(cb.value));
+    if (!selected.length) return showToast('Select at least one registrant', 'error');
+    generateFor(selected, false);
+  });
+
+  document.getElementById('cert-filter-tabs')?.addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-cert-filter]');
+    if (!tab) return;
+    loadRegistrants(tab.getAttribute('data-cert-filter'));
+  });
+
+  async function generateFor(userIds, force) {
+    try {
+      const res = await apiFetch(`/api/admin/certificates/events/${eventId}/generate`, {
+        method: 'POST',
+        body: JSON.stringify({ userIds, force }),
+      });
+      showToast(res.message);
+      await loadRegistrants(activeFilter);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  document.getElementById('generate-all-pending')?.addEventListener('click', () => generateFor(undefined, false));
+
+  async function setReleased(userId, released) {
+    try {
+      await apiFetch(`/api/admin/certificates/events/${eventId}/registrants/${userId}/release`, {
+        method: 'POST',
+        body: JSON.stringify({ released }),
+      });
+      showToast(released ? 'Download allowed' : 'Download revoked');
+      await loadRegistrants(activeFilter);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  document.getElementById('cert-registrants-table')?.addEventListener('click', (e) => {
+    const generateBtn = e.target.closest('[data-generate-cert]');
+    if (generateBtn) {
+      generateFor([Number(generateBtn.getAttribute('data-generate-cert'))], false);
+      return;
+    }
+    const regenerateBtn = e.target.closest('[data-regenerate-cert]');
+    if (regenerateBtn) {
+      if (!confirm('Regenerate this certificate? The previously generated PDF will be replaced and download access revoked until you allow it again.')) return;
+      generateFor([Number(regenerateBtn.getAttribute('data-regenerate-cert'))], true);
+      return;
+    }
+    const allowBtn = e.target.closest('[data-allow-cert]');
+    if (allowBtn) {
+      setReleased(Number(allowBtn.getAttribute('data-allow-cert')), true);
+      return;
+    }
+    const revokeBtn = e.target.closest('[data-revoke-cert]');
+    if (revokeBtn) {
+      setReleased(Number(revokeBtn.getAttribute('data-revoke-cert')), false);
+    }
+  });
+}
+
+function initSponsors() {
+  const form = document.getElementById('sponsor-form');
+  const list = document.getElementById('sponsor-list');
+  if (!form) return;
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try { await apiFetch('/api/admin/sponsors', { method: 'POST', body: new FormData(form) }); showToast('Sponsor added'); window.location.reload(); }
+    catch (err) { showToast(err.message, 'error'); }
+  });
+  if (list) list.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-delete-sponsor]');
+    if (!button || !confirm('Remove this sponsor?')) return;
+    try { await apiFetch(`/api/admin/sponsors/${button.dataset.deleteSponsor}`, { method: 'DELETE' }); button.closest('[data-sponsor-id]').remove(); showToast('Sponsor removed'); }
+    catch (err) { showToast(err.message, 'error'); }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', initAdminPage);
+// Fired by admin-nav.js after swapping in a module's fragment via AJAX.
+document.addEventListener('admin:content-loaded', initAdminPage);
+
+// Unobtrusive replacement for onsubmit="return confirm(...)" (inline event-handler
+// attributes aren't authorized by the CSP's script nonce) — any plain server-rendered
+// <form data-confirm="..."> gets a confirm() prompt before it's allowed to submit.
+// Registered once on document so it works across AJAX-swapped admin fragments too.
+document.addEventListener('submit', (e) => {
+  const message = e.target.getAttribute && e.target.getAttribute('data-confirm');
+  if (message && !confirm(message)) {
+    e.preventDefault();
+  }
+});
+
+// --- Pending user approvals (admin/users page) ---
+function initUserApprovals() {
+  const table = document.getElementById('users-table');
+  const module = document.getElementById('users-module');
+  if (!table || !module) return;
+
+  const viewMode = module.dataset.viewMode || 'approvals';
+  // parse chapters passed from server fragment (dataset holds JSON string)
+  try {
+    window.adminChapters = module.dataset.chapters ? JSON.parse(module.dataset.chapters) : (window.adminChapters || []);
+  } catch (err) {
+    window.adminChapters = window.adminChapters || [];
+  }
+  try {
+    window.currentAdmin = module.dataset.currentUser ? JSON.parse(module.dataset.currentUser) : (window.currentAdmin || null);
+  } catch (err) {
+    window.currentAdmin = window.currentAdmin || null;
+  }
+
+  if (viewMode === 'approvals') {
+    loadPendingUsers(table);
+  } else {
+    loadAllUsers(table);
+  }
+
+  table.addEventListener('click', async (e) => {
+    // Assign toggle
+    const assignToggle = e.target.closest('[data-assign-toggle]');
+    if (assignToggle) {
+      const row = assignToggle.closest('tr');
+      const panel = row.querySelector('.assign-panel');
+      if (panel) panel.classList.toggle('hidden');
+      return;
+    }
+
+    // Assign confirm
+    const assignConfirm = e.target.closest('[data-assign-confirm]');
+    if (assignConfirm) {
+      const userId = assignConfirm.getAttribute('data-assign-confirm');
+      const row = assignConfirm.closest('tr');
+      const select = row.querySelector('.assign-select');
+      const chapterId = select ? select.value : null;
+      if (!chapterId) return showToast('Please select a chapter to assign', 'error');
+
+      await doAssign({ chapterId, userId, row, force: false });
+      return;
+    }
+
+    // Approve/reject only present in approvals mode
+    const button = e.target.closest('[data-approve], [data-reject]');
+    if (button) {
+      const userId = button.getAttribute('data-approve') || button.getAttribute('data-reject');
+      const action = button.hasAttribute('data-approve') ? 'approve' : 'reject';
+
+      try {
+        await apiFetch(`/api/admin/users/${userId}/${action}`, { method: 'POST' });
+        showToast(`User ${action}d`);
+        button.closest('tr').remove();
+        maybeShowEmptyState(table);
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+      return;
+    }
+
+    // Delete (list mode only)
+    const del = e.target.closest('[data-delete-user]');
+    if (del) {
+      const id = del.getAttribute('data-delete-user');
+      if (!confirm('Delete this user?')) return;
+      try {
+        await apiFetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+        showToast('User deleted');
+        del.closest('tr').remove();
+        maybeShowEmptyState(table);
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+  });
+}
+
+// Assign (or reassign) a chapter admin. If the chapter already has a
+// different admin, the API responds 409 — we surface that as a confirm()
+// prompt and retry with force:true only if the admin agrees to replace.
+async function doAssign({ chapterId, userId, row, force }) {
+  try {
+    await apiFetch('/api/admin/chapter-admins/assign', {
+      method: 'POST',
+      body: JSON.stringify({ chapterId, userId, note: 'Assigned via users page', force }),
+    });
+    showToast(force ? 'Chapter admin replaced' : 'Chapter admin assigned');
+    const chapterName = (window.adminChapters || []).find(c => String(c.id) === String(chapterId))?.name || '';
+    const chapterCell = row.querySelector('td:nth-child(4)');
+    if (chapterCell) chapterCell.textContent = chapterName;
+    const panel = row.querySelector('.assign-panel');
+    if (panel) panel.classList.add('hidden');
+  } catch (err) {
+    if (err.status === 409) {
+      if (confirm(`${err.message}\n\nReplace them?`)) {
+        await doAssign({ chapterId, userId, row, force: true });
+      }
+      return;
+    }
+    showToast(err.message, 'error');
+  }
+}
+
+async function loadPendingUsers(table) {
+  const tbody = table.querySelector('tbody');
+  try {
+    const res = await apiFetch('/api/admin/users?status=PENDING');
+    tbody.innerHTML = res.data.users
+      .map(
+        (u) => `
+        <tr data-user-id="${u.id}" class="admin-tr align-top">
+          <td class="admin-td">${escapeHtml(u.firstName)} ${escapeHtml(u.lastName)}</td>
+          <td class="admin-td max-w-[220px] truncate" title="${escapeHtml(u.email)}">${escapeHtml(u.email)}</td>
+          <td class="admin-td max-w-[160px] truncate">${escapeHtml(u.school || '-')}</td>
+          <td class="admin-td max-w-[140px] truncate">${escapeHtml((u.chapter && u.chapter.name) || '-')}</td>
+          <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
+          <td class="admin-td">${membershipPaymentBadge(u)}</td>
+          <td class="admin-td text-right">
+            <div class="flex flex-wrap justify-end items-center gap-2">
+              <button data-approve="${u.id}" class="text-green-600 hover:underline text-sm font-medium">Approve</button>
+              <button data-reject="${u.id}" class="text-red-600 hover:underline text-sm font-medium">Reject</button>
+              <button data-assign-toggle="${u.id}" class="text-indigo-600 hover:underline text-sm font-medium">Assign</button>
+            </div>
+            <div class="assign-panel hidden w-full mt-2 flex flex-wrap justify-end items-center gap-2">
+              <select class="assign-select form-input py-1.5 w-auto">
+                <option value="">Select chapter</option>
+                ${window.adminChapters.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
+              </select>
+              <button data-assign-confirm="${u.id}" class="btn-primary px-3 py-1.5 text-sm">Confirm</button>
+            </div>
+          </td>
+        </tr>`
+      )
+      .join('');
+    maybeShowEmptyState(table);
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function loadAllUsers(table) {
+  const tbody = table.querySelector('tbody');
+  try {
+    const res = await apiFetch('/api/admin/users');
+    tbody.innerHTML = res.data.users
+      .map(
+        (u) => {
+          const canEdit = (window.currentAdmin && window.currentAdmin.role === 'ADMIN') || (window.currentAdmin && window.currentAdmin.role === 'CHAPTER_ADMIN' && u.chapter && Number(u.chapter.id) === Number(window.currentAdmin.chapterId));
+          const assignAllowed = (window.currentAdmin && window.currentAdmin.role === 'ADMIN');
+          return `
+            <tr data-user-id="${u.id}" class="admin-tr align-top">
+              <td class="admin-td">${escapeHtml(u.firstName)} ${escapeHtml(u.lastName)}</td>
+              <td class="admin-td max-w-[220px] truncate" title="${escapeHtml(u.email)}">${escapeHtml(u.email)}</td>
+              <td class="admin-td max-w-[160px] truncate">${escapeHtml(u.school || '-')}</td>
+              <td class="admin-td max-w-[140px] truncate">${escapeHtml((u.chapter && u.chapter.name) || '-')}</td>
+              <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
+              <td class="admin-td">${membershipPaymentBadge(u)}</td>
+              <td class="admin-td text-right">
+                <div class="flex flex-wrap justify-end items-center gap-2">
+                  ${canEdit ? `<a href="/admin/users/${u.id}/edit" class="text-indigo-600 hover:underline text-sm font-medium">Edit</a>` : ''}
+                  ${canEdit ? `<button data-delete-user="${u.id}" class="text-red-600 hover:underline text-sm font-medium">Delete</button>` : ''}
+                  ${assignAllowed ? `<button data-assign-toggle="${u.id}" class="text-indigo-600 hover:underline text-sm font-medium">Assign</button>` : ''}
+                </div>
+                ${assignAllowed ? `<div class="assign-panel hidden w-full mt-2 flex flex-wrap justify-end items-center gap-2">
+                  <select class="assign-select form-input py-1.5 w-auto">
+                    <option value="">Select chapter</option>
+                    ${window.adminChapters.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
+                  </select>
+                  <button data-assign-confirm="${u.id}" class="btn-primary px-3 py-1.5 text-sm">Confirm</button>
+                </div>` : ''}
+              </td>
+            </tr>`
+        }      )
+      .join('');
+    maybeShowEmptyState(table);
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+// Renders each user's latest membership-payment status as a small badge for
+// the admin Users table — "did they pay, or not" at a glance, including a
+// failed/bounced payment so the admin isn't just guessing from silence.
+function membershipPaymentBadge(u) {
+  const payment = u.membershipPayment;
+  if (!payment) {
+    return '<span class="badge-slate">Unpaid</span>';
+  }
+  const badges = {
+    PAID: 'badge-green',
+    PENDING: 'badge-amber',
+    PROCESSING: 'badge-blue',
+    FAILED: 'badge-red',
+    EXPIRED: 'badge-slate',
+    CANCELLED: 'badge-slate',
+    REFUNDED: 'badge-purple',
+  };
+  const labels = {
+    PAID: 'Paid',
+    PENDING: 'Awaiting Payment',
+    PROCESSING: 'Processing',
+    FAILED: 'Failed',
+    EXPIRED: 'Expired',
+    CANCELLED: 'Cancelled',
+    REFUNDED: 'Refunded',
+  };
+  const cls = badges[payment.status] || 'badge-slate';
+  const label = labels[payment.status] || payment.status;
+  const date = payment.status === 'PAID' && payment.paidAt ? ` &middot; ${new Date(payment.paidAt).toLocaleDateString()}` : '';
+  return `<span class="${cls}">${label}${date}</span>`;
+}
+
+// Table rows are built from user-supplied profile data, so escape before
+// injecting via innerHTML to avoid stored XSS.
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]
+  ));
+}
+
+function maybeShowEmptyState(table) {
+  const tbody = table.querySelector('tbody');
+  const emptyState = document.getElementById('users-empty-state');
+  if (!emptyState) return;
+  emptyState.classList.toggle('hidden', tbody.children.length > 0);
+}
+
+// --- Site logo upload (admin/settings page) ---
+function initLogoUpload() {
+  const form = document.getElementById('logo-form');
+  if (!form) return;
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(form);
+
+    try {
+      const res = await apiFetch('/api/admin/settings/logo', { method: 'POST', body: formData });
+      showToast('Logo updated');
+      const preview = document.getElementById('logo-preview');
+      if (preview) preview.src = `${res.data.logoUrl}?t=${Date.now()}`;
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+}
+
+// --- Membership fee (admin/settings page) ---
+function initMembershipFeeForm() {
+  const form = document.getElementById('membership-fee-form');
+  if (!form) return;
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const feePhp = document.getElementById('membership-fee-input').value;
+
+    try {
+      await apiFetch('/api/admin/settings/membership-fee', {
+        method: 'PUT',
+        body: JSON.stringify({ feePhp }),
+      });
+      showToast('Membership fee updated');
+    } catch (err) {
+      showToast(err.errors?.[0]?.msg || err.message, 'error');
+    }
+  });
+}
+
+// --- Payments kill switch (admin/settings page) ---
+function initPaymentsEnabledToggle() {
+  const module = document.getElementById('payments-enabled-module');
+  if (!module) return;
+
+  const checkbox = document.getElementById('payments-enabled-checkbox');
+  const label = document.getElementById('payments-enabled-label');
+
+  checkbox?.addEventListener('change', async () => {
+    const enabled = checkbox.checked;
+    checkbox.disabled = true;
+    try {
+      await apiFetch('/api/admin/settings/payments-enabled', {
+        method: 'PUT',
+        body: JSON.stringify({ enabled }),
+      });
+      label.textContent = enabled ? 'Payments enabled' : 'Payments disabled';
+      label.classList.toggle('text-green-700', enabled);
+      label.classList.toggle('text-red-700', !enabled);
+      showToast(enabled ? 'Payments enabled' : 'Payments disabled');
+    } catch (err) {
+      checkbox.checked = !enabled;
+      showToast(err.errors?.[0]?.msg || err.message, 'error');
+    } finally {
+      checkbox.disabled = false;
+    }
+  });
+}
+
+// --- Event management table (admin/events page) ---
+// Creating/editing events happens on their own dedicated pages
+// (event-new.ejs/event-edit.ejs, each with a self-contained submit handler) —
+// this only wires up Delete, which previously had no listener attached at all
+// (the old version of this function required a #event-form that never
+// coexists on the same page as #events-table, so the click handler below was
+// never actually reached and the Delete button silently did nothing).
+function initEventsTable() {
+  const table = document.getElementById('events-table');
+  if (!table) return;
+
+  table.addEventListener('click', async (e) => {
+    const deleteButton = e.target.closest('[data-delete-event]');
+    if (!deleteButton) return;
+
+    const eventId = deleteButton.getAttribute('data-delete-event');
+    const eventTitle = deleteButton.getAttribute('data-event-title') || 'this event';
+    if (!confirm(`Delete "${eventTitle}"? This cannot be undone.`)) return;
+
+    try {
+      await apiFetch(`/api/events/${eventId}`, { method: 'DELETE' });
+      showToast('Event deleted');
+      deleteButton.closest('tr').remove();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+}
+
+// --- Chapter Admins grid (admin/chapter-admins page) ---
+function initChapterAdmins() {
+  const toggleBtn = document.getElementById('toggle-assign-panel');
+  const panel = document.getElementById('assign-panel');
+  if (!toggleBtn || !panel) return; // not on this page
+
+  toggleBtn.addEventListener('click', () => panel.classList.toggle('hidden'));
+
+  document.querySelectorAll('[data-view-chapter]').forEach((el) => {
+    el.addEventListener('click', () => {
+      window.location.href = `/admin/chapter-members?chapterId=${el.getAttribute('data-view-chapter')}`;
+    });
+  });
+
+  const assignForm = document.getElementById('assign-form');
+  if (assignForm) {
+    assignForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const chapterId = document.getElementById('assign-chapterId').value;
+      const userId = document.getElementById('assign-userId').value;
+      const note = document.getElementById('assign-note').value;
+      if (!chapterId || !userId) return showToast('Please select a chapter and a user', 'error');
+      await doAssignChapterAdmin({ chapterId, userId, note, force: false });
+    });
+  }
+
+  async function doAssignChapterAdmin({ chapterId, userId, note, force }) {
+    try {
+      await apiFetch('/api/admin/chapter-admins/assign', {
+        method: 'POST',
+        body: JSON.stringify({ chapterId, userId, note: note || 'Assigned via Chapter Admins page', force }),
+      });
+      showToast(force ? 'Chapter admin replaced' : 'Chapter admin assigned');
+      window.location.reload();
+    } catch (err) {
+      if (err.status === 409) {
+        if (confirm(`${err.message}\n\nReplace them?`)) {
+          await doAssignChapterAdmin({ chapterId, userId, note, force: true });
+        }
+        return;
+      }
+      showToast(err.message, 'error');
+    }
+  }
+
+  document.querySelectorAll('[data-remove-chapter]').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const chapterId = btn.getAttribute('data-remove-chapter');
+      const chapterName = btn.getAttribute('data-chapter-name');
+      if (!confirm(`Remove the chapter admin for "${chapterName}"?`)) return;
+      try {
+        await apiFetch('/api/admin/chapter-admins/remove', {
+          method: 'POST',
+          body: JSON.stringify({ chapterId, note: 'Removed via Chapter Admins page' }),
+        });
+        showToast('Chapter admin removed');
+        window.location.reload();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+  });
+}
+

@@ -1,0 +1,135 @@
+<%
+function broadcastStatusBadge(status) {
+  const styles = {
+    PENDING: 'badge-slate',
+    SENDING: 'badge-blue',
+    COMPLETED: 'badge-green',
+    FAILED: 'badge-red',
+  };
+  return `<span class="${styles[status] || 'badge-slate'}">${status}</span>`;
+}
+%>
+<div id="broadcast-module" class="max-w-5xl">
+  <div class="mb-6">
+    <h1 class="admin-h1">Broadcast Email</h1>
+    <p class="admin-subtitle">Send a one-off email to all approved members or a hand-picked subset.</p>
+  </div>
+
+  <section class="admin-card p-6 mb-6">
+    <h2 class="font-semibold mb-1">Compose</h2>
+    <p class="mb-4 text-xs text-slate-500">Available tokens: <code>{{fullName}}</code>, <code>{{firstName}}</code>, <code>{{lastName}}</code>, <code>{{email}}</code></p>
+
+    <form id="broadcast-form" class="space-y-4">
+      <div>
+        <label for="broadcast-subject" class="form-label">Subject</label>
+        <input id="broadcast-subject" name="subject" maxlength="200" required class="form-input">
+      </div>
+      <div>
+        <label for="broadcast-body" class="form-label">Body</label>
+        <textarea id="broadcast-body" name="bodyHtml" rows="8" maxlength="5000" required class="form-input"></textarea>
+        <p class="mt-1 text-xs text-slate-400">Plain text — line breaks are preserved in the sent email.</p>
+      </div>
+      <div>
+        <label for="broadcast-attachment" class="form-label">Attach Image (optional)</label>
+        <input id="broadcast-attachment" name="attachment" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
+      </div>
+
+      <div>
+        <p class="form-label">Recipients</p>
+        <div class="flex items-center gap-4 mb-3">
+          <label class="inline-flex items-center gap-2 text-sm">
+            <input type="radio" name="audienceScope" value="all" checked>
+            All Approved Members
+          </label>
+          <label class="inline-flex items-center gap-2 text-sm">
+            <input type="radio" name="audienceScope" value="selected">
+            Select Specific Members
+          </label>
+        </div>
+
+        <div id="audience-all-panel">
+          <label for="audience-chapter" class="block text-xs font-medium text-slate-500 mb-1">Limit to chapter (optional)</label>
+          <select id="audience-chapter" class="form-input max-w-xs">
+            <option value="">All chapters</option>
+            <% chapters.forEach(c => { %>
+              <option value="<%= c.id %>"><%= c.name %></option>
+            <% }) %>
+          </select>
+        </div>
+
+        <div id="audience-selected-panel" class="hidden">
+          <p class="mb-2 text-sm text-slate-500">
+            <span id="broadcast-selected-count">0</span> of <%= members.length %> selected
+          </p>
+          <div class="admin-table-wrap max-h-64 overflow-y-auto">
+            <table class="admin-table">
+              <thead class="admin-table-head sticky top-0">
+                <tr>
+                  <th class="admin-th w-8"><input type="checkbox" id="broadcast-select-all" aria-label="Select all"></th>
+                  <th class="admin-th">Name</th>
+                  <th class="admin-th">Email</th>
+                  <th class="admin-th">Chapter</th>
+                </tr>
+              </thead>
+              <tbody class="admin-tbody">
+                <% members.forEach(m => { %>
+                  <tr class="admin-tr">
+                    <td class="admin-td"><input type="checkbox" class="broadcast-row-checkbox" value="<%= m.id %>"></td>
+                    <td class="admin-td"><%= m.firstName %> <%= m.lastName %></td>
+                    <td class="admin-td max-w-[220px] truncate"><%= m.email %></td>
+                    <td class="admin-td max-w-[140px] truncate"><%= (m.chapter && m.chapter.name) || '-' %></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <p class="mt-3 text-sm text-slate-600">Will send to <strong id="broadcast-audience-count">0</strong> recipient(s).</p>
+      </div>
+
+      <button type="submit" id="broadcast-submit" class="btn-primary">Send Broadcast</button>
+    </form>
+  </section>
+
+  <section class="admin-card p-6">
+    <h2 class="font-semibold mb-4">History</h2>
+    <div class="admin-table-wrap">
+      <table id="broadcast-history-table" class="admin-table">
+        <colgroup>
+          <col>
+          <col class="w-28">
+          <col class="w-20">
+          <col class="w-20">
+          <col class="w-32">
+          <col class="w-36">
+        </colgroup>
+        <thead class="admin-table-head">
+          <tr>
+            <th class="admin-th">Subject</th>
+            <th class="admin-th">Recipients</th>
+            <th class="admin-th">Sent</th>
+            <th class="admin-th">Failed</th>
+            <th class="admin-th">Status</th>
+            <th class="admin-th">Date</th>
+          </tr>
+        </thead>
+        <tbody class="admin-tbody">
+          <% broadcasts.forEach(b => { %>
+            <tr data-broadcast-id="<%= b.id %>" data-status="<%= b.status %>" class="admin-tr">
+              <td class="admin-td max-w-[280px] truncate"><%= b.subject %></td>
+              <td class="admin-td"><%= b.totalRecipients %></td>
+              <td class="admin-td broadcast-sent-cell"><%= b.sentCount %></td>
+              <td class="admin-td broadcast-failed-cell"><%= b.failedCount %></td>
+              <td class="admin-td broadcast-status-cell"><%- broadcastStatusBadge(b.status) %></td>
+              <td class="admin-td"><%= new Date(b.createdAt).toLocaleString() %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+      <% if (broadcasts.length === 0) { %>
+        <p class="empty-state">No broadcasts sent yet.</p>
+      <% } %>
+    </div>
+  </section>
+</div>

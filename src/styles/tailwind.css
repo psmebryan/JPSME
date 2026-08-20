@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+
+@layer components {
+  /* Page headers */
+  .admin-h1 {
+    @apply text-2xl font-semibold tracking-tight text-slate-900;
+  }
+  .admin-subtitle {
+    @apply text-sm text-slate-500 mt-1;
+  }
+
+  /* Cards */
+  .admin-card {
+    @apply rounded-xl border border-slate-200 bg-white shadow-sm;
+  }
+
+  /* Tables */
+  .admin-table-wrap {
+    @apply overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm;
+  }
+  .admin-table {
+    @apply w-full text-sm;
+  }
+  .admin-table-head {
+    @apply bg-slate-50 text-slate-500 text-xs font-medium uppercase tracking-wide;
+  }
+  .admin-tbody {
+    @apply divide-y divide-slate-100;
+  }
+  .admin-tr {
+    @apply hover:bg-slate-50/60 transition-colors;
+  }
+  .admin-th {
+    @apply px-4 py-2.5 text-left;
+  }
+  .admin-td {
+    @apply px-4 py-2.5;
+  }
+
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .btn-primary {
+    @apply btn bg-indigo-600 text-white hover:bg-indigo-700;
+  }
+  .btn-secondary {
+    @apply btn bg-white border border-slate-300 text-slate-700 hover:bg-slate-50;
+  }
+  .btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-700;
+  }
+
+  /* Forms */
+  .form-label {
+    @apply block text-sm font-medium text-slate-700 mb-1;
+  }
+  .form-input {
+    @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500;
+  }
+
+  /* Badges — soft pill with a subtle inset ring */
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  .badge-green {
+    @apply badge bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/10;
+  }
+  .badge-amber {
+    @apply badge bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/10;
+  }
+  .badge-red {
+    @apply badge bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/10;
+  }
+  .badge-blue {
+    @apply badge bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600/10;
+  }
+  .badge-purple {
+    @apply badge bg-purple-50 text-purple-700 ring-1 ring-inset ring-purple-600/10;
+  }
+  .badge-slate {
+    @apply badge bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-500/10;
+  }
+  .badge-sky {
+    @apply badge bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-600/10;
+  }
+  .badge-emerald {
+    @apply badge bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/10;
+  }
+
+  /* Empty states */
+  .empty-state {
+    @apply text-center text-slate-500 py-12 text-sm;
+  }
+}
+
+@tailwind utilities;

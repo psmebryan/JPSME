@@ -1,0 +1,160 @@
+<%
+/* ---------------------------------------------------------
+   Contact page content. Static contact info for now — move
+   department emails/phones into settingsService once you
+   want these editable outside the view.
+--------------------------------------------------------- */
+const orgAddress = locals.orgAddress || '19 Scout Bayoran Street, Brgy. South Triangle, Quezon City, Philippines';
+const orgEmail = locals.orgEmail || 'info@psmeinc.org.ph';
+const orgPhone = locals.orgPhone || '+63 (02) 7752-2527';
+const mapEmbedSrc = locals.mapEmbedSrc ||
+  `https://www.google.com/maps?q=${encodeURIComponent(orgAddress)}&output=embed`;
+
+const departments = locals.departments || [
+  {
+    label: 'Membership',
+    email: 'membership@psmeinc.org.ph',
+    phones: ['(02) 7752-2527', '0945 873 4879'],
+  },
+  {
+    label: 'Technical',
+    email: 'atc@psmeinc.org.ph',
+    phones: ['(02) 7752-2527'],
+  },
+  {
+    label: 'National Convention',
+    email: 'natcon@psmeinc.org.ph',
+    phones: ['(02) 7752-2527'],
+  },
+];
+%>
+
+<!-- ===================== CONTACT US ===================== -->
+<section class="-mx-4 -mt-12 bg-[radial-gradient(circle_at_14%_25%,#1c1442_0,transparent_35%),#080f29] py-0 sm:-mx-6">
+  <div class="border-b border-[#26365f] px-4 py-14 sm:px-6"><div class="mx-auto max-w-6xl"><nav class="text-sm text-slate-400"><a href="/">Home</a><span class="mx-2">&gt;</span><span class="font-bold text-amber-400">Contact Us</span></nav><h1 class="mt-4 text-4xl font-extrabold text-white">Contact Us</h1></div></div>
+<section class="bg-[#080f29] py-16 sm:py-20">
+  <div class="max-w-5xl mx-auto px-4 sm:px-6">
+
+    <div class="text-center mb-14">
+      <p class="text-xs font-bold tracking-widest text-indigo-600 uppercase">Get in touch</p>
+      <h1 class="mt-2 text-3xl sm:text-4xl font-extrabold text-indigo-950">Contact Us</h1>
+      <p class="mt-3 text-sm sm:text-base text-gray-600 max-w-2xl mx-auto">
+        Reach out for membership, technical assistance, or anything else &mdash; we're happy to help.
+      </p>
+    </div>
+
+    <!-- Quick info strip -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+      <div class="bg-white rounded-2xl shadow-lg p-8 text-center">
+        <div class="mx-auto w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center">
+          <svg class="w-6 h-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+          </svg>
+        </div>
+        <p class="mt-4 text-xs font-bold tracking-wide text-gray-400 uppercase">Visit us</p>
+        <p class="mt-2 text-sm leading-relaxed text-gray-700"><%= orgAddress %></p>
+      </div>
+
+      <a href="mailto:<%= orgEmail %>" class="group bg-white rounded-2xl shadow-lg hover:shadow-xl transition-shadow p-8 text-center">
+        <div class="mx-auto w-12 h-12 rounded-full bg-indigo-50 group-hover:bg-indigo-100 transition-colors flex items-center justify-center">
+          <svg class="w-6 h-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+          </svg>
+        </div>
+        <p class="mt-4 text-xs font-bold tracking-wide text-gray-400 uppercase">Email us</p>
+        <p class="mt-2 text-sm font-semibold text-indigo-600 break-words"><%= orgEmail %></p>
+      </a>
+
+      <a href="tel:<%= orgPhone.replace(/[^+\d]/g, '') %>" class="group bg-white rounded-2xl shadow-lg hover:shadow-xl transition-shadow p-8 text-center">
+        <div class="mx-auto w-12 h-12 rounded-full bg-indigo-50 group-hover:bg-indigo-100 transition-colors flex items-center justify-center">
+          <svg class="w-6 h-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h1.5a2.25 2.25 0 002.25-2.25v-1.372a1.125 1.125 0 00-.852-1.09l-4.423-1.106a1.125 1.125 0 00-1.173.417l-.97 1.293a11.25 11.25 0 01-6.364-6.364l1.293-.97a1.125 1.125 0 00.417-1.173L8.963 3.102a1.125 1.125 0 00-1.09-.852H6.5A2.25 2.25 0 004.25 4.5v1.5z" />
+          </svg>
+        </div>
+        <p class="mt-4 text-xs font-bold tracking-wide text-gray-400 uppercase">Call us</p>
+        <p class="mt-2 text-sm font-semibold text-indigo-600"><%= orgPhone %></p>
+      </a>
+    </div>
+
+    <!-- Map -->
+    <div class="bg-white rounded-2xl shadow-lg overflow-hidden mt-8">
+      <iframe
+        src="<%= mapEmbedSrc %>"
+        title="JPSME National office location"
+        class="w-full border-0 block aspect-[4/3] sm:aspect-[16/6]"
+        loading="lazy"
+        referrerpolicy="no-referrer-when-downgrade">
+      </iframe>
+    </div>
+
+    <!-- Departments -->
+    <div class="mt-14">
+      <h2 class="text-xl font-bold text-indigo-950 text-center mb-8">Department Contacts</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+        <% departments.forEach(dept => { %>
+          <div class="bg-white rounded-2xl shadow-lg p-6">
+            <p class="text-sm font-bold text-indigo-950 pb-3 mb-3 border-b border-gray-100"><%= dept.label %></p>
+            <div class="flex items-start gap-2 text-sm text-indigo-600">
+              <svg class="w-4 h-4 mt-0.5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+              </svg>
+              <a href="mailto:<%= dept.email %>" class="hover:underline break-words"><%= dept.email %></a>
+            </div>
+            <% dept.phones.forEach(phone => { %>
+              <div class="flex items-start gap-2 text-sm text-gray-600 mt-2">
+                <svg class="w-4 h-4 mt-0.5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h1.5a2.25 2.25 0 002.25-2.25v-1.372a1.125 1.125 0 00-.852-1.09l-4.423-1.106a1.125 1.125 0 00-1.173.417l-.97 1.293a11.25 11.25 0 01-6.364-6.364l1.293-.97a1.125 1.125 0 00.417-1.173L8.963 3.102a1.125 1.125 0 00-1.09-.852H6.5A2.25 2.25 0 004.25 4.5v1.5z" />
+                </svg>
+                <span><%= phone %></span>
+              </div>
+            <% }) %>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+
+    <!-- Message form -->
+    <div class="bg-white rounded-2xl shadow-lg p-8 sm:p-12 mt-14">
+      <h2 class="text-xl font-bold text-indigo-950 text-center">Send us a message</h2>
+      <p class="mt-2 text-sm text-gray-500 text-center">We typically reply within 1&ndash;2 business days.</p>
+
+      <form action="/contact" method="POST" class="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
+        <div>
+          <label for="firstName" class="block text-xs font-semibold text-gray-500 mb-1.5">First name</label>
+          <input id="firstName" name="firstName" type="text" required placeholder="Juan"
+            class="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+        </div>
+
+        <div>
+          <label for="lastName" class="block text-xs font-semibold text-gray-500 mb-1.5">Last name</label>
+          <input id="lastName" name="lastName" type="text" required placeholder="Dela Cruz"
+            class="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+        </div>
+
+        <div class="sm:col-span-2">
+          <label for="email" class="block text-xs font-semibold text-gray-500 mb-1.5">Email</label>
+          <input id="email" name="email" type="email" required placeholder="juan.delacruz@email.com"
+            class="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+        </div>
+
+        <div class="sm:col-span-2">
+          <label for="message" class="block text-xs font-semibold text-gray-500 mb-1.5">Message</label>
+          <textarea id="message" name="message" required rows="5" placeholder="How can we help?"
+            class="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"></textarea>
+        </div>
+
+        <div class="sm:col-span-2 flex justify-center sm:justify-end pt-2">
+          <button type="submit"
+            class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 transition-colors text-white text-sm font-semibold px-8 py-3 rounded-lg">
+            Send message
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+            </svg>
+          </button>
+        </div>
+      </form>
+    </div>
+
+  </div>
+</section></section>

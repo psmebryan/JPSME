@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="<%= csrfToken %>">
+  <title><%= title %> | JPSME</title>
+  <link rel="stylesheet" href="/css/tailwind.css">
+</head>
+<body class="min-h-screen flex flex-col bg-[#080f29] text-white overflow-x-hidden">
+  <%- include('partials/navbar') %>
+  <main class="public-main flex-1 <%= title === 'Home' ? 'w-full px-4 py-8 sm:px-6 lg:px-8' : 'max-w-6xl w-full mx-auto px-4 py-12 sm:px-6 lg:px-8' %>">
+    <%- body %>
+  </main>
+  <%- include('partials/footer') %>
+  <script src="/js/api.js"></script>
+  <style nonce="<%= cspNonce %>">
+    .public-main .bg-white, .public-main .bg-gray-50 { background-color:#111b3a !important; }
+    .public-main .bg-indigo-950 { background-color:#101934 !important; }
+    .public-main .bg-indigo-50, .public-main .bg-amber-50, .public-main .bg-gray-100 { background-color:#0a1128 !important; }
+    .public-main .border-gray-100, .public-main .border-gray-200, .public-main .border-gray-300 { border-color:#263b70 !important; }
+    .public-main .text-gray-900, .public-main .text-indigo-950 { color:#fff !important; }
+    .public-main .text-gray-700, .public-main .text-gray-600, .public-main .text-gray-500, .public-main .text-gray-400, .public-main .text-indigo-100, .public-main .text-indigo-200 { color:#94a3bd !important; }
+    .public-main .text-indigo-600, .public-main .text-indigo-700, .public-main .text-amber-600 { color:#fbbf24 !important; }
+    .public-main input, .public-main select, .public-main textarea { background:#060b1d !important; border-color:#263b70 !important; color:#fff !important; }
+    .public-main input::placeholder, .public-main textarea::placeholder { color:#71809d !important; }
+    .public-main .shadow-sm, .public-main .shadow-lg { box-shadow:none !important; }
+  </style>
+</body>
+</html>

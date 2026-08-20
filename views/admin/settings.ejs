@@ -1,0 +1,47 @@
+<h1 class="admin-h1 mb-6">Site Settings</h1>
+
+<div class="admin-card p-6 max-w-md mb-6">
+  <h2 class="font-semibold mb-4">Site Logo</h2>
+  <img id="logo-preview" src="<%= logoUrl %>" alt="Current logo" class="h-20 mb-4 object-contain">
+  <form id="logo-form" class="space-y-3">
+    <input type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/svg+xml" required
+      class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
+    <button type="submit" class="btn-primary">
+      Upload New Logo
+    </button>
+  </form>
+</div>
+
+<div class="admin-card p-6 max-w-md">
+  <h2 class="font-semibold mb-1">Membership Fee</h2>
+  <p class="mb-4 text-xs text-slate-500">Charged once, via GCash, when a new applicant registers. Chapter admins cannot view or change this.</p>
+  <form id="membership-fee-form" class="space-y-3">
+    <div class="relative">
+      <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-500">&#8369;</span>
+      <input
+        id="membership-fee-input"
+        name="feePhp"
+        type="number"
+        min="0"
+        max="1000000"
+        step="0.01"
+        value="<%= (membershipFeeCentavos / 100).toFixed(2) %>"
+        required
+        class="form-input pl-8">
+    </div>
+    <button type="submit" class="btn-primary">
+      Save Fee
+    </button>
+  </form>
+</div>
+
+<div id="payments-enabled-module" class="admin-card p-6 max-w-md mt-6" data-enabled="<%= paymentsEnabled ? '1' : '0' %>">
+  <h2 class="font-semibold mb-1">Payments</h2>
+  <p class="mb-4 text-xs text-slate-500">Kill switch for new payment checkouts (membership and event fees). Disabling this does not affect payments already in progress — their webhook confirmation still works normally.</p>
+  <label class="flex items-center gap-3 cursor-pointer">
+    <input id="payments-enabled-checkbox" type="checkbox" <%= paymentsEnabled ? 'checked' : '' %> class="h-5 w-5 rounded border-slate-300">
+    <span id="payments-enabled-label" class="text-sm font-medium <%= paymentsEnabled ? 'text-green-700' : 'text-red-700' %>">
+      <%= paymentsEnabled ? 'Payments enabled' : 'Payments disabled' %>
+    </span>
+  </label>
+</div>

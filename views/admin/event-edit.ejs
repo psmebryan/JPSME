@@ -1,0 +1,121 @@
+<div class="max-w-3xl mx-auto">
+  <a href="/admin/events" class="text-sm text-indigo-600 hover:underline">&larr; Back to events</a>
+  <h1 class="admin-h1 mt-3 mb-4">Edit Event</h1>
+
+  <div class="admin-card p-6">
+    <form id="event-form" class="space-y-4" data-event-id="<%= event.id %>" enctype="multipart/form-data">
+      <div class="grid gap-4 md:grid-cols-2">
+        <div>
+          <label for="title" class="form-label">Title</label>
+          <input id="title" name="title" required value="<%= event.title %>" class="form-input" />
+        </div>
+
+        <div>
+          <label for="modality" class="form-label">Modality</label>
+          <select id="modality" name="modality" class="form-input">
+            <option value="FACE_TO_FACE" <%= event.modality === 'FACE_TO_FACE' ? 'selected' : '' %>>Face to Face</option>
+            <option value="ONLINE" <%= event.modality === 'ONLINE' ? 'selected' : '' %>>Online</option>
+          </select>
+        </div>
+
+        <div id="zoomLinkField" class="md:col-span-2 <%= event.modality === 'ONLINE' ? '' : 'hidden' %>">
+          <label for="zoomLink" class="form-label">Zoom Link</label>
+          <input id="zoomLink" name="zoomLink" type="url" placeholder="https://zoom.us/j/..." value="<%= event.zoomLink || '' %>" class="form-input" />
+        </div>
+
+        <div class="md:col-span-2">
+          <label for="description" class="form-label">Description</label>
+          <textarea id="description" name="description" rows="4" class="form-input"><%= event.description || '' %></textarea>
+        </div>
+
+        <div>
+          <label for="startDate" class="form-label">Start Date</label>
+          <input id="startDate" name="startDate" type="datetime-local" required
+            value="<%= event.startDate.toISOString().slice(0, 16) %>"
+            class="form-input" />
+        </div>
+
+        <div>
+          <label for="endDate" class="form-label">End Date</label>
+          <input id="endDate" name="endDate" type="datetime-local"
+            value="<%= event.endDate ? event.endDate.toISOString().slice(0, 16) : '' %>"
+            class="form-input" />
+        </div>
+
+        <div>
+          <label for="location" class="form-label">Location</label>
+          <input id="location" name="location" value="<%= event.location || '' %>" class="form-input" />
+        </div>
+
+        <div>
+          <label for="capacity" class="form-label">Capacity</label>
+          <input id="capacity" name="capacity" type="number" min="1" value="<%= event.capacity || '' %>" class="form-input" />
+        </div>
+
+        <div>
+          <label for="feePhp" class="form-label">Registration Fee</label>
+          <div class="relative">
+            <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-500">&#8369;</span>
+            <input id="feePhp" name="feePhp" type="number" min="0" max="1000000" step="0.01" value="<%= (event.feeCentavos / 100).toFixed(2) %>" class="form-input pl-8" />
+          </div>
+          <p class="mt-1 text-xs text-slate-500">Leave blank or 0 for a free event. Paid via GCash, same as membership.</p>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <input id="featured" name="featured" type="checkbox" <%= event.featured ? 'checked' : '' %> />
+          <label for="featured" class="text-sm">Featured</label>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <input id="isPublished" name="isPublished" type="checkbox" <%= event.isPublished ? 'checked' : '' %> />
+          <label for="isPublished" class="text-sm">Published</label>
+        </div>
+
+        <div class="md:col-span-2">
+          <label for="image" class="form-label">Event Image</label>
+          <input id="image" name="image" type="file" accept="image/*" class="form-input" />
+          <% if (event.imageUrl) { %>
+            <img src="<%= event.imageUrl %>?t=<%= Date.now() %>" alt="Event image" class="mt-2 w-24 h-24 object-cover rounded" />
+          <% } %>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button type="submit" class="btn-primary">Save Changes</button>
+        <a href="/admin/events" class="text-sm text-slate-500 hover:underline">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+  document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('event-form');
+    if (!form) return;
+
+    const eventId = form.dataset.eventId;
+
+    const modalitySelect = document.getElementById('modality');
+    const zoomLinkField = document.getElementById('zoomLinkField');
+    function toggleZoomLinkField() {
+      zoomLinkField.classList.toggle('hidden', modalitySelect.value !== 'ONLINE');
+    }
+    modalitySelect?.addEventListener('change', toggleZoomLinkField);
+
+    form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(form);
+    // Ensure checkboxes are explicit booleans (FormData omits unchecked boxes)
+    formData.set('featured', form.featured.checked ? 'true' : 'false');
+    formData.set('isPublished', form.isPublished.checked ? 'true' : 'false');
+
+    try {
+      await apiFetch(`/api/events/${eventId}`, { method: 'PUT', body: formData });
+      showToast('Event updated');
+      window.location.href = '/admin/events';
+    } catch (err) {
+      showToast(err.errors?.[0]?.msg || err.message, 'error');
+    }
+    });
+  });
+</script>
