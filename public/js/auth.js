@@ -18,7 +18,22 @@ document.addEventListener('DOMContentLoaded', () => {
         if (loginContext === 'admin' && ['ADMIN', 'CHAPTER_ADMIN'].includes(user.role)) {
           destination = '/admin/dashboard';
         } else if (user.role === 'USER' && user.status === 'PENDING') {
+          // A pending membership payment always takes priority over wherever
+          // the user was headed (e.g. an event invitation link) — nothing
+          // else on the account is usable until that's resolved.
           destination = '/membership-payment';
+        } else if (loginContext !== 'admin') {
+          // Only a same-site relative path is ever honored — a bare "/next"
+          // (never "//next", which browsers treat as protocol-relative to an
+          // attacker's own host) — so a crafted login link can't redirect a
+          // freshly-authenticated session off-site. The server-remembered
+          // postApprovalRedirectUrl (set back at registration, e.g. "come back
+          // to this event") takes priority since it survives the days-long
+          // gap until approval, when the URL's own ?next= is long gone.
+          const next = user.postApprovalRedirectUrl || new URLSearchParams(window.location.search).get('next');
+          if (next && next.startsWith('/') && !next.startsWith('//')) {
+            destination = next;
+          }
         }
         window.location.href = destination;
       } catch (err) {

@@ -14,6 +14,12 @@ const DEFAULT_EVENT_SUBJECT = "You're registered for {{eventTitle}}!";
 const DEFAULT_EVENT_BODY =
   'Hi {{firstName}},\n\nYou are registered for {{eventTitle}} on {{eventDate}}.\n\nLocation: {{eventLocation}}\n{{zoomLink}}\n\nSee you there!\n\n- JPSME National';
 
+const DEFAULT_INVITATION_SUBJECT = "You're invited: {{eventTitle}}";
+const DEFAULT_INVITATION_BODY =
+  'Hi {{fullName}},\n\nYou\'re invited to {{eventTitle}} on {{eventDate}}.\n\n'
+  + 'Just want to attend? Click here — no account needed:\n{{attendUrl}}\n\n'
+  + 'Want to register as a JPSME member instead?\n{{inviteUrl}}\n\n- JPSME National';
+
 async function safeUnlink(absPath) {
   if (!absPath) return;
   try {
@@ -57,18 +63,26 @@ async function setMemberApprovedAttachment(publicPath) {
   return prisma.emailTemplate.update({ where: { id: template.id }, data: { attachmentImage: publicPath } });
 }
 
-// --- Event registration template (one row per event) ---
+// --- Event templates (one row per event PER PURPOSE — eventId alone is no
+// longer unique now that an event can hold both an EVENT_REGISTRATION and an
+// EVENT_INVITATION template; the compound eventId_purpose key is) ---
 
-async function getEventTemplate(eventId) {
-  let template = await prisma.emailTemplate.findUnique({ where: { eventId: Number(eventId) } });
+async function getEventTemplateByPurpose(eventId, purpose, defaults) {
+  let template = await prisma.emailTemplate.findUnique({
+    where: { eventId_purpose: { eventId: Number(eventId), purpose } },
+  });
   if (!template) {
     const event = await prisma.event.findUnique({ where: { id: Number(eventId) } });
     if (!event) throw new AppError('Event not found', 404);
     template = await prisma.emailTemplate.create({
-      data: { purpose: 'EVENT_REGISTRATION', eventId: Number(eventId), subject: DEFAULT_EVENT_SUBJECT, bodyHtml: DEFAULT_EVENT_BODY },
+      data: { purpose, eventId: Number(eventId), subject: defaults.subject, bodyHtml: defaults.bodyHtml },
     });
   }
   return template;
+}
+
+async function getEventTemplate(eventId) {
+  return getEventTemplateByPurpose(eventId, 'EVENT_REGISTRATION', { subject: DEFAULT_EVENT_SUBJECT, bodyHtml: DEFAULT_EVENT_BODY });
 }
 
 async function upsertEventTemplate(eventId, { subject, bodyHtml }) {
@@ -88,14 +102,33 @@ async function setEventTemplateAttachment(eventId, publicPath) {
   return prisma.emailTemplate.update({ where: { id: template.id }, data: { attachmentImage: publicPath } });
 }
 
+// --- Event invitation template (the emailed "you're invited" message, sent
+// both when an admin invites someone and when someone self-requests an
+// invite — see invitation.service.js). No attachment support (not requested,
+// and the invite link itself is the whole point of this email).
+
+async function getEventInvitationTemplate(eventId) {
+  return getEventTemplateByPurpose(eventId, 'EVENT_INVITATION', { subject: DEFAULT_INVITATION_SUBJECT, bodyHtml: DEFAULT_INVITATION_BODY });
+}
+
+async function upsertEventInvitationTemplate(eventId, { subject, bodyHtml }) {
+  const template = await getEventInvitationTemplate(eventId);
+  return prisma.emailTemplate.update({
+    where: { id: template.id },
+    data: {
+      subject: subject !== undefined ? subject : template.subject,
+      bodyHtml: bodyHtml !== undefined ? bodyHtml : template.bodyHtml,
+    },
+  });
+}
+
 // Called from event.service.js's deleteEvent so removing an event doesn't
-// orphan its email template's uploaded attachment (the EmailTemplate row
-// itself cascades automatically via onDelete: Cascade).
+// orphan any of its templates' uploaded attachments (the EmailTemplate rows
+// themselves cascade automatically via onDelete: Cascade). findMany, not
+// findUnique — an event can now hold more than one template row.
 async function deleteEventTemplateAssets(eventId) {
-  const template = await prisma.emailTemplate.findUnique({ where: { eventId: Number(eventId) } });
-  if (template && template.attachmentImage) {
-    await safeUnlink(attachmentToAbsolutePath(template.attachmentImage));
-  }
+  const templates = await prisma.emailTemplate.findMany({ where: { eventId: Number(eventId) } });
+  await Promise.all(templates.filter((t) => t.attachmentImage).map((t) => safeUnlink(attachmentToAbsolutePath(t.attachmentImage))));
 }
 
 module.exports = {
@@ -105,5 +138,7 @@ module.exports = {
   getEventTemplate,
   upsertEventTemplate,
   setEventTemplateAttachment,
+  getEventInvitationTemplate,
+  upsertEventInvitationTemplate,
   deleteEventTemplateAssets,
 };

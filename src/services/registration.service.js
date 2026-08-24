@@ -2,6 +2,7 @@ const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
 const mailService = require('./mail.service');
 const sheetsSyncService = require('./sheetsSync.service');
+const invitationService = require('./invitation.service');
 
 // A capacity slot is held by both a confirmed registration and one still
 // awaiting fee payment — otherwise a paid event could be oversold during the
@@ -21,7 +22,7 @@ async function countActiveRegistrations(eventId, client = prisma) {
 // events go through upsertPendingPaymentRegistration + payment.service.js's
 // createEventCheckout instead — this function is the free-event path only,
 // called when Event.feeCentavos === 0.)
-async function registerForEvent(user, eventId) {
+async function registerForEvent(user, eventId, invitation = null) {
   const event = await prisma.event.findUnique({ where: { id: Number(eventId) } });
   if (!event) throw new AppError('Event not found', 404);
   if (!event.isPublished) throw new AppError('This event is not open for registration', 400);
@@ -55,10 +56,12 @@ async function registerForEvent(user, eventId) {
         email: user.email,
         phone: user.phone || null,
         school: user.school || null,
+        invitationId: invitation ? invitation.id : undefined,
       },
     });
     mailService.sendEventRegistrationEmail(user, event);
     sheetsSyncService.syncEventRegistrations(event.id);
+    if (invitation) invitationService.markRegistered(invitation.id);
     return reactivated;
   }
 
@@ -77,10 +80,12 @@ async function registerForEvent(user, eventId) {
       email: user.email,
       phone: user.phone || null,
       school: user.school || null,
+      invitationId: invitation ? invitation.id : undefined,
     },
   });
   mailService.sendEventRegistrationEmail(user, event);
   sheetsSyncService.syncEventRegistrations(event.id);
+  if (invitation) invitationService.markRegistered(invitation.id);
   return created;
 }
 
@@ -99,7 +104,7 @@ async function registerForEvent(user, eventId) {
 // commit together, or neither does, closing the gap where a crash between
 // "create registration" and "create payment" could otherwise leave one
 // without the other.
-async function upsertPendingPaymentRegistration(client, user, event) {
+async function upsertPendingPaymentRegistration(client, user, event, invitation = null) {
   const existing = await client.eventRegistration.findUnique({
     where: { userId_eventId: { userId: user.id, eventId: event.id } },
   });
@@ -125,6 +130,7 @@ async function upsertPendingPaymentRegistration(client, user, event) {
         email: user.email,
         phone: user.phone || null,
         school: user.school || null,
+        invitationId: invitation ? invitation.id : undefined,
       },
     });
   }
@@ -143,6 +149,7 @@ async function upsertPendingPaymentRegistration(client, user, event) {
       phone: user.phone || null,
       school: user.school || null,
       status: 'PENDING_PAYMENT',
+      invitationId: invitation ? invitation.id : undefined,
     },
   });
 }
@@ -151,8 +158,8 @@ async function upsertPendingPaymentRegistration(client, user, event) {
 // need the payment-row atomicity above; payment.service.js's
 // createEventCheckout uses upsertPendingPaymentRegistration(tx, ...) directly
 // instead, so the two writes land in the same transaction.
-async function createPendingPaymentRegistration(user, event) {
-  return upsertPendingPaymentRegistration(prisma, user, event);
+async function createPendingPaymentRegistration(user, event, invitation = null) {
+  return upsertPendingPaymentRegistration(prisma, user, event, invitation);
 }
 
 // No status gate here (never has been) — it unconditionally sets CANCELLED

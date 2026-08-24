@@ -39,6 +39,10 @@ const registerValidators = [
     .bail()
     .custom((value) => Number.isInteger(Number(value)) && Number(value) > 0)
     .withMessage('Please select a valid chapter'),
+  // Where to send them once approved (e.g. an event they clicked "Create an
+  // account" from). Real safety (same-site-only) is enforced server-side in
+  // auth.service.js's sanitizeRedirectPath — this is just a length cap.
+  body('next').optional({ checkFalsy: true }).isLength({ max: 500 }),
 ];
 
 const loginValidators = [

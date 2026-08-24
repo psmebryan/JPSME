@@ -52,6 +52,19 @@ const uploadEventAttachment = asyncHandler(async (req, res) => {
   return success(res, { template }, 'Attachment updated');
 });
 
+// --- Event invitation template (main admin only) ---
+
+const getEventInvitationTemplate = asyncHandler(async (req, res) => {
+  const template = await emailTemplateService.getEventInvitationTemplate(req.params.eventId);
+  return success(res, { template });
+});
+
+const updateEventInvitationTemplate = asyncHandler(async (req, res) => {
+  if (!checkValidation(req, res)) return;
+  const template = await emailTemplateService.upsertEventInvitationTemplate(req.params.eventId, req.body);
+  return success(res, { template }, 'Invitation email updated');
+});
+
 module.exports = {
   getMemberApprovedTemplate,
   updateMemberApprovedTemplate,
@@ -59,4 +72,6 @@ module.exports = {
   getEventTemplate,
   updateEventTemplate,
   uploadEventAttachment,
+  getEventInvitationTemplate,
+  updateEventInvitationTemplate,
 };

@@ -19,4 +19,10 @@ const webhookLimiter = rateLimit({
 // (see webhook.api.js / paymongo.service.js).
 router.post('/paymongo', webhookLimiter, webhookApi.handlePaymongoWebhook);
 
+// No apiAuth/CSRF here either — Brevo can't carry our session cookie or CSRF
+// token any more than PayMongo can. Authenticity is verified via a shared
+// secret in the URL's ?token= instead (see webhook.api.js — Brevo doesn't
+// support request signing the way PayMongo does).
+router.post('/brevo', webhookLimiter, webhookApi.handleBrevoWebhook);
+
 module.exports = router;

@@ -213,6 +213,15 @@ router.post(
   adminEmailApi.uploadEventAttachment
 );
 
+router.get('/emails/events/:eventId/invitation-template', param('eventId').isInt(), adminEmailApi.getEventInvitationTemplate);
+router.put(
+  '/emails/events/:eventId/invitation-template',
+  verifyCsrfToken,
+  param('eventId').isInt(),
+  emailTemplateValidators,
+  adminEmailApi.updateEventInvitationTemplate
+);
+
 // Broadcasts — main ADMIN only (inherited from router.use(apiAdmin) above).
 // Specific routes before the generic '/:id' route (same convention as event.routes.js).
 router.get('/broadcasts', adminBroadcastApi.listBroadcasts);

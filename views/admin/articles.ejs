@@ -1,0 +1,46 @@
+<div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
+  <div>
+    <h1 class="admin-h1">Manage Articles</h1>
+    <p class="admin-subtitle">Public articles and news posted on the website.</p>
+  </div>
+  <a href="/admin/articles/new" class="btn-primary">Add Article</a>
+</div>
+
+<% if (!articles || articles.length === 0) { %>
+  <div class="admin-card p-4">
+    <p class="empty-state">No articles yet. Create your first one.</p>
+  </div>
+<% } else { %>
+  <div class="admin-table-wrap">
+    <table id="articles-table" class="admin-table">
+      <thead class="admin-table-head">
+        <tr>
+          <th class="admin-th">Title</th>
+          <th class="admin-th">Category</th>
+          <th class="admin-th">Author</th>
+          <th class="admin-th">Status</th>
+          <th class="admin-th">Date</th>
+          <th class="admin-th text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="admin-tbody">
+        <% articles.forEach(article => { %>
+          <tr class="admin-tr">
+            <td class="admin-td max-w-[240px] truncate"><%= article.title %></td>
+            <td class="admin-td"><%= article.category || '-' %></td>
+            <td class="admin-td"><%= article.authorName || '-' %></td>
+            <td class="admin-td"><span class="<%= article.isPublished ? 'badge-green' : 'badge-slate' %>"><%= article.isPublished ? 'Published' : 'Draft' %></span></td>
+            <td class="admin-td whitespace-nowrap"><%= new Date(article.publishedAt || article.createdAt).toLocaleDateString() %></td>
+            <td class="admin-td text-right">
+              <a href="/admin/articles/<%= article.id %>/edit" class="text-indigo-600 hover:underline text-sm font-medium mr-3">Edit</a>
+              <button
+                data-delete-article="<%= article.id %>"
+                data-article-title="<%= article.title %>"
+                class="text-red-600 hover:underline text-sm font-medium">Delete</button>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } %>

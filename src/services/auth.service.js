@@ -22,6 +22,16 @@ function toPublicUser(user) {
   return publicUser;
 }
 
+// Only a same-site relative path is ever honored — same guard as the client-side
+// login redirect in public/js/auth.js, applied here too since this one persists
+// to the database and could otherwise be replayed as an open redirect much later.
+function sanitizeRedirectPath(path) {
+  if (typeof path === 'string' && path.startsWith('/') && !path.startsWith('//')) {
+    return path.slice(0, 500);
+  }
+  return null;
+}
+
 async function registerUser({
   firstName,
   middleInitial,
@@ -31,6 +41,7 @@ async function registerUser({
   phone,
   school,
   chapterId,
+  next,
 }) {
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
@@ -60,6 +71,7 @@ async function registerUser({
       chapterId: Number(chapterId),
       status: "PENDING",
       role: "USER",
+      postApprovalRedirectUrl: sanitizeRedirectPath(next),
     },
     include: userInclude,
   });
@@ -114,7 +126,17 @@ async function login(email, password, { context = "user" } = {}) {
     throw new AppError("Admin accounts must log in through the admin login page", 403);
   }
 
-  return toPublicUser(user);
+  // One-time: only actually usable once the account has cleared payment +
+  // admin approval (a still-PENDING user gets forced to /membership-payment
+  // regardless — see app.js's pending-user gate and this same check on the
+  // client side). Cleared immediately so it doesn't fire on every future login.
+  let postApprovalRedirectUrl = null;
+  if (user.role === "USER" && user.status === "APPROVED" && user.postApprovalRedirectUrl) {
+    postApprovalRedirectUrl = user.postApprovalRedirectUrl;
+    await prisma.user.update({ where: { id: user.id }, data: { postApprovalRedirectUrl: null } });
+  }
+
+  return { ...toPublicUser(user), postApprovalRedirectUrl };
 }
 
 async function getById(id) {

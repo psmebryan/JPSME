@@ -40,7 +40,7 @@ function buildBrevoTransport() {
   const apiKey = process.env.BREVO_API_KEY;
 
   return {
-    sendMail: async ({ from, to, subject, text, html, attachments }) => {
+    sendMail: async ({ from, to, subject, text, html, attachments, tags }) => {
       const payload = {
         sender: parseAddress(from),
         to: [parseAddress(to)],
@@ -50,6 +50,11 @@ function buildBrevoTransport() {
       };
       const brevoAttachments = await buildBrevoAttachments(attachments);
       if (brevoAttachments) payload.attachment = brevoAttachments;
+      // Echoed back verbatim on every delivery-event webhook Brevo sends for
+      // this message (sent/delivered/bounced/opened/clicked) — the only way
+      // this app can correlate a webhook event back to an internal record,
+      // since Brevo doesn't sign webhooks with a request body we control.
+      if (tags && tags.length) payload.tags = tags;
 
       let res;
       try {

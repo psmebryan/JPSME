@@ -4,6 +4,10 @@ function initAdminPage() {
   initMembershipFeeForm();
   initPaymentsEnabledToggle();
   initEventsTable();
+  initArticlesTable();
+  initInvitationsModule();
+  initInvitationsReportTable({ tableId: 'all-invitations-table', eventFilterId: 'all-inv-event-filter', chapterFilterId: 'all-inv-chapter-filter', schoolFilterId: 'all-inv-school-filter', statusFilterId: 'all-inv-status-filter', sourceFilterId: 'all-inv-source-filter', emptyStateId: 'all-inv-empty', paginationId: 'all-inv-pagination' });
+  initInvitationsReportTable({ tableId: 'invitations-table', chapterFilterId: 'event-inv-chapter-filter', schoolFilterId: 'event-inv-school-filter', statusFilterId: 'event-inv-status-filter', sourceFilterId: 'event-inv-source-filter', emptyStateId: 'event-inv-empty', paginationId: 'event-inv-pagination' });
   initChapterAdmins();
   initSponsors();
   initCertificates();
@@ -96,6 +100,21 @@ function initEventEmailModule() {
         body: JSON.stringify(Object.fromEntries(formData)),
       });
       showToast('Email updated');
+    } catch (err) {
+      showToast(err.errors?.[0]?.msg || err.message, 'error');
+    }
+  });
+
+  const invitationTextForm = document.getElementById('event-invitation-email-text-form');
+  invitationTextForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(invitationTextForm);
+    try {
+      await apiFetch(`/api/admin/emails/events/${eventId}/invitation-template`, {
+        method: 'PUT',
+        body: JSON.stringify(Object.fromEntries(formData)),
+      });
+      showToast('Invitation email updated');
     } catch (err) {
       showToast(err.errors?.[0]?.msg || err.message, 'error');
     }
@@ -1003,6 +1022,346 @@ function initEventsTable() {
       showToast(err.message, 'error');
     }
   });
+}
+
+// --- Articles table (admin/articles page) --- creating/editing happens on
+// their own dedicated pages (article-new.ejs/article-edit.ejs), same as
+// events — this only wires up Delete.
+function initArticlesTable() {
+  const table = document.getElementById('articles-table');
+  if (!table) return;
+
+  table.addEventListener('click', async (e) => {
+    const deleteButton = e.target.closest('[data-delete-article]');
+    if (!deleteButton) return;
+
+    const articleId = deleteButton.getAttribute('data-delete-article');
+    const articleTitle = deleteButton.getAttribute('data-article-title') || 'this article';
+    if (!confirm(`Delete "${articleTitle}"? This cannot be undone.`)) return;
+
+    try {
+      await apiFetch(`/api/articles/${articleId}`, { method: 'DELETE' });
+      showToast('Article deleted');
+      deleteButton.closest('tr').remove();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+}
+
+// --- Event invitations (admin/events/:id/registrations page) ---
+function initInvitationsModule() {
+  const module = document.getElementById('invitations-module');
+  if (!module) return;
+
+  const eventId = module.dataset.eventId;
+  const pendingListEl = document.getElementById('invite-pending-list');
+  const sendBtn = document.getElementById('invite-send-btn');
+  let pending = [];
+
+  // Already-invited members are disabled in the picker table server-side,
+  // but a manually-typed External Contact email isn't checked against
+  // anything until it hits the server — this catches that case client-side
+  // too, before it's even added to the pending list.
+  let alreadyInvitedEmails = [];
+  try {
+    alreadyInvitedEmails = JSON.parse(module.dataset.invitedEmails || '[]');
+  } catch (err) {
+    alreadyInvitedEmails = [];
+  }
+
+  function renderPendingList() {
+    if (!pending.length) {
+      pendingListEl.innerHTML = '<p class="text-sm text-slate-400">No one added yet.</p>';
+      sendBtn.disabled = true;
+      return;
+    }
+    pendingListEl.innerHTML = `
+      <p class="text-xs text-slate-500 mb-1">${pending.length} pending</p>
+      <div class="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-72 overflow-y-auto">
+        ${pending.map((p, i) => `
+          <div class="flex items-center justify-between px-3 py-2 text-sm">
+            <span>${escapeHtml(p.fullName)} &middot; <span class="text-slate-400">${escapeHtml(p.email)}</span></span>
+            <button type="button" data-remove-pending="${i}" class="text-red-600 hover:underline text-xs font-medium">Remove</button>
+          </div>
+        `).join('')}
+      </div>`;
+    sendBtn.disabled = false;
+  }
+
+  // `quiet` suppresses the per-item "already added" toast — used by the bulk
+  // "Add Selected" handler below, which reports one summary toast instead of
+  // spamming one per already-added row.
+  function addPending(invitee, quiet = false) {
+    const email = invitee.email.trim().toLowerCase();
+    if (!email || !invitee.fullName.trim()) {
+      if (!quiet) showToast('Name and email are required', 'error');
+      return false;
+    }
+    if (alreadyInvitedEmails.includes(email)) {
+      if (!quiet) showToast('This email was already invited to this event', 'error');
+      return false;
+    }
+    if (pending.some((p) => p.email === email)) {
+      if (!quiet) showToast('Already added to the list', 'error');
+      return false;
+    }
+    pending.push({ ...invitee, email });
+    return true;
+  }
+
+  // --- Existing-member search + invited-status/chapter/school filters + bulk select ---
+  const memberSearch = document.getElementById('invite-member-search');
+  const memberFilter = document.getElementById('invite-member-filter');
+  const memberChapterFilter = document.getElementById('invite-member-chapter-filter');
+  const memberSchoolFilter = document.getElementById('invite-member-school-filter');
+  const memberRows = Array.from(document.querySelectorAll('.invite-member-row'));
+  const memberEmptyEl = document.getElementById('invite-member-empty');
+  const selectAllCheckbox = document.getElementById('invite-select-all');
+
+  function applyMemberFilters() {
+    const query = memberSearch ? memberSearch.value.trim().toLowerCase() : '';
+    const filter = memberFilter ? memberFilter.value : 'all';
+    const chapter = memberChapterFilter ? memberChapterFilter.value : '';
+    const school = memberSchoolFilter ? memberSchoolFilter.value : '';
+    let visibleCount = 0;
+    memberRows.forEach((row) => {
+      const matchesSearch = !query || row.dataset.search.includes(query);
+      const isInvited = row.dataset.invited === 'true';
+      const matchesFilter = filter === 'all' || (filter === 'invited' && isInvited) || (filter === 'not-invited' && !isInvited);
+      const matchesChapter = !chapter || row.dataset.chapter === chapter;
+      const matchesSchool = !school || row.dataset.school === school;
+      const visible = matchesSearch && matchesFilter && matchesChapter && matchesSchool;
+      row.classList.toggle('hidden', !visible);
+      if (visible) visibleCount += 1;
+    });
+    memberEmptyEl?.classList.toggle('hidden', visibleCount > 0);
+    if (selectAllCheckbox) selectAllCheckbox.checked = false;
+  }
+
+  memberSearch?.addEventListener('input', applyMemberFilters);
+  memberFilter?.addEventListener('change', applyMemberFilters);
+  memberChapterFilter?.addEventListener('change', applyMemberFilters);
+  memberSchoolFilter?.addEventListener('change', applyMemberFilters);
+
+  // Only affects rows currently matching the search — selecting "all" while
+  // filtered should mean all of *this* view, not every member in the event.
+  selectAllCheckbox?.addEventListener('change', () => {
+    memberRows.forEach((row) => {
+      if (row.classList.contains('hidden')) return;
+      const checkbox = row.querySelector('.invite-member-checkbox');
+      if (checkbox) checkbox.checked = selectAllCheckbox.checked;
+    });
+  });
+
+  document.getElementById('invite-add-selected')?.addEventListener('click', () => {
+    const checked = document.querySelectorAll('.invite-member-checkbox:checked');
+    if (!checked.length) {
+      showToast('Select at least one member first', 'error');
+      return;
+    }
+    let added = 0;
+    checked.forEach((checkbox) => {
+      const wasAdded = addPending({
+        userId: checkbox.value,
+        fullName: checkbox.dataset.name,
+        email: checkbox.dataset.email,
+        chapter: checkbox.dataset.chapter,
+        school: checkbox.dataset.school,
+      }, true);
+      if (wasAdded) added += 1;
+      checkbox.checked = false;
+    });
+    if (selectAllCheckbox) selectAllCheckbox.checked = false;
+    renderPendingList();
+    showToast(added ? `Added ${added} member${added === 1 ? '' : 's'} to the list` : 'Selected members were already on the list', added ? 'success' : 'error');
+  });
+
+  document.getElementById('invite-add-external')?.addEventListener('click', () => {
+    const name = document.getElementById('invite-ext-name');
+    const email = document.getElementById('invite-ext-email');
+    const chapter = document.getElementById('invite-ext-chapter');
+    const school = document.getElementById('invite-ext-school');
+    const company = document.getElementById('invite-ext-company');
+    const wasAdded = addPending({ fullName: name.value, email: email.value, chapter: chapter.value, school: school.value, company: company.value });
+    if (!wasAdded) return;
+    renderPendingList();
+    name.value = '';
+    email.value = '';
+    chapter.value = '';
+    school.value = '';
+    company.value = '';
+  });
+
+  pendingListEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-remove-pending]');
+    if (!btn) return;
+    pending.splice(Number(btn.getAttribute('data-remove-pending')), 1);
+    renderPendingList();
+  });
+
+  sendBtn.addEventListener('click', async () => {
+    if (!pending.length) return;
+    sendBtn.disabled = true;
+    const originalText = sendBtn.textContent;
+    sendBtn.textContent = 'Sending...';
+
+    try {
+      await apiFetch(`/api/events/${eventId}/invitations`, {
+        method: 'POST',
+        body: JSON.stringify({ invitees: pending }),
+      });
+      showToast('Invitations sent');
+      window.location.reload();
+    } catch (err) {
+      showToast(err.message, 'error');
+      sendBtn.disabled = false;
+      sendBtn.textContent = originalText;
+    }
+  });
+
+  renderPendingList();
+
+  document.getElementById('invitations-table')?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-resend-invitation]');
+    if (!btn) return;
+    const invitationId = btn.getAttribute('data-resend-invitation');
+    btn.disabled = true;
+    try {
+      await apiFetch(`/api/events/${eventId}/invitations/${invitationId}/resend`, { method: 'POST' });
+      showToast('Invitation resent');
+      window.location.reload();
+    } catch (err) {
+      showToast(err.message, 'error');
+      btn.disabled = false;
+    }
+  });
+}
+
+// --- Filter + sort for an invitations report table (admin/invitations page)
+// --- Works for both the cross-event "All Invitations" table and the
+// per-event "Invitation Report" table — same markup shape (data-chapter/
+// data-school/data-status for filtering, data-sort-* for sorting), called
+// once per table id, each a no-op if that table isn't on the current page.
+// Filter + sort operate on the full row set already in the DOM; pagination
+// is purely a display layer on top of whatever that filtered/sorted result
+// is — deliberately NOT server-side paging, since that would only let you
+// filter/sort within whatever one page the server happened to send, instead
+// of across the whole list (the same limitation the payments/audit-log pages
+// accept, but which would defeat the point of the filters built here).
+const INVITATIONS_PAGE_SIZE = 20;
+
+function initInvitationsReportTable({ tableId, eventFilterId, chapterFilterId, schoolFilterId, statusFilterId, sourceFilterId, emptyStateId, paginationId }) {
+  const table = document.getElementById(tableId);
+  if (!table) return;
+
+  const tbody = table.querySelector('tbody');
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  const eventFilter = eventFilterId ? document.getElementById(eventFilterId) : null;
+  const chapterFilter = document.getElementById(chapterFilterId);
+  const schoolFilter = document.getElementById(schoolFilterId);
+  const statusFilter = document.getElementById(statusFilterId);
+  const sourceFilter = sourceFilterId ? document.getElementById(sourceFilterId) : null;
+  const emptyEl = document.getElementById(emptyStateId);
+  const paginationEl = paginationId ? document.getElementById(paginationId) : null;
+
+  let currentPage = 1;
+
+  function matchesFilters(row) {
+    const eventId = eventFilter ? eventFilter.value : '';
+    const chapter = chapterFilter ? chapterFilter.value : '';
+    const school = schoolFilter ? schoolFilter.value : '';
+    const status = statusFilter ? statusFilter.value : '';
+    const source = sourceFilter ? sourceFilter.value : '';
+    return (!eventId || row.dataset.eventId === eventId)
+      && (!chapter || row.dataset.chapter === chapter)
+      && (!school || row.dataset.school === school)
+      && (!status || row.dataset.status === status)
+      && (!source || row.dataset.source === source);
+  }
+
+  function renderPagination(total, totalPages) {
+    if (!paginationEl) return;
+    if (totalPages <= 1) {
+      paginationEl.innerHTML = total ? `<span>${total} total</span>` : '';
+      return;
+    }
+    paginationEl.innerHTML = `
+      <span>Page ${currentPage} of ${totalPages} (${total} total)</span>
+      <div class="flex gap-2">
+        <button type="button" data-page-prev class="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed" ${currentPage === 1 ? 'disabled' : ''}>&larr; Prev</button>
+        <button type="button" data-page-next class="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed" ${currentPage === totalPages ? 'disabled' : ''}>Next &rarr;</button>
+      </div>`;
+    paginationEl.querySelector('[data-page-prev]')?.addEventListener('click', () => { currentPage -= 1; render(); }); // eslint-disable-line no-use-before-define
+    paginationEl.querySelector('[data-page-next]')?.addEventListener('click', () => { currentPage += 1; render(); }); // eslint-disable-line no-use-before-define
+  }
+
+  // Re-reads tbody order each time (rather than the `rows` array's original
+  // order) so pagination always reflects whatever sort was last applied.
+  function render() {
+    const ordered = Array.from(tbody.querySelectorAll('tr'));
+    const filtered = ordered.filter(matchesFilters);
+    const totalPages = Math.max(1, Math.ceil(filtered.length / INVITATIONS_PAGE_SIZE));
+    currentPage = Math.min(Math.max(1, currentPage), totalPages);
+
+    const pageStart = (currentPage - 1) * INVITATIONS_PAGE_SIZE;
+    const pageEnd = pageStart + INVITATIONS_PAGE_SIZE;
+    filtered.forEach((row, i) => row.classList.toggle('hidden', i < pageStart || i >= pageEnd));
+    rows.filter((row) => !filtered.includes(row)).forEach((row) => row.classList.add('hidden'));
+
+    emptyEl?.classList.toggle('hidden', filtered.length > 0);
+    renderPagination(filtered.length, totalPages);
+  }
+
+  function applyFilters() {
+    currentPage = 1;
+    render();
+  }
+
+  eventFilter?.addEventListener('change', applyFilters);
+  chapterFilter?.addEventListener('change', applyFilters);
+  schoolFilter?.addEventListener('change', applyFilters);
+  statusFilter?.addEventListener('change', applyFilters);
+  sourceFilter?.addEventListener('change', applyFilters);
+
+  // --- Sorting ---
+  let currentSort = { key: null, dir: 1 };
+  const headers = Array.from(table.querySelectorAll('button[data-sort-key]'));
+
+  headers.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.sortKey;
+      currentSort = currentSort.key === key ? { key, dir: -currentSort.dir } : { key, dir: 1 };
+
+      headers.forEach((h) => {
+        const arrow = h.querySelector('.sort-arrow');
+        if (!arrow) return;
+        if (h === btn) {
+          arrow.textContent = currentSort.dir === 1 ? '▲' : '▼';
+          arrow.classList.remove('text-slate-300');
+          arrow.classList.add('text-indigo-600');
+        } else {
+          arrow.textContent = '▲▼';
+          arrow.classList.add('text-slate-300');
+          arrow.classList.remove('text-indigo-600');
+        }
+      });
+
+      const sortAttr = `sort${key.charAt(0).toUpperCase()}${key.slice(1)}`;
+      const sorted = [...rows].sort((a, b) => {
+        const av = a.dataset[sortAttr] || '';
+        const bv = b.dataset[sortAttr] || '';
+        if (av < bv) return -1 * currentSort.dir;
+        if (av > bv) return 1 * currentSort.dir;
+        return 0;
+      });
+      sorted.forEach((row) => tbody.appendChild(row));
+      currentPage = 1;
+      render();
+    });
+  });
+
+  render();
 }
 
 // --- Chapter Admins grid (admin/chapter-admins page) ---

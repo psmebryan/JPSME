@@ -15,7 +15,15 @@ router.get('/about/membership', pages.membershipPage);
 router.get('/contact', pages.contactPage);
 router.get('/events', pages.eventsPage);
 router.get('/events/:id', pages.eventDetailPage);
+router.get('/events/:id/invite/:token', pages.eventInvitePage);
+// One-click RSVP link embedded directly in the invitation email (for guests
+// who don't need to visit the site first) — records the answer, then lands
+// on the normal invite page so the rest of the experience (member CTA, or a
+// changed-your-mind option) is identical to arriving there manually.
+router.get('/events/:id/invite/:token/rsvp/:status(attending|not-attending)', pages.submitRsvpFromEmailPage);
 router.get('/events/:id/payment-return', ensureAuth, pages.eventPaymentReturnPage);
+router.get('/articles', pages.articlesPage);
+router.get('/articles/:id', pages.articleDetailPage);
 router.get('/chapters', pages.chaptersPage);
 router.get('/chapters/region/:id', pages.chapterRegionPage);
 router.get('/chapters/:id', pages.chapterDetailPage);
@@ -96,6 +104,12 @@ router.get('/admin/broadcasts', ensureMainAdminOnly, pages.adminBroadcastsPage);
 // plain server-rendered, filterable/paginated read, same pattern as
 // /admin/events, not the client-JS-driven pattern used by /admin/payments.
 router.get('/admin/audit-log', ensureMainAdminOnly, pages.adminAuditLogPage);
+router.get('/admin/invitations', ensureMainAdminOnly, pages.adminInvitationsPage);
+
+// Main admin only — public Articles content management
+router.get('/admin/articles', ensureMainAdminOnly, pages.adminArticlesPage);
+router.get('/admin/articles/new', ensureMainAdminOnly, pages.adminCreateArticlePage);
+router.get('/admin/articles/:id/edit', ensureMainAdminOnly, pages.adminEditArticlePage);
 //end
 
 router.get('/admin/logout', (req, res) => {

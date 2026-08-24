@@ -5,6 +5,7 @@ const authService = require('../services/auth.service');
 const chapterService = require('../services/chapter.service');
 const settingsService = require('../services/settings.service');
 const registrationService = require('../services/registration.service');
+const invitationService = require('../services/invitation.service');
 const emailVerificationService = require('../services/emailVerification.service');
 const statsService = require('../services/stats.service');
 const sponsorService = require('../services/sponsor.service');
@@ -13,6 +14,7 @@ const paymentService = require('../services/payment.service');
 const emailTemplateService = require('../services/emailTemplate.service');
 const broadcastEmailService = require('../services/broadcastEmail.service');
 const auditService = require('../services/audit.service');
+const articleService = require('../services/article.service');
 const AppError = require('../utils/AppError');
 
 const home = asyncHandler(async (req, res) => {
@@ -48,13 +50,27 @@ const membershipPage = aboutPlaceholderPage('Membership');
 const registerPage = asyncHandler(async (req, res) => {
   const chapters = await chapterService.listChapters();
   const activeChapters = chapters.filter((chapter) => chapter.isActive !== false);
-  res.render('register', { title: 'Create Account', chapters: activeChapters });
+  // Same-site-only, mirroring the login page's own ?next= guard — this one
+  // just gets embedded as a hidden field and re-validated/sanitized again
+  // server-side at actual registration time (auth.service.js), so a bad
+  // value here is harmless either way.
+  const next = typeof req.query.next === 'string' && req.query.next.startsWith('/') && !req.query.next.startsWith('//')
+    ? req.query.next
+    : '';
+  res.render('register', { title: 'Create Account', chapters: activeChapters, next });
 });
 
 const verifyEmailPage = asyncHandler(async (req, res) => {
   try {
-    await emailVerificationService.verifyEmailToken(req.query.token);
-    res.render('verify-email', { title: 'Email Verified', success: true, message: 'Your email is verified. Log in to complete your membership payment — an admin will review and approve your account once it\'s received.' });
+    const user = await emailVerificationService.verifyEmailToken(req.query.token);
+    // Mentioned here, not just saved silently, so they know their original
+    // intent (e.g. the event they wanted to attend) wasn't lost — it'll
+    // resurface automatically once payment + admin approval clears and they
+    // log in for the first time (see auth.service.js's login).
+    const message = user.postApprovalRedirectUrl
+      ? 'Your email is verified. Log in to complete your membership payment — an admin will review and approve your account once it\'s received. Once approved, logging in will take you straight back to the event you wanted to join.'
+      : 'Your email is verified. Log in to complete your membership payment — an admin will review and approve your account once it\'s received.';
+    res.render('verify-email', { title: 'Email Verified', success: true, message });
   } catch (err) {
     if (err instanceof AppError) {
       return res.render('verify-email', { title: 'Verification Failed', success: false, message: err.message });
@@ -92,6 +108,67 @@ const eventDetailPage = asyncHandler(async (req, res) => {
   }
 
   res.render('event-details', { title: event.title, event, isRegistered, registrationStatus });
+});
+
+// PayMongo's redirect-return pages aside, this is the one other place a
+// visitor can land without ever having clicked "Register" themselves — via
+// an emailed invitation link. Reuses the same event-details template (not a
+// separate page) so the registration flow itself (free vs paid, login gate)
+// stays exactly one code path; only the extra `invitation` local changes
+// what's shown.
+const eventInvitePage = asyncHandler(async (req, res) => {
+  const invitation = await invitationService.getInvitationByToken(req.params.token);
+  if (invitation.eventId !== Number(req.params.id)) {
+    throw new AppError('This invitation is for a different event.', 400);
+  }
+  await invitationService.markClicked(req.params.token);
+
+  const event = invitation.event;
+  let isRegistered = false;
+  let registrationStatus = null;
+  let invitationMismatch = false;
+  if (req.session.user && req.session.user.role !== 'ADMIN') {
+    registrationStatus = await registrationService.getRegistrationStatus(req.session.user.id, event.id);
+    isRegistered = registrationStatus === 'REGISTERED';
+    // Checked here too (not just at register-submit time) so a logged-in
+    // visitor who isn't who this was sent to sees a clear explanation
+    // instead of clicking Register and hitting a raw 403.
+    invitationMismatch = invitation.userId
+      ? invitation.userId !== req.session.user.id
+      : invitation.email.toLowerCase() !== req.session.user.email.toLowerCase();
+  }
+
+  res.render('event-details', { title: event.title, event, isRegistered, registrationStatus, invitation, invitationMismatch });
+});
+
+// One-click RSVP link embedded directly in the invitation email's
+// {{attendUrl}} token — lets a guest (no account) confirm/decline straight
+// from their inbox with no page-load-then-click step. Always lands on the
+// normal invite page afterward, whether it worked or not: a member clicking
+// this (recordRsvp's 409 guard) just sees their normal registration flow
+// instead of a raw error, since that's genuinely the right flow for them.
+const submitRsvpFromEmailPage = asyncHandler(async (req, res) => {
+  const status = req.params.status === 'attending' ? 'ATTENDING' : 'NOT_ATTENDING';
+  try {
+    await invitationService.recordRsvp(req.params.token, req.params.id, status);
+  } catch (err) {
+    if (!(err instanceof AppError)) throw err;
+  }
+  res.redirect(`/events/${req.params.id}/invite/${req.params.token}`);
+});
+
+const articlesPage = asyncHandler(async (req, res) => {
+  const category = (req.query.category || '').toString().trim();
+  const [articles, categories] = await Promise.all([
+    articleService.listPublishedArticles(category || undefined),
+    articleService.listCategories(),
+  ]);
+  res.render('articles', { title: 'Articles', articles, categories, activeCategory: category });
+});
+
+const articleDetailPage = asyncHandler(async (req, res) => {
+  const article = await articleService.getPublishedArticleById(req.params.id);
+  res.render('article-details', { title: article.title, article });
 });
 
 const profilePage = asyncHandler(async (req, res) => {
@@ -275,14 +352,16 @@ const adminEventEmailsListPage = asyncHandler(async (req, res) => {
 });
 
 const adminEventEmailPage = asyncHandler(async (req, res) => {
-  const [event, template] = await Promise.all([
+  const [event, template, invitationTemplate] = await Promise.all([
     eventService.getEventById(req.params.id),
     emailTemplateService.getEventTemplate(req.params.id),
+    emailTemplateService.getEventInvitationTemplate(req.params.id),
   ]);
   renderAdmin(req, res, 'admin/event-email', {
     title: `Email — ${event.title}`,
     event,
     template,
+    invitationTemplate,
   });
 });
 
@@ -495,11 +574,62 @@ const adminEditEventPage = asyncHandler(async (req, res) => {
 
 // Admin view registrations page
 const adminEventRegistrationsPage = asyncHandler(async (req, res) => {
+  const isMainAdmin = req.session.user.role === 'ADMIN';
   const [event, registrations] = await Promise.all([
     eventService.getEventById(req.params.id),
     registrationService.getEventRegistrations(req.params.id),
   ]);
-  renderAdmin(req, res, 'admin/event-registrations', { title: `Registrations — ${event.title}`, event, registrations });
+  renderAdmin(req, res, 'admin/event-registrations', {
+    title: `Registrations — ${event.title}`, event, registrations, isMainAdmin,
+  });
+});
+
+// Admin — Invitations (MAIN_ADMIN only). A standalone module rather than
+// buried inside one event's registrations page — the dropdown at the top
+// picks which event's invitations/report to view, so this is the one place
+// to manage invitations across every event instead of drilling into each
+// event individually.
+const adminInvitationsPage = asyncHandler(async (req, res) => {
+  const events = await eventService.listAllEvents();
+  const eventId = req.query.eventId ? Number(req.query.eventId) : null;
+
+  let selectedEvent = null;
+  let invitations = [];
+  let members = [];
+  if (eventId) {
+    [selectedEvent, invitations, members] = await Promise.all([
+      eventService.getEventById(eventId),
+      invitationService.listInvitationsForEvent(eventId),
+      userService.listByStatus('APPROVED'),
+    ]);
+  } else {
+    // Default view, before any event is picked from the dropdown — every
+    // invitation across every event, so the page always shows something
+    // useful instead of an empty prompt.
+    invitations = await invitationService.listAllInvitations();
+  }
+
+  // Lets the sidebar's "Invitation Requests" link land here pre-filtered
+  // (?source=SELF_REQUESTED) instead of needing a separate page/route for
+  // what's really just this same report with one filter pre-set.
+  const sourceFilter = req.query.source === 'SELF_REQUESTED' ? 'SELF_REQUESTED' : '';
+
+  renderAdmin(req, res, 'admin/invitations', { title: 'Invitations', events, selectedEvent, invitations, members, sourceFilter });
+});
+
+// Admin — Articles (MAIN_ADMIN only, route-gated)
+const adminArticlesPage = asyncHandler(async (req, res) => {
+  const articles = await articleService.listAllArticles();
+  renderAdmin(req, res, 'admin/articles', { title: 'Manage Articles', articles });
+});
+
+const adminCreateArticlePage = asyncHandler(async (req, res) => {
+  renderAdmin(req, res, 'admin/article-new', { title: 'Create Article' });
+});
+
+const adminEditArticlePage = asyncHandler(async (req, res) => {
+  const article = await articleService.getArticleById(req.params.id);
+  renderAdmin(req, res, 'admin/article-edit', { title: 'Edit Article', article });
 });
 
 module.exports = {
@@ -516,6 +646,10 @@ module.exports = {
   verifyEmailPage,
   eventsPage,
   eventDetailPage,
+  eventInvitePage,
+  submitRsvpFromEmailPage,
+  articlesPage,
+  articleDetailPage,
   profilePage,
   membershipPaymentPage,
   membershipPaymentReturnPage,
@@ -527,6 +661,10 @@ module.exports = {
   adminCreateEventPage,
   adminEditEventPage,
   adminEventRegistrationsPage,
+  adminInvitationsPage,
+  adminArticlesPage,
+  adminCreateArticlePage,
+  adminEditArticlePage,
   adminSettingsPage,
   adminSponsorsPage,
   adminPaymentsPage,

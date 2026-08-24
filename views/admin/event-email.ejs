@@ -49,4 +49,30 @@
       <button type="submit" class="btn-primary">Save Changes</button>
     </form>
   </section>
+
+  <section class="admin-card p-6 mt-6">
+    <h2 class="font-semibold mb-1">Invitation Email</h2>
+    <p class="mb-4 text-xs text-slate-500">
+      Sent when someone is invited to this event — by an admin, or via the public "Request an Invitation" form.
+      Available tokens: <code>{{fullName}}</code>, <code>{{eventTitle}}</code>, <code>{{eventDate}}</code>,
+      <code>{{eventLocation}}</code>, <code>{{chapter}}</code>, <code>{{school}}</code>, <code>{{company}}</code>,
+      <code>{{inviteUrl}}</code>, <code>{{attendUrl}}</code>
+      <br><span class="text-slate-400">
+        <code>{{inviteUrl}}</code> leads to the full invite page (register as a member, or RSVP as a guest).
+        <code>{{attendUrl}}</code> is a one-click "I'll be there" link for guests — no account, no page visit needed.
+      </span>
+    </p>
+    <form id="event-invitation-email-text-form" class="space-y-4">
+      <div>
+        <label for="event-invitation-email-subject" class="form-label">Subject</label>
+        <input id="event-invitation-email-subject" name="subject" value="<%= invitationTemplate.subject %>" maxlength="200" class="form-input">
+      </div>
+      <div>
+        <label for="event-invitation-email-body" class="form-label">Body</label>
+        <textarea id="event-invitation-email-body" name="bodyHtml" rows="8" maxlength="5000" class="form-input"><%= invitationTemplate.bodyHtml %></textarea>
+        <p class="mt-1 text-xs text-slate-400">Plain text — line breaks are preserved in the sent email.</p>
+      </div>
+      <button type="submit" class="btn-primary">Save Changes</button>
+    </form>
+  </section>
 </div>

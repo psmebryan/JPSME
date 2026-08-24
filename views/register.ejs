@@ -79,6 +79,7 @@
           </p>
 
           <form id="register-form" class="space-y-8" novalidate>
+            <% if (locals.next) { %><input type="hidden" name="next" value="<%= next %>"><% } %>
             <div>
               <p class="font-mono text-xs tracking-[0.2em] uppercase text-indigo-950/60 border-b border-indigo-950/10 pb-2 mb-4">
                 01 &mdash; Personal Details

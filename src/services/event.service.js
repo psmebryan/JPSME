@@ -72,7 +72,7 @@ async function updateEvent(id, data) {
       // Only unlink files that are in the local uploads/events folder (avoid removing external URLs)
       if (prev.startsWith('/uploads/events/') || prev.startsWith('uploads/events/')) {
         const relative = prev.replace(/^\//, ''); // remove leading slash if present
-        const filePath = path.join(__dirname, '..', '..', relative);
+        const filePath = path.join(__dirname, '..', '..', 'public', relative);
         await fs.unlink(filePath).catch(() => {});
       }
     } catch (err) {
@@ -121,7 +121,7 @@ async function deleteEvent(id) {
   if (existing.imageUrl && (existing.imageUrl.startsWith('/uploads/events/') || existing.imageUrl.startsWith('uploads/events/'))) {
     try {
       const relative = existing.imageUrl.replace(/^\//, '');
-      const filePath = path.join(__dirname, '..', '..', relative);
+      const filePath = path.join(__dirname, '..', '..', 'public', relative);
       await fs.unlink(filePath).catch(() => {});
     } catch (err) {
       console.error('Failed to remove event image on delete:', err.message || err);

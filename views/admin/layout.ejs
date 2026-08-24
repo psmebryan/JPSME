@@ -10,81 +10,145 @@
 <body class="min-h-screen flex bg-slate-50 text-slate-900">
   <% const isMainAdmin = locals.currentUser && currentUser.role === 'ADMIN'; %>
   <% const isChapterAdmin = locals.currentUser && currentUser.role === 'CHAPTER_ADMIN'; %>
+  <% const initials = locals.currentUser ? `${(currentUser.firstName||'').charAt(0)}${(currentUser.lastName||'').charAt(0)}`.toUpperCase() : ''; %>
+  <%
+    // Icons are small inline SVGs (stroke-based, matching the style already
+    // used for the public navbar's chevron/hamburger icons) rather than an
+    // icon-font/library dependency this project doesn't otherwise have.
+    function navIcon(name) {
+      const icons = {
+        dashboard: '<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />',
+        users: '<path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />',
+        userCheck: '<path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z" />',
+        events: '<path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />',
+        payments: '<path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-9-9.75h16.5a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25H5.25a2.25 2.25 0 01-2.25-2.25v-9a2.25 2.25 0 012.25-2.25z" />',
+        auditLog: '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H5.25a2.25 2.25 0 01-2.25-2.25V6.75A2.25 2.25 0 015.25 4.5h9.879a2.25 2.25 0 011.591.659l3.621 3.621a2.25 2.25 0 01.659 1.591V16.5a2.25 2.25 0 01-2.25 2.25z" />',
+        map: '<path stroke-linecap="round" stroke-linejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.498l4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 00-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0z" />',
+        shield: '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />',
+        certificate: '<path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 002.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 012.916.52 6.003 6.003 0 01-5.395 4.972m0 0a6.726 6.726 0 01-2.749 1.35m0 0a6.772 6.772 0 01-3.044 0" />',
+        mail: '<path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />',
+        megaphone: '<path stroke-linecap="round" stroke-linejoin="round" d="M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 110-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253.962.584 1.892.985 2.783.247.55.06 1.21-.463 1.511l-.657.38c-.551.318-1.26.117-1.527-.461a20.845 20.845 0 01-1.44-4.282m3.102.069a18.03 18.03 0 01-.59-4.59c0-1.586.205-3.124.59-4.59m0 9.18a23.848 23.848 0 018.835 2.535M10.34 6.66a23.847 23.847 0 008.835-2.535m0 0A23.74 23.74 0 0018.795 3m.38 1.125a23.91 23.91 0 011.014 5.395m-1.014 8.855c-.118.38-.245.754-.38 1.125m.38-1.125a23.91 23.91 0 001.014-5.395m0-3.46c.495.413.811 1.035.811 1.73 0 .695-.316 1.317-.811 1.73m0-3.46a24.347 24.347 0 010 3.46" />',
+        settings: '<path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />',
+        handshake: '<path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0-12.814c-.18.324-.283.696-.283 1.093s.103.77.283 1.093m0-2.186a2.25 2.25 0 113.256 2.386m-3.256-2.386a2.25 2.25 0 000 2.186m3.256 5.628a2.25 2.25 0 113.256-2.386m0 2.386a2.25 2.25 0 003.256 2.386M13.483 13.5a2.25 2.25 0 003.256 2.386" />',
+        article: '<path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />',
+        chevron: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>',
+      };
+      return icons[name] || icons.dashboard;
+    }
+  %>
 
-  <aside class="sticky top-0 h-screen w-56 overflow-y-auto bg-slate-900 text-slate-200 flex-shrink-0 flex flex-col">
-    <div class="px-4 py-5 border-b border-white/10">
-      <div class="font-semibold text-white">JPSME Admin</div>
-      <% if (isChapterAdmin) { %>
-        <div class="text-[11px] text-slate-400 mt-0.5">Chapter Admin</div>
-      <% } %>
+  <aside class="sticky top-0 h-screen w-64 overflow-y-auto bg-[#0b1224] text-slate-300 flex-shrink-0 flex flex-col">
+    <div class="flex items-center gap-3 px-5 py-5 border-b border-white/10">
+      <img src="<%= locals.logoUrl || '/img/default-logo.svg' %>" alt="JPSME logo" class="h-9 w-9 rounded-full object-contain bg-white/5 p-0.5">
+      <div>
+        <div class="font-bold text-amber-400 leading-none">JPSME Admin</div>
+        <div class="text-[10px] tracking-widest text-slate-500 mt-1">NATIONAL PORTAL</div>
+      </div>
     </div>
 
-    <nav id="admin-nav" class="px-2 py-4 space-y-1 text-sm flex-1">
-      <a href="/admin/dashboard" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Dashboard</a>
+    <nav id="admin-nav" class="px-2 py-4 space-y-0.5 text-sm flex-1">
+      <a href="/admin/dashboard" data-admin-link class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors">
+        <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('dashboard') %></svg>
+        Dashboard
+      </a>
 
       <% if (isMainAdmin) { %>
-        <!-- User Management main menu (click to expand/collapse) -->
-        <div class="px-3 py-2">
-          <button id="user-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between text-left px-0 py-1 text-xs text-slate-400 uppercase tracking-wide focus:outline-none">
-            <span>Users</span>
-            <svg id="user-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        <div class="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Users</div>
+        <div class="px-1">
+          <button id="user-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-white/5 hover:text-white focus:outline-none">
+            <span class="flex items-center gap-2.5"><svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('users') %></svg> User Management</span>
+            <svg id="user-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('chevron') %></svg>
           </button>
-          <div id="user-submenu" class="mt-1 space-y-1 hidden">
-            <a href="/admin/users/all" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Users</a>
-            <a href="/admin/users/approvals" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">User Approvals</a>
+          <div id="user-submenu" class="mt-1 space-y-0.5 hidden">
+            <a href="/admin/users/all" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Users</a>
+            <a href="/admin/users/approvals" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">User Approvals</a>
           </div>
         </div>
       <% } %>
 
-      <a href="/admin/events" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Events</a>
+      <div class="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Programs</div>
+      <a href="/admin/events" data-admin-link class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors">
+        <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('events') %></svg>
+        Events
+      </a>
 
       <% if (isMainAdmin) { %>
-        <a href="/admin/payments" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Payments</a>
-        <a href="/admin/audit-log" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Audit Log</a>
-
-        <!-- Chapter Management main menu (click to expand/collapse) -->
-        <div class="px-3 py-2">
-          <button id="chapter-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between text-left px-0 py-1 text-xs text-slate-400 uppercase tracking-wide focus:outline-none">
-            <span>Chapter Management</span>
-            <svg id="chapter-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        <a href="/admin/payments" data-admin-link class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors">
+          <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('payments') %></svg>
+          Payments
+        </a>
+        <a href="/admin/audit-log" data-admin-link class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors">
+          <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('auditLog') %></svg>
+          Audit Log
+        </a>
+        <div class="px-1">
+          <button id="invitation-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-white/5 hover:text-white focus:outline-none">
+            <span class="flex items-center gap-2.5"><svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('mail') %></svg> Invitation Management</span>
+            <svg id="invitation-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('chevron') %></svg>
           </button>
-          <div id="chapter-submenu" class="mt-1 space-y-1 hidden">
-            <a href="/admin/chapters" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Chapters</a>
-            <a href="/admin/chapter-admins" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Chapter Admins</a>
+          <div id="invitation-submenu" class="mt-1 space-y-0.5 hidden">
+            <a href="/admin/invitations" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Manage Invitations</a>
+            <a href="/admin/invitations?source=SELF_REQUESTED" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Invitation Requests</a>
+            <a href="/admin/event-emails" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Invitation Email</a>
+          </div>
+        </div>
+
+        <div class="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Chapter Management</div>
+        <div class="px-1">
+          <button id="chapter-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-white/5 hover:text-white focus:outline-none">
+            <span class="flex items-center gap-2.5"><svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('map') %></svg> Chapters</span>
+            <svg id="chapter-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('chevron') %></svg>
+          </button>
+          <div id="chapter-submenu" class="mt-1 space-y-0.5 hidden">
+            <a href="/admin/chapters" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Chapters</a>
+            <a href="/admin/chapter-admins" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Chapter Admins</a>
           </div>
         </div>
       <% } else if (isChapterAdmin) { %>
-        <a href="/admin/chapter-members" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">My Chapter Members</a>
+        <a href="/admin/chapter-members" data-admin-link class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors">
+          <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('users') %></svg>
+          My Chapter Members
+        </a>
       <% } %>
 
       <% if (isMainAdmin) { %>
-        <!-- Certificates main menu (click to expand/collapse) -->
-        <div class="px-3 py-2">
-          <button id="certificate-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between text-left px-0 py-1 text-xs text-slate-400 uppercase tracking-wide focus:outline-none">
-            <span>Certificates</span>
-            <svg id="certificate-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        <div class="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Certificates</div>
+        <div class="px-1">
+          <button id="certificate-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-white/5 hover:text-white focus:outline-none">
+            <span class="flex items-center gap-2.5"><svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('certificate') %></svg> Certificates</span>
+            <svg id="certificate-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('chevron') %></svg>
           </button>
-          <div id="certificate-submenu" class="mt-1 space-y-1 hidden">
-            <a href="/admin/certificates" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Membership Template</a>
-            <a href="/admin/event-certificates" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Event Certificates</a>
+          <div id="certificate-submenu" class="mt-1 space-y-0.5 hidden">
+            <a href="/admin/certificates" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Membership Template</a>
+            <a href="/admin/event-certificates" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Event Certificates</a>
           </div>
         </div>
 
-        <!-- Emails main menu (click to expand/collapse) -->
-        <div class="px-3 py-2">
-          <button id="email-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between text-left px-0 py-1 text-xs text-slate-400 uppercase tracking-wide focus:outline-none">
-            <span>Emails</span>
-            <svg id="email-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+        <div class="px-1">
+          <button id="email-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-white/5 hover:text-white focus:outline-none">
+            <span class="flex items-center gap-2.5"><svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('mail') %></svg> Emails</span>
+            <svg id="email-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('chevron') %></svg>
           </button>
-          <div id="email-submenu" class="mt-1 space-y-1 hidden">
-            <a href="/admin/emails" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Membership Email</a>
-            <a href="/admin/event-emails" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Event Emails</a>
-            <a href="/admin/broadcasts" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Broadcast Email</a>
+          <div id="email-submenu" class="mt-1 space-y-0.5 hidden">
+            <a href="/admin/emails" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Membership Email</a>
+            <a href="/admin/event-emails" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Event Emails</a>
+            <a href="/admin/broadcasts" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Broadcast Email</a>
           </div>
         </div>
 
-        <a href="/admin/settings" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Site Settings</a>
-        <a href="/admin/sponsors" data-admin-link class="block px-3 py-2 rounded-md border-l-2 border-transparent pl-[10px] hover:bg-white/5">Sponsors</a>
+        <div class="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Administration</div>
+        <a href="/admin/settings" data-admin-link class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors">
+          <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('settings') %></svg>
+          Site Settings
+        </a>
+        <a href="/admin/sponsors" data-admin-link class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors">
+          <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('handshake') %></svg>
+          Sponsors
+        </a>
+        <a href="/admin/articles" data-admin-link class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors">
+          <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('article') %></svg>
+          Articles
+        </a>
       <% } %>
     </nav>
 
@@ -96,9 +160,25 @@
       <a href="/admin/logout" class="block px-3 py-2 rounded-md text-red-300 hover:bg-white/5">Logout</a>
     </div>
   </aside>
-  <main id="admin-content" class="flex-1 px-8 py-8">
-    <%- body %>
-  </main>
+
+  <div class="flex-1 flex flex-col min-w-0">
+    <header class="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-8 py-4">
+      <h1 id="admin-page-title" class="text-xl font-bold text-slate-900 truncate"><%= title %></h1>
+      <% if (locals.currentUser) { %>
+        <div class="flex items-center gap-3 shrink-0">
+          <div class="text-right leading-tight">
+            <div class="text-sm font-semibold text-slate-900"><%= currentUser.firstName %> <%= currentUser.lastName %></div>
+            <div class="text-xs text-slate-500"><%= isChapterAdmin ? 'Chapter Admin' : 'National Board' %></div>
+          </div>
+          <div class="h-10 w-10 rounded-full bg-indigo-600 text-white flex items-center justify-center text-sm font-semibold shrink-0"><%= initials %></div>
+        </div>
+      <% } %>
+    </header>
+    <main id="admin-content" class="flex-1 px-8 py-8">
+      <%- body %>
+    </main>
+  </div>
+
   <script src="/js/api.js"></script>
   <script src="/js/admin.js"></script>
   <script src="/js/admin-nav.js"></script>

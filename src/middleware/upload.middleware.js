@@ -55,6 +55,12 @@ const uploadSponsorLogo = multer({
   limits: { fileSize: 2 * 1024 * 1024 },
 });
 
+const uploadArticleImage = multer({
+  storage: makeImageStorage('articles', 'articles'),
+  fileFilter,
+  limits: { fileSize: 3 * 1024 * 1024 },
+});
+
 const uploadCertificateBackground = multer({
   storage: makeImageStorage('certificates/backgrounds', 'certbg'),
   fileFilter: certificateFileFilter,
@@ -74,4 +80,5 @@ module.exports = {
   uploadSponsorLogo,
   uploadCertificateBackground,
   uploadEmailAttachment,
+  uploadArticleImage,
 };

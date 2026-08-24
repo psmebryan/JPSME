@@ -1,5 +1,7 @@
 const app = require('./app');
 const prisma = require('./config/prisma');
+const { startReconciliationSweep, stopReconciliationSweep } = require('./jobs/paymentReconciliationSweep.job');
+const { startInvitationReconciliationSweep, stopInvitationReconciliationSweep } = require('./jobs/invitationReconciliationSweep.job');
 
 const PORT = process.env.PORT || 3000;
 
@@ -9,6 +11,8 @@ async function start() {
     app.listen(PORT, () => {
       console.log(`JPSME server running at http://localhost:${PORT}`);
     });
+    startReconciliationSweep();
+    startInvitationReconciliationSweep();
   } catch (err) {
     console.error('Failed to connect to the database. Is XAMPP MySQL running and DATABASE_URL correct?');
     console.error(err);
@@ -17,6 +21,8 @@ async function start() {
 }
 
 process.on('SIGINT', async () => {
+  stopReconciliationSweep();
+  stopInvitationReconciliationSweep();
   await prisma.$disconnect();
   process.exit(0);
 });

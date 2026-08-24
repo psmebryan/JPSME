@@ -30,6 +30,7 @@
 
       <a href="/events" class="<%= locals.title === 'Events' ? 'border-b-2 border-amber-400 pb-2 text-amber-400' : 'hover:text-amber-300' %>">Event</a>
       <a href="/chapters" class="<%= locals.title === 'Chapters' || locals.title === 'Chapter' || locals.chapter || locals.region ? 'border-b-2 border-amber-400 pb-2 text-amber-400' : 'hover:text-amber-300' %>">Chapter</a>
+      <a href="/articles" class="<%= locals.title === 'Articles' ? 'border-b-2 border-amber-400 pb-2 text-amber-400' : 'hover:text-amber-300' %>">Articles</a>
       <a href="/contact" class="<%= locals.title === 'Contact Us' ? 'border-b-2 border-amber-400 pb-2 text-amber-400' : 'hover:text-amber-300' %>">Contact Us</a>
     </nav>
 
@@ -92,6 +93,7 @@
       <a href="/about/membership" class="pl-4 py-2.5 text-sm hover:text-amber-300">Membership</a>
       <a href="/events" class="py-3 hover:text-amber-300">Event</a>
       <a href="/chapters" class="py-3 hover:text-amber-300">Chapter</a>
+      <a href="/articles" class="py-3 hover:text-amber-300">Articles</a>
       <a href="/contact" class="py-3 hover:text-amber-300">Contact Us</a>
       <% if (locals.currentUser) { %>
         <a href="/profile" class="py-3 hover:text-amber-300">My Profile</a>

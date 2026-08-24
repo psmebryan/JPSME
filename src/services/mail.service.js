@@ -113,4 +113,40 @@ async function sendEventRegistrationEmail(user, event) {
   }
 }
 
-module.exports = { sendVerificationEmail, sendMemberApprovedEmail, sendEventRegistrationEmail };
+// Unlike every other function in this file, this one does NOT catch its own
+// errors — the caller (invitation.service.js) needs to know whether the send
+// actually succeeded so it can persist SENT vs FAILED onto the
+// EventInvitation row; swallowing the error here would silently leave every
+// failed send looking identical to a successful one.
+async function sendEventInvitationEmail(invitation, event) {
+  const inviteUrl = `${getAppUrl()}/events/${event.id}/invite/${invitation.token}`;
+  const template = await emailTemplateService.getEventInvitationTemplate(event.id);
+  const fields = {
+    fullName: invitation.fullName,
+    eventTitle: event.title,
+    eventDate: formatDate(event.startDate),
+    eventLocation: event.location || '',
+    chapter: invitation.chapter || '',
+    school: invitation.school || '',
+    company: invitation.company || '',
+    inviteUrl,
+    // One-click "I'll be there, no account needed" link — only meaningful
+    // for a guest invite (recordRsvp rejects it for a member invitation and
+    // that click just falls back to the normal registration page instead).
+    attendUrl: `${inviteUrl}/rsvp/attending`,
+  };
+
+  return transporter.sendMail({
+    from: MAIL_FROM,
+    to: invitation.email,
+    subject: substituteTokens(template.subject, fields),
+    html: textToHtml(substituteTokens(template.bodyHtml, fields)),
+    // Brevo echoes this back on every delivery-event webhook for this
+    // message — the invitation's own ID, so the webhook handler can match
+    // the event to this exact row without guessing from the email address
+    // alone (which could theoretically be reused across invitations).
+    tags: [`invitation-${invitation.id}`],
+  });
+}
+
+module.exports = { sendVerificationEmail, sendMemberApprovedEmail, sendEventRegistrationEmail, sendEventInvitationEmail };

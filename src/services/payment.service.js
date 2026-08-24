@@ -8,6 +8,7 @@ const registrationService = require('./registration.service');
 const userService = require('./user.service');
 const mailService = require('./mail.service');
 const sheetsSyncService = require('./sheetsSync.service');
+const invitationService = require('./invitation.service');
 
 const ACTIVE_STATUSES = ['PENDING', 'PROCESSING'];
 const PAID_EVENT_TYPES = new Set(['checkout_session.payment.paid', 'payment.paid']);
@@ -316,7 +317,7 @@ async function createMembershipCheckout(userId) {
 // Holds/reuses the registrant's capacity slot (PENDING_PAYMENT) before
 // creating the checkout, so a user who starts paying can't lose their spot to
 // someone else registering in the meantime.
-async function createEventCheckout(userId, eventId) {
+async function createEventCheckout(userId, eventId, invitation = null) {
   const event = await prisma.event.findUnique({ where: { id: Number(eventId) } });
   if (!event) throw new AppError('Event not found', 404);
   if (!event.isPublished) throw new AppError('This event is not open for registration', 400);
@@ -336,7 +337,10 @@ async function createEventCheckout(userId, eventId) {
     cancelUrl: `${appUrl()}/events/${event.id}/payment-return`,
     alreadyPaidMessage: 'You have already paid to register for this event.',
     // Runs inside createCheckout's own transaction — see the comment there.
-    withinTransaction: (tx) => registrationService.upsertPendingPaymentRegistration(tx, user, event),
+    // The invitation link is set on the PENDING_PAYMENT hold now, but
+    // EventInvitation.registeredAt itself isn't set until applyPaymentPaid
+    // actually confirms the payment — see there.
+    withinTransaction: (tx) => registrationService.upsertPendingPaymentRegistration(tx, user, event, invitation),
   });
 }
 
@@ -449,6 +453,7 @@ async function applyPaymentPaid(localPayment, { gatewayPaymentId, webhookRecordI
     }
 
     let registrationFlipped = false;
+    let flippedInvitationId = null;
     let registrationAnomaly = null;
     if (localPayment.purpose === 'EVENT_REGISTRATION' && localPayment.eventId) {
       const registration = await tx.eventRegistration.findUnique({
@@ -457,6 +462,7 @@ async function applyPaymentPaid(localPayment, { gatewayPaymentId, webhookRecordI
       if (registration && registration.status === 'PENDING_PAYMENT') {
         await tx.eventRegistration.update({ where: { id: registration.id }, data: { status: 'REGISTERED' } });
         registrationFlipped = true;
+        flippedInvitationId = registration.invitationId;
       } else {
         registrationAnomaly = registration ? `status was ${registration.status}, not PENDING_PAYMENT` : 'no matching registration found';
         console.error('applyPaymentPaid: event registration anomaly for payment', localPayment.id, '-', registrationAnomaly);
@@ -473,8 +479,12 @@ async function applyPaymentPaid(localPayment, { gatewayPaymentId, webhookRecordI
       },
     });
 
-    return { registrationFlipped };
+    return { registrationFlipped, flippedInvitationId };
   });
+
+  if (result.registrationFlipped && result.flippedInvitationId) {
+    invitationService.markRegistered(result.flippedInvitationId);
+  }
 
   if (result.registrationFlipped) {
     // Fire-and-forget, same as every other email send in this app — must
@@ -747,12 +757,14 @@ async function handleRefundEvent({ webhookRecord, resource, eventType, ipAddress
   return { updated: true, status };
 }
 
-// Manual, admin-triggered reconciliation for gateway/local state drift (e.g. a
-// lost webhook delivery). Deliberately not automatic/scheduled — the app has
-// no background job runner today, and an explicit, auditable admin action is
-// safer to ship first than an unattended sweep. Purpose-agnostic: works for
-// membership and event-fee payments alike.
-async function reconcilePayment(paymentId) {
+// Reconciliation for gateway/local state drift (e.g. a lost webhook
+// delivery) — called both by the admin's manual "Reconcile" button and by
+// the scheduled sweep in src/jobs/paymentReconciliationSweep.job.js.
+// Purpose-agnostic: works for membership and event-fee payments alike.
+// `triggeredBy` is purely an audit-trail label ('admin' for the manual
+// button, 'auto_sweep' for the scheduled job) — it changes nothing about the
+// reconciliation logic itself.
+async function reconcilePayment(paymentId, { triggeredBy = 'admin' } = {}) {
   const payment = await prisma.payment.findUnique({ where: { id: Number(paymentId) } });
   if (!payment) throw new AppError('Payment not found', 404);
 
@@ -762,7 +774,7 @@ async function reconcilePayment(paymentId) {
   // but the payment was still later matched and confirmed by webhook via the
   // metadata.paymentId fallback).
   if (payment.status === 'PAID' || payment.status === 'REFUNDED') {
-    await auditService.log({ action: 'PAYMENT_RECONCILED', paymentId: payment.id, metadata: { outcome: 'already_settled_locally', localStatus: payment.status } });
+    await auditService.log({ action: 'PAYMENT_RECONCILED', paymentId: payment.id, metadata: { outcome: 'already_settled_locally', localStatus: payment.status, triggeredBy } });
     return { outcome: 'no_change', localStatus: payment.status };
   }
 
@@ -783,18 +795,31 @@ async function reconcilePayment(paymentId) {
     const gatewayCurrency = paidGatewayPayment.attributes?.currency ?? 'PHP';
     await verifyGatewayAmountMatches(payment, gatewayAmount, gatewayCurrency, {});
     await applyPaymentPaid(payment, { gatewayPaymentId: paidGatewayPayment.id, source: 'reconcile' });
-    await auditService.log({ action: 'PAYMENT_RECONCILED', paymentId: payment.id, metadata: { outcome: 'marked_paid', gatewayPaymentId: paidGatewayPayment.id } });
+    await auditService.log({ action: 'PAYMENT_RECONCILED', paymentId: payment.id, metadata: { outcome: 'marked_paid', gatewayPaymentId: paidGatewayPayment.id, triggeredBy } });
     return { outcome: 'marked_paid', paymentId: payment.id };
   }
 
   if (sessionStatus === 'expired') {
     await applyPaymentFailed(payment, { source: 'reconcile' });
-    await auditService.log({ action: 'PAYMENT_RECONCILED', paymentId: payment.id, metadata: { outcome: 'marked_failed', gatewaySessionStatus: sessionStatus } });
+    await auditService.log({ action: 'PAYMENT_RECONCILED', paymentId: payment.id, metadata: { outcome: 'marked_failed', gatewaySessionStatus: sessionStatus, triggeredBy } });
     return { outcome: 'marked_failed', paymentId: payment.id };
   }
 
-  await auditService.log({ action: 'PAYMENT_RECONCILED', paymentId: payment.id, metadata: { outcome: 'still_pending', gatewaySessionStatus: sessionStatus } });
+  await auditService.log({ action: 'PAYMENT_RECONCILED', paymentId: payment.id, metadata: { outcome: 'still_pending', gatewaySessionStatus: sessionStatus, triggeredBy } });
   return { outcome: 'still_pending', gatewaySessionStatus: sessionStatus };
+}
+
+// Candidates for the automated sweep: still PENDING/PROCESSING well past the
+// point a webhook should normally have arrived, and actually has a gateway
+// checkout to check against (reconcilePayment throws without one — a Payment
+// row can lack one if checkout creation itself failed before ever reaching
+// PayMongo, which isn't this job's concern).
+async function findStuckPayments(olderThanMinutes) {
+  const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000);
+  return prisma.payment.findMany({
+    where: { status: { in: ACTIVE_STATUSES }, createdAt: { lte: cutoff }, gatewayCheckoutId: { not: null } },
+    orderBy: { createdAt: 'asc' },
+  });
 }
 
 // --- Refunds (MAIN_ADMIN only — enforced by the route middleware, not here) ---
@@ -865,4 +890,5 @@ module.exports = {
   processWebhookEvent,
   requestRefund,
   reconcilePayment,
+  findStuckPayments,
 };

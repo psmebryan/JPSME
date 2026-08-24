@@ -28,6 +28,33 @@ enum RegistrationStatus {
   CANCELLED
 }
 
+// Pure delivery lifecycle — engagement (opened/clicked) is tracked as
+// separate nullable timestamps on EventInvitation instead of folded into
+// this enum, since a delivered email may or may not ever be opened; those
+// are two independent facts, not mutually exclusive states.
+enum InvitationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  BOUNCED
+  FAILED
+}
+
+enum InvitationSource {
+  ADMIN_SENT
+  SELF_REQUESTED
+}
+
+// A guest (no account) invitee's lightweight yes/no on attending — separate
+// from registeredAt, which only ever gets set by an actual EventRegistration
+// (which requires an account). PENDING covers both "hasn't answered yet" and
+// "ignored the email entirely" — there's no forced choice, per design.
+enum InvitationRsvpStatus {
+  PENDING
+  ATTENDING
+  NOT_ATTENDING
+}
+
 enum Modality {
   FACE_TO_FACE
   ONLINE
@@ -98,6 +125,11 @@ model User {
   role            Role     @default(USER)
   status          UserStatus @default(PENDING)
   emailVerifiedAt DateTime?
+  // Where to send them on their first login after finally clearing payment +
+  // admin approval — e.g. the event they originally clicked "Create an
+  // account" from. Set at registration, read + cleared (one-time) by
+  // auth.service.js's login once status is APPROVED. Null the rest of the time.
+  postApprovalRedirectUrl String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -117,6 +149,7 @@ model User {
   auditLogsAsActor  AuditLog[] @relation("audit_actor")
   auditLogsAsTarget AuditLog[] @relation("audit_target")
   broadcastsCreated EmailBroadcast[]
+  eventInvitations  EventInvitation[]
 
   @@index([status])
   @@index([chapterId])
@@ -155,25 +188,70 @@ model Event {
   registrations EventRegistration[]
   certificateTemplate CertificateTemplate?
   certificates        EventCertificate[]
-  emailTemplate       EmailTemplate?
+  emailTemplates      EmailTemplate[]
   payments            Payment[]
+  invitations         EventInvitation[]
 }
 
 model EventRegistration {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  eventId   Int
-  fullName  String
-  email     String
-  phone     String?
-  school    String?
-  status    RegistrationStatus @default(REGISTERED)
-  createdAt DateTime @default(now())
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  eventId      Int
+  fullName     String
+  email        String
+  phone        String?
+  school       String?
+  status       RegistrationStatus @default(REGISTERED)
+  // Set only when this registration was completed by clicking through an
+  // event invitation (see EventInvitation.registeredAt) — lets the admin
+  // registrations list show "invited" registrants distinctly from ones who
+  // found the event and registered on their own.
+  invitationId Int?     @unique
+  createdAt    DateTime @default(now())
 
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event      Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  invitation EventInvitation? @relation(fields: [invitationId], references: [id], onDelete: SetNull)
 
   @@unique([userId, eventId])
+}
+
+// Admin-initiated invite for a specific event, sent by email. `userId` is set
+// when the admin picked an existing member; left null for a manually-typed
+// external contact — either way fullName/email/chapter/school are snapshotted
+// onto the row itself so the invite (and the report of it) don't depend on
+// the invitee ever having/keeping an account. `token` is the unguessable
+// value embedded in the email link; clicking it is how registeredAt/the
+// linked EventRegistration ever get set — nothing here auto-registers anyone.
+model EventInvitation {
+  id            Int              @id @default(autoincrement())
+  eventId       Int
+  userId        Int?
+  fullName      String
+  email         String
+  chapter       String?
+  school        String?
+  company       String?
+  source        InvitationSource @default(ADMIN_SENT)
+  token         String           @unique
+  status        InvitationStatus @default(PENDING)
+  failureReason String?
+  sentAt        DateTime?
+  openedAt      DateTime?
+  clickedAt     DateTime?
+  registeredAt  DateTime?
+  rsvpStatus    InvitationRsvpStatus @default(PENDING)
+  rsvpAt        DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  event        Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user         User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  registration EventRegistration?
+
+  @@unique([eventId, email])
+  @@index([eventId])
+  @@map("event_invitations")
 }
 
 model Sponsor {
@@ -187,6 +265,25 @@ model Sponsor {
 
   @@index([isActive])
   @@map("sponsors")
+}
+
+// MAIN_ADMIN-managed public news/articles (see article.service.js). Body is
+// plain text (whitespace-pre-line on render), matching the rest of the site's
+// content pages — no rich-text editor dependency.
+model Article {
+  id          Int       @id @default(autoincrement())
+  title       String
+  category    String?
+  authorName  String?
+  coverImage  String?
+  body        String    @db.Text
+  isPublished Boolean   @default(false)
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([isPublished, publishedAt])
+  @@map("articles")
 }
 
 // Key/value store for site-wide content the admin can change, e.g. site_logo path.
@@ -433,6 +530,7 @@ model AuditLog {
 enum EmailTemplatePurpose {
   MEMBER_APPROVED
   EVENT_REGISTRATION
+  EVENT_INVITATION
 }
 
 // One global row (eventId null, purpose=MEMBER_APPROVED) for the "you're
@@ -442,7 +540,7 @@ enum EmailTemplatePurpose {
 model EmailTemplate {
   id              Int                  @id @default(autoincrement())
   purpose         EmailTemplatePurpose
-  eventId         Int?                 @unique
+  eventId         Int?
   subject         String
   bodyHtml        String               @db.Text
   attachmentImage String?
@@ -451,6 +549,13 @@ model EmailTemplate {
 
   event Event? @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
+  // Was a plain @unique on eventId — widened to a composite so one event can
+  // now hold two template rows (EVENT_REGISTRATION and EVENT_INVITATION)
+  // instead of colliding on the same eventId. MEMBER_APPROVED's single
+  // global row (eventId always null) stays unique in practice via its own
+  // find-or-create logic, not this constraint — MySQL permits multiple NULLs
+  // in a unique index anyway.
+  @@unique([eventId, purpose])
   @@map("email_templates")
 }
 

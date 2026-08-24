@@ -15,27 +15,51 @@ function actorLabel(actor) {
   if (!actor) return 'System';
   return `${actor.firstName} ${actor.lastName}`;
 }
+function statIcon(name) {
+  const icons = {
+    users: '<path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />',
+    userCheck: '<path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z" />',
+    events: '<path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />',
+    payments: '<path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-9-9.75h16.5a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25H5.25a2.25 2.25 0 01-2.25-2.25v-9a2.25 2.25 0 012.25-2.25z" />',
+  };
+  return icons[name] || '';
+}
+function statBadge(name, colorClass) {
+  return `<div class="h-10 w-10 rounded-full ${colorClass} flex items-center justify-center shrink-0"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">${statIcon(name)}</svg></div>`;
+}
 %>
 <div class="max-w-6xl">
   <h1 class="admin-h1 mb-6">Dashboard</h1>
 
   <% if (isMainAdmin) { %>
     <div class="grid grid-cols-2 gap-4 mb-6 sm:grid-cols-4">
-      <a href="/admin/users/all" class="admin-card p-5 hover:shadow-md transition">
-        <p class="text-3xl font-bold text-slate-900"><%= totals.totalMembers %></p>
-        <p class="text-sm text-slate-500">Total members</p>
+      <a href="/admin/users/all" class="admin-card p-5 hover:shadow-md transition flex items-start justify-between gap-3">
+        <div>
+          <p class="text-3xl font-bold text-slate-900"><%= totals.totalMembers %></p>
+          <p class="text-sm text-slate-500">Total members</p>
+        </div>
+        <%- statBadge('users', 'bg-indigo-50 text-indigo-600') %>
       </a>
-      <a href="/admin/users/approvals" class="admin-card p-5 hover:shadow-md transition">
-        <p class="text-3xl font-bold text-amber-600"><%= totals.pendingApprovals %></p>
-        <p class="text-sm text-slate-500">Pending approvals</p>
+      <a href="/admin/users/approvals" class="admin-card p-5 hover:shadow-md transition flex items-start justify-between gap-3">
+        <div>
+          <p class="text-3xl font-bold text-amber-600"><%= totals.pendingApprovals %></p>
+          <p class="text-sm text-slate-500">Pending approvals</p>
+        </div>
+        <%- statBadge('userCheck', 'bg-amber-50 text-amber-600') %>
       </a>
-      <a href="/admin/events" class="admin-card p-5 hover:shadow-md transition">
-        <p class="text-3xl font-bold text-slate-900"><%= totals.totalEvents %></p>
-        <p class="text-sm text-slate-500">Total events</p>
+      <a href="/admin/events" class="admin-card p-5 hover:shadow-md transition flex items-start justify-between gap-3">
+        <div>
+          <p class="text-3xl font-bold text-slate-900"><%= totals.totalEvents %></p>
+          <p class="text-sm text-slate-500">Total events</p>
+        </div>
+        <%- statBadge('events', 'bg-sky-50 text-sky-600') %>
       </a>
-      <a href="/admin/payments" class="admin-card p-5 hover:shadow-md transition">
-        <p class="text-3xl font-bold text-green-700"><%- peso(totals.totalRevenueCentavos) %></p>
-        <p class="text-sm text-slate-500">Total revenue</p>
+      <a href="/admin/payments" class="admin-card p-5 hover:shadow-md transition flex items-start justify-between gap-3">
+        <div>
+          <p class="text-3xl font-bold text-green-700"><%- peso(totals.totalRevenueCentavos) %></p>
+          <p class="text-sm text-slate-500">Total revenue</p>
+        </div>
+        <%- statBadge('payments', 'bg-green-50 text-green-600') %>
       </a>
     </div>
 
@@ -115,13 +139,19 @@ function actorLabel(actor) {
     </div>
   <% } else { %>
     <div class="grid grid-cols-2 gap-4 mb-6 max-w-lg">
-      <a href="/admin/chapter-members" class="admin-card p-5 hover:shadow-md transition">
-        <p class="text-3xl font-bold text-slate-900"><%= totals.totalMembers %></p>
-        <p class="text-sm text-slate-500">Members in my chapter</p>
+      <a href="/admin/chapter-members" class="admin-card p-5 hover:shadow-md transition flex items-start justify-between gap-3">
+        <div>
+          <p class="text-3xl font-bold text-slate-900"><%= totals.totalMembers %></p>
+          <p class="text-sm text-slate-500">Members in my chapter</p>
+        </div>
+        <%- statBadge('users', 'bg-indigo-50 text-indigo-600') %>
       </a>
-      <a href="/admin/chapter-members" class="admin-card p-5 hover:shadow-md transition">
-        <p class="text-3xl font-bold text-amber-600"><%= totals.pendingApprovals %></p>
-        <p class="text-sm text-slate-500">Pending approvals</p>
+      <a href="/admin/chapter-members" class="admin-card p-5 hover:shadow-md transition flex items-start justify-between gap-3">
+        <div>
+          <p class="text-3xl font-bold text-amber-600"><%= totals.pendingApprovals %></p>
+          <p class="text-sm text-slate-500">Pending approvals</p>
+        </div>
+        <%- statBadge('userCheck', 'bg-amber-50 text-amber-600') %>
       </a>
     </div>
   <% } %>
