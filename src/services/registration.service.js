@@ -5,6 +5,41 @@ const jobService = require('./job.service');
 const sheetsSyncService = require('./sheetsSync.service');
 const invitationService = require('./invitation.service');
 
+// Under real concurrent contention, a Serializable transaction can abort
+// with a write-conflict error instead of just queuing — confirmed by load
+// testing: firing 20 truly simultaneous registerForEvent calls at a
+// capacity-15 event correctly prevented any oversell, but 18 of the 20
+// failed with a raw, unhandled "Transaction failed due to a write conflict
+// or a deadlock" instead of either succeeding or getting a clean "this
+// event is full". That's Prisma's documented behavior for this isolation
+// level (error code P2034) — MySQL detects the conflict and forces the
+// losing side to retry rather than risk corrupting data — so retrying a
+// few times with a small randomized backoff is the correct response, not a
+// workaround for a bug in the transaction itself. Business-logic rejections
+// thrown inside the transaction (AppError — "already registered", "event is
+// full") are NOT write conflicts and propagate immediately, unretried.
+const MAX_TRANSACTION_ATTEMPTS = 5;
+
+function isWriteConflict(err) {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034';
+}
+
+async function runSerializableTransaction(fn) {
+  let attempt = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    attempt += 1;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      return await prisma.$transaction(fn, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (err) {
+      if (!isWriteConflict(err) || attempt >= MAX_TRANSACTION_ATTEMPTS) throw err;
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => setTimeout(resolve, 20 + Math.random() * 80 * attempt));
+    }
+  }
+}
+
 // A capacity slot is held by both a confirmed registration and one still
 // awaiting fee payment — otherwise a paid event could be oversold during the
 // window between "start payment" and "webhook confirms it". `client` defaults
@@ -34,7 +69,7 @@ async function registerForEvent(user, eventId, invitation = null) {
   // capacity check, and create/reactivate must all happen atomically, or two
   // requests can both pass the count check before either commits and oversell
   // a capacity-limited free event.
-  const registration = await prisma.$transaction(
+  const registration = await runSerializableTransaction(
     async (tx) => {
       const existing = await tx.eventRegistration.findUnique({
         where: { userId_eventId: { userId: user.id, eventId: event.id } },
@@ -88,8 +123,7 @@ async function registerForEvent(user, eventId, invitation = null) {
           invitationId: invitation ? invitation.id : undefined,
         },
       });
-    },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    }
   );
 
   // Durable and retryable via the job queue (src/worker.js), instead of the
