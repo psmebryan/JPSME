@@ -9,6 +9,28 @@ const listInvitations = asyncHandler(async (req, res) => {
   return success(res, { invitations });
 });
 
+// Paginated + filtered + sorted — backs the admin Invitations Report table
+// (public/js/admin.js's initInvitationsReportTable). eventId omitted means
+// the cross-event "All Invitations" view; the filter-option lists and the
+// source-breakdown summary are computed once at page load (see
+// pages.controller.js's adminInvitationsPage) and don't refetch here, same
+// as the admin Payments page's summary cards.
+const listInvitationsReport = asyncHandler(async (req, res) => {
+  const { eventId, chapter, school, type, status, source, sort, dir, page } = req.query;
+  const result = await invitationService.listInvitationsForAdmin({
+    eventId: eventId || undefined,
+    chapter: chapter || undefined,
+    school: school || undefined,
+    type: type || undefined,
+    status: status || undefined,
+    source: source || undefined,
+    sort: sort || undefined,
+    dir: dir || undefined,
+    page: Math.max(1, Number(page) || 1),
+  });
+  return success(res, result);
+});
+
 const createInvitations = asyncHandler(async (req, res) => {
   const invitees = Array.isArray(req.body.invitees) ? req.body.invitees : [];
   if (!invitees.length) return error(res, 'At least one invitee is required', 422);
@@ -75,4 +97,4 @@ const submitRsvp = asyncHandler(async (req, res) => {
   return success(res, { invitation }, 'RSVP recorded');
 });
 
-module.exports = { listInvitations, createInvitations, resendInvitation, requestInvitation, submitRsvp, exportInvitationsExcel, exportAllInvitationsExcel, fetchContactsToInvite };
+module.exports = { listInvitations, listInvitationsReport, createInvitations, resendInvitation, requestInvitation, submitRsvp, exportInvitationsExcel, exportAllInvitationsExcel, fetchContactsToInvite };

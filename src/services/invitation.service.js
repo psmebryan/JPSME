@@ -100,6 +100,19 @@ async function listInvitationsForEvent(eventId) {
   });
 }
 
+// Lightweight (email + status only) — backs the "Existing Members" picker's
+// already-invited map on the Invitations page. Needs every invitation for
+// the event regardless of the report table's current page, or a member
+// invited on, say, page 2 would misleadingly show as "not yet invited" and
+// the admin could re-add them to the pending list.
+async function getInvitedEmailStatusesForEvent(eventId) {
+  const rows = await prisma.eventInvitation.findMany({
+    where: { eventId: Number(eventId) },
+    select: { email: true, status: true },
+  });
+  return rows;
+}
+
 // Default view for the Invitations admin page before an event is picked from
 // the dropdown — every invitation across every event, newest first. Includes
 // the event's own title/id since nothing else on this cross-event view
@@ -109,6 +122,91 @@ async function listAllInvitations() {
     orderBy: { createdAt: 'desc' },
     include: { event: { select: { id: true, title: true } } },
   });
+}
+
+const INVITATION_SORT_FIELDS = { name: 'fullName', sent: 'sentAt', opened: 'openedAt', clicked: 'clickedAt', registered: 'registeredAt' };
+
+// Paginated + filtered + sorted — backs the admin Invitations Report table
+// (both the cross-event view, eventId omitted, and the per-event view).
+// listAllInvitations/listInvitationsForEvent above stay unbounded on purpose:
+// they back the Excel export and the source-breakdown summary below, both of
+// which need every matching row at once regardless of the table's current
+// page/filter.
+async function listInvitationsForAdmin({ eventId, chapter, school, type, status, source, sort, dir, page = 1, pageSize = 25 } = {}) {
+  const where = {};
+  if (eventId) where.eventId = Number(eventId);
+  if (chapter) where.chapter = chapter;
+  if (school) where.school = school;
+  if (type === 'Member') where.userId = { not: null };
+  if (type === 'Guest') where.userId = null;
+  if (status) where.status = status;
+  if (source === 'SELF_REQUESTED' || source === 'ADMIN_SENT') where.source = source;
+
+  const orderField = INVITATION_SORT_FIELDS[sort];
+  const orderBy = orderField ? { [orderField]: dir === 'asc' ? 'asc' : 'desc' } : { createdAt: 'desc' };
+
+  const [total, invitations] = await Promise.all([
+    prisma.eventInvitation.count({ where }),
+    prisma.eventInvitation.findMany({
+      where,
+      orderBy,
+      include: eventId ? undefined : { event: { select: { id: true, title: true } } },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ]);
+
+  return { invitations, total, page, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
+}
+
+// Distinct chapter/school (and, cross-event only, event) values actually
+// present on invitations — drives the filter dropdowns. Derived from
+// EventInvitation itself (not the members table) so external contacts, who
+// aren't members at all, still show up as filter options.
+async function getInvitationFilterOptions(eventId) {
+  const where = eventId ? { eventId: Number(eventId) } : {};
+  const [chapterRows, schoolRows, eventRows] = await Promise.all([
+    prisma.eventInvitation.findMany({ where, select: { chapter: true }, distinct: ['chapter'] }),
+    prisma.eventInvitation.findMany({ where, select: { school: true }, distinct: ['school'] }),
+    eventId
+      ? Promise.resolve([])
+      : prisma.eventInvitation.findMany({ where, select: { event: { select: { id: true, title: true } } }, distinct: ['eventId'] }),
+  ]);
+  return {
+    chapters: chapterRows.map((r) => r.chapter).filter(Boolean).sort(),
+    schools: schoolRows.map((r) => r.school).filter(Boolean).sort(),
+    events: eventRows.map((r) => r.event).filter(Boolean).sort((a, b) => a.title.localeCompare(b.title)),
+  };
+}
+
+// Invited/registered/requested totals and the source-conversion breakdown —
+// always computed over every invitation in scope (the whole event, or
+// everything), never just the report table's current filter/page, since
+// these numbers answer "how is this event's invitation campaign doing
+// overall," not "how many rows match what I just filtered to."
+async function getInvitationSummary(eventId) {
+  const where = eventId ? { eventId: Number(eventId) } : {};
+  const pct = (num, denom) => (denom ? Math.round((num / denom) * 100) : 0);
+
+  const [total, registered, attendingGuests, adminSentTotal, adminSentRegistered, selfRequestedTotal, selfRequestedRegistered] = await Promise.all([
+    prisma.eventInvitation.count({ where }),
+    prisma.eventInvitation.count({ where: { ...where, registeredAt: { not: null } } }),
+    prisma.eventInvitation.count({ where: { ...where, userId: null, rsvpStatus: 'ATTENDING' } }),
+    prisma.eventInvitation.count({ where: { ...where, source: 'ADMIN_SENT' } }),
+    prisma.eventInvitation.count({ where: { ...where, source: 'ADMIN_SENT', registeredAt: { not: null } } }),
+    prisma.eventInvitation.count({ where: { ...where, source: 'SELF_REQUESTED' } }),
+    prisma.eventInvitation.count({ where: { ...where, source: 'SELF_REQUESTED', registeredAt: { not: null } } }),
+  ]);
+
+  return {
+    total,
+    registered,
+    registeredPct: pct(registered, total),
+    requested: selfRequestedTotal,
+    attendingGuests,
+    adminSent: { total: adminSentTotal, registered: adminSentRegistered, pct: pct(adminSentRegistered, adminSentTotal) },
+    selfRequested: { total: selfRequestedTotal, registered: selfRequestedRegistered, pct: pct(selfRequestedRegistered, selfRequestedTotal) },
+  };
 }
 
 function fmtDateTime(date) {
@@ -458,7 +556,11 @@ module.exports = {
   createInvitations,
   resendInvitation,
   listInvitationsForEvent,
+  getInvitedEmailStatusesForEvent,
   listAllInvitations,
+  listInvitationsForAdmin,
+  getInvitationFilterOptions,
+  getInvitationSummary,
   exportInvitationsExcel,
   reconcileInvitation,
   findInvitationsNeedingReconciliation,

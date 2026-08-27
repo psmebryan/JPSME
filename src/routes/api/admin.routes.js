@@ -238,6 +238,15 @@ router.put(
 
 router.get('/invitations/export', invitationApi.exportAllInvitationsExcel);
 router.get('/invitations/import-contacts', invitationApi.fetchContactsToInvite);
+router.get(
+  '/invitations',
+  query('page').optional({ checkFalsy: true }).isInt({ min: 1 }).withMessage('Invalid page'),
+  query('eventId').optional({ checkFalsy: true }).isInt().withMessage('Invalid eventId filter'),
+  query('type').optional({ checkFalsy: true }).isIn(['Member', 'Guest']).withMessage('Invalid type filter'),
+  query('source').optional({ checkFalsy: true }).isIn(['ADMIN_SENT', 'SELF_REQUESTED']).withMessage('Invalid source filter'),
+  query('status').optional({ checkFalsy: true }).isIn(['PENDING', 'SENT', 'DELIVERED', 'BOUNCED', 'FAILED']).withMessage('Invalid status filter'),
+  invitationApi.listInvitationsReport
+);
 
 // Broadcasts — main ADMIN only (inherited from router.use(apiAdmin) above).
 // Specific routes before the generic '/:id' route (same convention as event.routes.js).

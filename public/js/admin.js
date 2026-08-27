@@ -7,8 +7,8 @@ function initAdminPage() {
   initEventsTable();
   initArticlesTable();
   initInvitationsModule();
-  initInvitationsReportTable({ tableId: 'all-invitations-table', eventFilterId: 'all-inv-event-filter', chapterFilterId: 'all-inv-chapter-filter', schoolFilterId: 'all-inv-school-filter', typeFilterId: 'all-inv-type-filter', statusFilterId: 'all-inv-status-filter', sourceFilterId: 'all-inv-source-filter', emptyStateId: 'all-inv-empty', paginationId: 'all-inv-pagination' });
-  initInvitationsReportTable({ tableId: 'invitations-table', chapterFilterId: 'event-inv-chapter-filter', schoolFilterId: 'event-inv-school-filter', typeFilterId: 'event-inv-type-filter', statusFilterId: 'event-inv-status-filter', sourceFilterId: 'event-inv-source-filter', emptyStateId: 'event-inv-empty', paginationId: 'event-inv-pagination' });
+  initInvitationsReportTable({ moduleId: 'all-invitations-module', tableId: 'all-invitations-table', formId: 'all-invitations-filter-form', emptyStateId: 'all-inv-empty', paginationId: 'all-inv-pagination', includeEventColumn: true });
+  initInvitationsReportTable({ moduleId: 'event-invitations-module', tableId: 'invitations-table', formId: 'event-invitations-filter-form', emptyStateId: 'event-inv-empty', paginationId: 'event-inv-pagination', includeEventColumn: false });
   initChapterAdmins();
   initSponsors();
   initCertificates();
@@ -1334,7 +1334,12 @@ function initInvitationsModule() {
     try {
       await apiFetch(`/api/events/${eventId}/invitations/${invitationId}/resend`, { method: 'POST' });
       showToast('Invitation resent');
-      window.location.reload();
+      const table = document.getElementById('invitations-table');
+      if (table?.__reloadInvitations) {
+        await table.__reloadInvitations();
+      } else {
+        window.location.reload();
+      }
     } catch (err) {
       showToast(err.message, 'error');
       btn.disabled = false;
@@ -1342,134 +1347,154 @@ function initInvitationsModule() {
   });
 }
 
-// --- Filter + sort for an invitations report table (admin/invitations page)
-// --- Works for both the cross-event "All Invitations" table and the
-// per-event "Invitation Report" table — same markup shape (data-chapter/
-// data-school/data-status for filtering, data-sort-* for sorting), called
-// once per table id, each a no-op if that table isn't on the current page.
-// Filter + sort operate on the full row set already in the DOM; pagination
-// is purely a display layer on top of whatever that filtered/sorted result
-// is — deliberately NOT server-side paging, since that would only let you
-// filter/sort within whatever one page the server happened to send, instead
-// of across the whole list (the same limitation the payments/audit-log pages
-// accept, but which would defeat the point of the filters built here).
-const INVITATIONS_PAGE_SIZE = 20;
+// --- Filter + sort + pagination for an invitations report table
+// (admin/invitations page) — works for both the cross-event "All
+// Invitations" table (includeEventColumn: true) and the per-event
+// "Invitation Report" table (includeEventColumn: false). All three are
+// server-side (filter, sort, and page all become query params on a
+// GET /api/admin/invitations request) so a filter reflects the *entire*
+// matching set, not just whatever page happened to already be in the DOM —
+// unlike the admin Payments page, this table's data volume (an event's full
+// invitee list) can realistically be large enough that "load everything,
+// filter client-side" stops being viable.
+function invStatusBadgeHtml(status) {
+  const styles = { PENDING: 'badge-slate', SENT: 'badge-blue', DELIVERED: 'badge-green', BOUNCED: 'badge-red', FAILED: 'badge-red' };
+  return `<span class="${styles[status] || 'badge-slate'}">${status}</span>`;
+}
+function memberOrGuestBadgeHtml(userId) {
+  return userId ? '<span class="badge-blue">Member</span>' : '<span class="badge-slate">Guest</span>';
+}
+function sourceBadgeHtml(source) {
+  return source === 'SELF_REQUESTED' ? '<span class="badge-green">Requested</span>' : '<span class="badge-slate">Admin-Sent</span>';
+}
+function rsvpBadgeHtml(inv) {
+  if (inv.userId) return '<span class="text-slate-300">&mdash;</span>';
+  const styles = { ATTENDING: 'badge-green', NOT_ATTENDING: 'badge-red', PENDING: 'badge-slate' };
+  const labels = { ATTENDING: 'Attending', NOT_ATTENDING: 'Not Attending', PENDING: 'No response' };
+  return `<span class="${styles[inv.rsvpStatus] || 'badge-slate'}">${labels[inv.rsvpStatus] || inv.rsvpStatus}</span>`;
+}
+function fmtDate(date) {
+  return date ? new Date(date).toLocaleString() : '-';
+}
+function invitationRowHtml(inv, includeEventColumn) {
+  const eventCell = includeEventColumn
+    ? `<td class="admin-td max-w-[180px] truncate"><a href="/admin/invitations?eventId=${inv.event.id}" class="text-indigo-600 hover:underline">${escapeHtml(inv.event.title)}</a></td>`
+    : '';
+  const actionsCell = includeEventColumn ? '' : `
+    <td class="admin-td text-right">
+      ${(inv.status === 'FAILED' || inv.status === 'BOUNCED') && !inv.registeredAt
+        ? `<button type="button" data-resend-invitation="${inv.id}" class="text-indigo-600 hover:underline text-sm font-medium">Resend</button>`
+        : ''}
+    </td>`;
+  return `
+    <tr class="admin-tr" data-invitation-row="${inv.id}">
+      ${eventCell}
+      <td class="admin-td">${escapeHtml(inv.fullName)}</td>
+      <td class="admin-td max-w-[180px] truncate">${escapeHtml(inv.email)}</td>
+      <td class="admin-td">${escapeHtml(inv.chapter) || '-'}</td>
+      <td class="admin-td">${escapeHtml(inv.school) || '-'}</td>
+      <td class="admin-td">${escapeHtml(inv.company) || '-'}</td>
+      <td class="admin-td">${memberOrGuestBadgeHtml(inv.userId)}</td>
+      <td class="admin-td">${sourceBadgeHtml(inv.source)}</td>
+      <td class="admin-td">${rsvpBadgeHtml(inv)}</td>
+      <td class="admin-td invitation-status-cell">${invStatusBadgeHtml(inv.status)}</td>
+      <td class="admin-td whitespace-nowrap text-xs">${fmtDate(inv.sentAt)}</td>
+      <td class="admin-td whitespace-nowrap text-xs">${fmtDate(inv.openedAt)}</td>
+      <td class="admin-td whitespace-nowrap text-xs">${fmtDate(inv.clickedAt)}</td>
+      <td class="admin-td whitespace-nowrap text-xs">${fmtDate(inv.registeredAt)}</td>
+      ${actionsCell}
+    </tr>`;
+}
 
-function initInvitationsReportTable({ tableId, eventFilterId, chapterFilterId, schoolFilterId, typeFilterId, statusFilterId, sourceFilterId, emptyStateId, paginationId }) {
+function initInvitationsReportTable({ moduleId, tableId, formId, emptyStateId, paginationId, includeEventColumn }) {
+  const module = document.getElementById(moduleId);
   const table = document.getElementById(tableId);
-  if (!table) return;
+  if (!module || !table) return;
 
+  const eventId = module.dataset.eventId || '';
   const tbody = table.querySelector('tbody');
-  const rows = Array.from(tbody.querySelectorAll('tr'));
-  const eventFilter = eventFilterId ? document.getElementById(eventFilterId) : null;
-  const chapterFilter = document.getElementById(chapterFilterId);
-  const schoolFilter = document.getElementById(schoolFilterId);
-  const typeFilter = typeFilterId ? document.getElementById(typeFilterId) : null;
-  const statusFilter = document.getElementById(statusFilterId);
-  const sourceFilter = sourceFilterId ? document.getElementById(sourceFilterId) : null;
+  const filterForm = document.getElementById(formId);
   const emptyEl = document.getElementById(emptyStateId);
-  const paginationEl = paginationId ? document.getElementById(paginationId) : null;
+  const paginationEl = document.getElementById(paginationId);
+  const headers = Array.from(table.querySelectorAll('button[data-sort-key]'));
 
-  let currentPage = 1;
+  let sort = null;
+  let dir = 'desc';
 
-  function matchesFilters(row) {
-    const eventId = eventFilter ? eventFilter.value : '';
-    const chapter = chapterFilter ? chapterFilter.value : '';
-    const school = schoolFilter ? schoolFilter.value : '';
-    const type = typeFilter ? typeFilter.value : '';
-    const status = statusFilter ? statusFilter.value : '';
-    const source = sourceFilter ? sourceFilter.value : '';
-    return (!eventId || row.dataset.eventId === eventId)
-      && (!chapter || row.dataset.chapter === chapter)
-      && (!school || row.dataset.school === school)
-      && (!type || row.dataset.type === type)
-      && (!status || row.dataset.status === status)
-      && (!source || row.dataset.source === source);
-  }
-
-  function renderPagination(total, totalPages) {
+  function renderPagination(page, totalPages, total) {
     if (!paginationEl) return;
+    paginationEl.dataset.page = page;
+    paginationEl.dataset.totalPages = totalPages;
     if (totalPages <= 1) {
       paginationEl.innerHTML = total ? `<span>${total} total</span>` : '';
       return;
     }
     paginationEl.innerHTML = `
-      <span>Page ${currentPage} of ${totalPages} (${total} total)</span>
+      <span>Page ${page} of ${totalPages} (${total} total)</span>
       <div class="flex gap-2">
-        <button type="button" data-page-prev class="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed" ${currentPage === 1 ? 'disabled' : ''}>&larr; Prev</button>
-        <button type="button" data-page-next class="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed" ${currentPage === totalPages ? 'disabled' : ''}>Next &rarr;</button>
+        <button type="button" data-page-prev class="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed" ${page === 1 ? 'disabled' : ''}>&larr; Prev</button>
+        <button type="button" data-page-next class="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed" ${page === totalPages ? 'disabled' : ''}>Next &rarr;</button>
       </div>`;
-    paginationEl.querySelector('[data-page-prev]')?.addEventListener('click', () => { currentPage -= 1; render(); }); // eslint-disable-line no-use-before-define
-    paginationEl.querySelector('[data-page-next]')?.addEventListener('click', () => { currentPage += 1; render(); }); // eslint-disable-line no-use-before-define
+    paginationEl.querySelector('[data-page-prev]')?.addEventListener('click', () => loadInvitations(page - 1)); // eslint-disable-line no-use-before-define
+    paginationEl.querySelector('[data-page-next]')?.addEventListener('click', () => loadInvitations(page + 1)); // eslint-disable-line no-use-before-define
   }
 
-  // Re-reads tbody order each time (rather than the `rows` array's original
-  // order) so pagination always reflects whatever sort was last applied.
-  function render() {
-    const ordered = Array.from(tbody.querySelectorAll('tr'));
-    const filtered = ordered.filter(matchesFilters);
-    const totalPages = Math.max(1, Math.ceil(filtered.length / INVITATIONS_PAGE_SIZE));
-    currentPage = Math.min(Math.max(1, currentPage), totalPages);
-
-    const pageStart = (currentPage - 1) * INVITATIONS_PAGE_SIZE;
-    const pageEnd = pageStart + INVITATIONS_PAGE_SIZE;
-    filtered.forEach((row, i) => row.classList.toggle('hidden', i < pageStart || i >= pageEnd));
-    rows.filter((row) => !filtered.includes(row)).forEach((row) => row.classList.add('hidden'));
-
-    emptyEl?.classList.toggle('hidden', filtered.length > 0);
-    renderPagination(filtered.length, totalPages);
+  function updateSortArrows() {
+    headers.forEach((h) => {
+      const arrow = h.querySelector('.sort-arrow');
+      if (!arrow) return;
+      if (h.dataset.sortKey === sort) {
+        arrow.textContent = dir === 'asc' ? '▲' : '▼';
+        arrow.classList.remove('text-slate-300');
+        arrow.classList.add('text-indigo-600');
+      } else {
+        arrow.textContent = '▲▼';
+        arrow.classList.add('text-slate-300');
+        arrow.classList.remove('text-indigo-600');
+      }
+    });
   }
 
-  function applyFilters() {
-    currentPage = 1;
-    render();
+  async function loadInvitations(page) {
+    const formData = filterForm ? new FormData(filterForm) : new FormData();
+    const params = new URLSearchParams();
+    ['eventId', 'chapter', 'school', 'type', 'status', 'source'].forEach((key) => {
+      const value = formData.get(key) || (key === 'eventId' ? eventId : '');
+      if (value) params.set(key, value);
+    });
+    if (sort) {
+      params.set('sort', sort);
+      params.set('dir', dir);
+    }
+    params.set('page', page);
+
+    try {
+      const res = await apiFetch(`/api/admin/invitations?${params.toString()}`);
+      const { invitations, total, page: currentPage, totalPages } = res.data;
+      tbody.innerHTML = invitations.map((inv) => invitationRowHtml(inv, includeEventColumn)).join('');
+      emptyEl?.classList.toggle('hidden', invitations.length > 0);
+      renderPagination(currentPage, totalPages, total);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
   }
 
-  eventFilter?.addEventListener('change', applyFilters);
-  chapterFilter?.addEventListener('change', applyFilters);
-  schoolFilter?.addEventListener('change', applyFilters);
-  typeFilter?.addEventListener('change', applyFilters);
-  statusFilter?.addEventListener('change', applyFilters);
-  sourceFilter?.addEventListener('change', applyFilters);
-
-  // --- Sorting ---
-  let currentSort = { key: null, dir: 1 };
-  const headers = Array.from(table.querySelectorAll('button[data-sort-key]'));
+  filterForm?.addEventListener('change', () => loadInvitations(1));
 
   headers.forEach((btn) => {
     btn.addEventListener('click', () => {
       const key = btn.dataset.sortKey;
-      currentSort = currentSort.key === key ? { key, dir: -currentSort.dir } : { key, dir: 1 };
-
-      headers.forEach((h) => {
-        const arrow = h.querySelector('.sort-arrow');
-        if (!arrow) return;
-        if (h === btn) {
-          arrow.textContent = currentSort.dir === 1 ? '▲' : '▼';
-          arrow.classList.remove('text-slate-300');
-          arrow.classList.add('text-indigo-600');
-        } else {
-          arrow.textContent = '▲▼';
-          arrow.classList.add('text-slate-300');
-          arrow.classList.remove('text-indigo-600');
-        }
-      });
-
-      const sortAttr = `sort${key.charAt(0).toUpperCase()}${key.slice(1)}`;
-      const sorted = [...rows].sort((a, b) => {
-        const av = a.dataset[sortAttr] || '';
-        const bv = b.dataset[sortAttr] || '';
-        if (av < bv) return -1 * currentSort.dir;
-        if (av > bv) return 1 * currentSort.dir;
-        return 0;
-      });
-      sorted.forEach((row) => tbody.appendChild(row));
-      currentPage = 1;
-      render();
+      dir = sort === key && dir === 'desc' ? 'asc' : 'desc';
+      sort = key;
+      updateSortArrows();
+      loadInvitations(1);
     });
   });
 
-  render();
+  // Exposed so the resend-invitation handler (initInvitationsModule) can
+  // refresh this table's current page after a resend instead of leaving a
+  // stale row in place.
+  table.__reloadInvitations = () => loadInvitations(Number(paginationEl?.dataset.page) || 1);
 }
 
 // --- Chapter Admins grid (admin/chapter-admins page) ---

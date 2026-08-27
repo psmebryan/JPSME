@@ -615,28 +615,45 @@ const adminInvitationsPage = asyncHandler(async (req, res) => {
   const events = await eventService.listAllEvents();
   const eventId = req.query.eventId ? Number(req.query.eventId) : null;
 
-  let selectedEvent = null;
-  let invitations = [];
-  let members = [];
-  if (eventId) {
-    [selectedEvent, invitations, members] = await Promise.all([
-      eventService.getEventById(eventId),
-      invitationService.listInvitationsForEvent(eventId),
-      userService.listByStatus('APPROVED'),
-    ]);
-  } else {
-    // Default view, before any event is picked from the dropdown — every
-    // invitation across every event, so the page always shows something
-    // useful instead of an empty prompt.
-    invitations = await invitationService.listAllInvitations();
-  }
-
   // Lets the sidebar's "Invitation Requests" link land here pre-filtered
   // (?source=SELF_REQUESTED) instead of needing a separate page/route for
   // what's really just this same report with one filter pre-set.
   const sourceFilter = req.query.source === 'SELF_REQUESTED' ? 'SELF_REQUESTED' : '';
 
-  renderAdmin(req, res, 'admin/invitations', { title: 'Invitations', events, selectedEvent, invitations, members, sourceFilter });
+  let selectedEvent = null;
+  let members = [];
+  let summary = null;
+  let invitedEmailStatuses = [];
+  const reportParams = { eventId: eventId || undefined, source: sourceFilter || undefined, page: 1 };
+
+  const [reportResult, filterOptions] = await Promise.all([
+    invitationService.listInvitationsForAdmin(reportParams),
+    invitationService.getInvitationFilterOptions(eventId),
+  ]);
+
+  if (eventId) {
+    [selectedEvent, members, summary, invitedEmailStatuses] = await Promise.all([
+      eventService.getEventById(eventId),
+      userService.listByStatus('APPROVED'),
+      invitationService.getInvitationSummary(eventId),
+      invitationService.getInvitedEmailStatusesForEvent(eventId),
+    ]);
+  }
+
+  renderAdmin(req, res, 'admin/invitations', {
+    title: 'Invitations',
+    events,
+    selectedEvent,
+    invitations: reportResult.invitations,
+    total: reportResult.total,
+    page: reportResult.page,
+    totalPages: reportResult.totalPages,
+    filterOptions,
+    summary,
+    members,
+    invitedEmailStatuses,
+    sourceFilter,
+  });
 });
 
 // Admin — Articles (MAIN_ADMIN only, route-gated)
