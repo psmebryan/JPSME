@@ -7,6 +7,7 @@ const compression = require('compression');
 const expressLayouts = require('express-ejs-layouts');
 
 const config = require('./config');
+const prisma = require('./config/prisma');
 const pagesRoutes = require('./routes/pages.routes');
 const apiRoutes = require('./routes/api');
 const { issueCsrfToken } = require('./middleware/csrf.middleware');
@@ -22,6 +23,52 @@ const app = express();
 if (config.trustProxy) {
   app.set('trust proxy', 1);
 }
+
+// Health checks — mounted before every other middleware (session, CSRF,
+// helmet, static) on purpose: a load balancer or uptime monitor can hit
+// these every few seconds, and they must never create a session row (the
+// MySQL-backed session store would otherwise fill with one row per health
+// check), depend on CSRF state, or wait behind any other middleware.
+// - /health: liveness only — the process is up and Express is handling
+//   requests. No dependency checks, so it can't report "unhealthy" just
+//   because the database is slow.
+// - /health/db: readiness — a real query, so a DB outage or connection-pool
+//   exhaustion shows up here even though /health still reports fine. Timeout-
+//   raced against a fixed budget so a hung connection fails fast instead of
+//   hanging the health check itself indefinitely (defeating its purpose).
+// - /health/dependencies: which external providers are actually configured
+//   (booleans only, never the credential values) — checks configuration
+//   presence, not live reachability, so hitting this endpoint never spends
+//   a real PayMongo/Brevo/Google API call.
+const HEALTH_DB_TIMEOUT_MS = 3000;
+
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
+app.get('/health/db', async (req, res) => {
+  try {
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Database health check timed out')), HEALTH_DB_TIMEOUT_MS)),
+    ]);
+    res.status(200).json({ status: 'ok', database: 'up' });
+  } catch (err) {
+    res.status(503).json({ status: 'error', database: 'down' });
+  }
+});
+
+app.get('/health/dependencies', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    dependencies: {
+      database: !!config.database.url,
+      email: config.email.provider === 'brevo' ? !!config.email.brevoApiKey : true,
+      payment: config.payment.provider === 'paymongo' ? !!config.payment.paymongoSecretKey : true,
+      googleSheets: !!(config.googleSheets.sheetId && config.googleSheets.serviceAccountEmail && config.googleSheets.serviceAccountPrivateKey),
+    },
+  });
+});
 
 app.use(compression());
 
