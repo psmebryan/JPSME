@@ -8,6 +8,7 @@ const expressLayouts = require('express-ejs-layouts');
 
 const config = require('./config');
 const prisma = require('./config/prisma');
+const logger = require('./utils/logger');
 const pagesRoutes = require('./routes/pages.routes');
 const apiRoutes = require('./routes/api');
 const { issueCsrfToken } = require('./middleware/csrf.middleware');
@@ -68,6 +69,35 @@ app.get('/health/dependencies', (req, res) => {
       googleSheets: !!(config.googleSheets.sheetId && config.googleSheets.serviceAccountEmail && config.googleSheets.serviceAccountPrivateKey),
     },
   });
+});
+
+// Every request gets a correlation id — generated fresh, or reused from an
+// upstream X-Request-Id header if one arrives already set (e.g. from a
+// future reverse proxy/load balancer) — echoed back as a response header so
+// a client-reported issue can be traced to its exact server-side log lines.
+// req.log is a child logger with this id attached to every field
+// automatically; a route handler that wants request-scoped structured
+// logging uses req.log instead of the bare logger. Mounted after the health
+// checks (and before everything else) so frequent monitor pings never
+// generate a log line, but every real request does — logged once, at
+// completion, with the method/path/status/duration together rather than
+// scattered across whatever a handler happened to console.log along the way.
+app.use((req, res, next) => {
+  req.id = req.get('X-Request-Id') || crypto.randomUUID();
+  res.setHeader('X-Request-Id', req.id);
+  req.log = logger.child({ requestId: req.id });
+
+  const startedAt = Date.now();
+  res.on('finish', () => {
+    req.log.info('request completed', {
+      method: req.method,
+      path: req.originalUrl,
+      status: res.statusCode,
+      durationMs: Date.now() - startedAt,
+    });
+  });
+
+  next();
 });
 
 app.use(compression());
@@ -188,7 +218,7 @@ app.use((err, req, res, next) => {
   const statusCode = isKnownError ? err.statusCode : 500;
   const safeMessage = isKnownError ? err.message : 'Something went wrong. Please try again.';
   if (statusCode >= 500) {
-    console.error(err);
+    (req.log || logger).error('unhandled request error', { err, method: req.method, path: req.originalUrl });
   }
 
   if (req.path.startsWith('/api/')) {

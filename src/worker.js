@@ -1,4 +1,5 @@
 const prisma = require('./config/prisma');
+const logger = require('./utils/logger');
 const jobService = require('./services/job.service');
 const handlers = require('./jobs/handlers');
 
@@ -6,13 +7,19 @@ const handlers = require('./jobs/handlers');
 // whatever's due — separate from the web server so a slow or misbehaving job
 // (a stuck email API call, a large Sheets sync) can never add latency to a
 // request. Runs alongside `npm run dev`/`npm start`, not instead of them.
+//
+// This process has no HTTP request to inherit a correlation id from, so each
+// job gets its own — the jobId/jobType attached to every log line here is
+// the worker's equivalent of app.js's per-request requestId, for the exact
+// same reason: tracing one specific unit of async work through the logs.
 const POLL_INTERVAL_MS = 2000;
 let stopping = false;
 
 async function processOneJob(job) {
+  const jobLog = logger.child({ jobId: job.id, jobType: job.type });
   const handler = handlers[job.type];
   if (!handler) {
-    console.error(`Job ${job.id}: no handler registered for type "${job.type}" — marking failed.`);
+    jobLog.error('no handler registered for job type — marking failed');
     await jobService.failJob(job.id, `No handler for type "${job.type}"`, job.attempts, job.maxAttempts);
     return;
   }
@@ -20,9 +27,9 @@ async function processOneJob(job) {
   try {
     await handler(JSON.parse(job.payload));
     await jobService.completeJob(job.id);
-    console.log(`Job ${job.id} (${job.type}) completed.`);
+    jobLog.info('job completed');
   } catch (err) {
-    console.error(`Job ${job.id} (${job.type}) failed:`, err.message);
+    jobLog.error('job failed', { err });
     await jobService.failJob(job.id, err, job.attempts, job.maxAttempts);
   }
 }
@@ -33,7 +40,7 @@ async function pollLoop() {
     try {
       job = await jobService.claimNextJob();
     } catch (err) {
-      console.error('Worker: failed to claim next job:', err.message);
+      logger.error('worker failed to claim next job', { err });
     }
 
     if (job) {
@@ -47,7 +54,7 @@ async function pollLoop() {
 
 async function start() {
   await prisma.$connect();
-  console.log('Job worker started, polling every', POLL_INTERVAL_MS, 'ms');
+  logger.info('job worker started', { pollIntervalMs: POLL_INTERVAL_MS });
   await pollLoop();
 }
 
