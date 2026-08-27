@@ -18,9 +18,27 @@ function regStatusBadge(status) {
     </div>
   </div>
 
+  <form method="GET" action="/admin/events/<%= event.id %>/registrations" class="mb-4 admin-card p-4">
+    <div class="grid gap-3 sm:grid-cols-[1.5fr_180px_auto]">
+      <input
+        type="search"
+        name="search"
+        value="<%= search || '' %>"
+        placeholder="Search name or email"
+        class="form-input" />
+      <select name="status" class="form-input">
+        <option value="">All status</option>
+        <option value="REGISTERED" <%= status === 'REGISTERED' ? 'selected' : '' %>>Registered</option>
+        <option value="PENDING_PAYMENT" <%= status === 'PENDING_PAYMENT' ? 'selected' : '' %>>Awaiting Payment</option>
+        <option value="CANCELLED" <%= status === 'CANCELLED' ? 'selected' : '' %>>Cancelled</option>
+      </select>
+      <button type="submit" class="btn-primary">Apply</button>
+    </div>
+  </form>
+
   <% if (!registrations || registrations.length === 0) { %>
     <div class="admin-card p-4">
-      <p class="empty-state">No registrations yet.</p>
+      <p class="empty-state">No registrations found.</p>
     </div>
   <% } else { %>
     <div class="admin-table-wrap">
@@ -51,5 +69,11 @@ function regStatusBadge(status) {
         </tbody>
       </table>
     </div>
+    <%- include('../partials/pagination', {
+      currentPage: page,
+      totalPages: totalPages,
+      baseQuery: { search, status },
+      pageParam: 'page'
+    }) %>
   <% } %>
 </div>

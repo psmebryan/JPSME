@@ -585,12 +585,24 @@ const adminEditEventPage = asyncHandler(async (req, res) => {
 // Admin view registrations page
 const adminEventRegistrationsPage = asyncHandler(async (req, res) => {
   const isMainAdmin = req.session.user.role === 'ADMIN';
-  const [event, registrations] = await Promise.all([
+  const search = (req.query.search || '').toString().trim();
+  const status = (req.query.status || '').toString();
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+
+  const [event, result] = await Promise.all([
     eventService.getEventById(req.params.id),
-    registrationService.getEventRegistrations(req.params.id),
+    registrationService.getEventRegistrationsForAdmin(req.params.id, { search, status, page }),
   ]);
   renderAdmin(req, res, 'admin/event-registrations', {
-    title: `Registrations — ${event.title}`, event, registrations, isMainAdmin,
+    title: `Registrations — ${event.title}`,
+    event,
+    registrations: result.registrations,
+    total: result.total,
+    page: result.page,
+    totalPages: result.totalPages,
+    search,
+    status,
+    isMainAdmin,
   });
 });
 

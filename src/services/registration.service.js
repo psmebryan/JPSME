@@ -212,6 +212,34 @@ async function getEventRegistrations(eventId) {
     orderBy: { createdAt: 'desc' },
   });
 }
+
+// Paginated + searchable — backs the admin per-event Registrations page.
+// getEventRegistrations above stays unbounded for its other callers
+// (certificate generation, Sheets sync, the registration-count API), which
+// each genuinely need every row for that event at once.
+async function getEventRegistrationsForAdmin(eventId, { search, status, page = 1, pageSize = 25 } = {}) {
+  const where = { eventId: Number(eventId) };
+  if (status) where.status = status;
+  const term = (search || '').trim();
+  if (term) {
+    where.OR = [
+      { fullName: { contains: term } },
+      { email: { contains: term } },
+    ];
+  }
+
+  const [total, registrations] = await Promise.all([
+    prisma.eventRegistration.count({ where }),
+    prisma.eventRegistration.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ]);
+
+  return { registrations, total, page, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
+}
 async function getRegisteredEventIds(userId) {
   const regs = await prisma.eventRegistration.findMany({
     where: { userId: Number(userId), status: 'REGISTERED' },
@@ -237,6 +265,7 @@ module.exports = {
   cancelRegistration,
   getUserRegistrations,
   getEventRegistrations,
+  getEventRegistrationsForAdmin,
   getRegisteredEventIds,
   getRegistrationStatus,
   countActiveRegistrations,
