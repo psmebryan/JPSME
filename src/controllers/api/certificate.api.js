@@ -2,6 +2,7 @@ const { validationResult } = require('express-validator');
 const asyncHandler = require('../../utils/asyncHandler');
 const { success, error } = require('../../utils/apiResponse');
 const certificateService = require('../../services/certificate.service');
+const jobService = require('../../services/job.service');
 
 function checkValidation(req, res) {
   const result = validationResult(req);
@@ -78,20 +79,20 @@ const listEventRegistrantCertificates = asyncHandler(async (req, res) => {
   return success(res, { registrants });
 });
 
+// Enqueues instead of generating inline — PDF rendering is CPU-bound, and an
+// event with a large "generate all pending" batch could otherwise hold the
+// admin's request open for a long time. The caller (admin.js) polls
+// GET /api/admin/jobs/:jobId for the result instead of waiting on this
+// response.
 const bulkGenerateEventCertificates = asyncHandler(async (req, res) => {
   const { userIds, force } = req.body;
-  const result = await certificateService.generateEventCertificatesBulk({
-    eventId: req.params.eventId,
+  const job = await jobService.enqueue('GENERATE_EVENT_CERTIFICATES', {
+    eventId: Number(req.params.eventId),
     userIds,
     force: Boolean(force),
     adminUserId: req.session.user.id,
   });
-  const message = `${result.generated.length} certificate(s) generated, ${result.skipped.length} skipped (already generated)`;
-  return success(res, {
-    generatedCount: result.generated.length,
-    skippedCount: result.skipped.length,
-    skipped: result.skipped,
-  }, message);
+  return success(res, { jobId: job.id }, 'Certificate generation started', 202);
 });
 
 const exportEventCertificatesExcel = asyncHandler(async (req, res) => {

@@ -25,8 +25,8 @@ async function processOneJob(job) {
   }
 
   try {
-    await handler(JSON.parse(job.payload));
-    await jobService.completeJob(job.id);
+    const result = await handler(JSON.parse(job.payload));
+    await jobService.completeJob(job.id, result);
     jobLog.info('job completed');
   } catch (err) {
     jobLog.error('job failed', { err });

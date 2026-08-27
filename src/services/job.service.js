@@ -37,8 +37,23 @@ async function claimNextJob() {
   return { ...candidate, status: 'PROCESSING' };
 }
 
-async function completeJob(id) {
-  await prisma.job.update({ where: { id }, data: { status: 'COMPLETED' } });
+async function completeJob(id, result) {
+  await prisma.job.update({
+    where: { id },
+    data: {
+      status: 'COMPLETED',
+      result: result !== undefined ? JSON.stringify(result) : undefined,
+    },
+  });
+}
+
+// Polling endpoints (e.g. bulk certificate generation) read a job's status
+// through this rather than the raw Prisma model, so `result` comes back
+// already parsed instead of every caller re-doing JSON.parse.
+async function getJob(id) {
+  const job = await prisma.job.findUnique({ where: { id: Number(id) } });
+  if (!job) return null;
+  return { ...job, result: job.result ? JSON.parse(job.result) : null };
 }
 
 async function failJob(id, error, attempts, maxAttempts) {
@@ -55,4 +70,4 @@ async function failJob(id, error, attempts, maxAttempts) {
   });
 }
 
-module.exports = { enqueue, claimNextJob, completeJob, failJob };
+module.exports = { enqueue, claimNextJob, completeJob, failJob, getJob };

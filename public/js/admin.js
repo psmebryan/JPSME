@@ -612,13 +612,36 @@ function initEventCertificateModule() {
     loadRegistrants(tab.getAttribute('data-cert-filter'));
   });
 
+  // Generation runs on the job worker now (PDF rendering is CPU-bound and a
+  // large "generate all pending" batch could otherwise hold this request
+  // open for a long time) — this starts the job, then polls
+  // GET /api/admin/jobs/:jobId every 1.5s until it's COMPLETED or FAILED.
+  async function pollJobStatus(jobId, { intervalMs = 1500, timeoutMs = 120000 } = {}) {
+    const deadline = Date.now() + timeoutMs;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const res = await apiFetch(`/api/admin/jobs/${jobId}`);
+      if (res.data.status === 'COMPLETED' || res.data.status === 'FAILED') return res.data;
+      if (Date.now() > deadline) throw new Error('Still generating — this is taking longer than expected. Check back in a bit.');
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
+
   async function generateFor(userIds, force) {
     try {
-      const res = await apiFetch(`/api/admin/certificates/events/${eventId}/generate`, {
+      const startRes = await apiFetch(`/api/admin/certificates/events/${eventId}/generate`, {
         method: 'POST',
         body: JSON.stringify({ userIds, force }),
       });
-      showToast(res.message);
+      showToast('Generating certificate(s)…');
+      const finalStatus = await pollJobStatus(startRes.data.jobId);
+      if (finalStatus.status === 'FAILED') {
+        showToast(finalStatus.lastError || 'Certificate generation failed', 'error');
+      } else {
+        const { generatedCount, skippedCount } = finalStatus.result || {};
+        showToast(`${generatedCount || 0} certificate(s) generated, ${skippedCount || 0} skipped (already generated)`);
+      }
       await loadRegistrants(activeFilter);
     } catch (err) {
       showToast(err.message, 'error');

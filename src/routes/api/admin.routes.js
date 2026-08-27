@@ -7,6 +7,7 @@ const adminPaymentApi = require('../../controllers/api/adminPayment.api');
 const adminEmailApi = require('../../controllers/api/adminEmail.api');
 const adminBroadcastApi = require('../../controllers/api/adminBroadcast.api');
 const invitationApi = require('../../controllers/api/invitation.api');
+const jobApi = require('../../controllers/api/job.api');
 const { apiAdmin, apiAdminOrChapterAdmin } = require('../../middleware/auth.middleware');
 const { verifyCsrfToken } = require('../../middleware/csrf.middleware');
 const { uploadLogo, uploadSponsorLogo, uploadCertificateBackground, uploadEmailAttachment } = require('../../middleware/upload.middleware');
@@ -185,6 +186,7 @@ router.get(
   param('eventId').isInt(),
   certificateApi.exportEventCertificatesExcel
 );
+router.get('/jobs/:jobId', param('jobId').isInt(), jobApi.getJobStatus);
 router.get(
   '/certificates/events/:eventId/registrants/:userId/download',
   param('eventId').isInt(),

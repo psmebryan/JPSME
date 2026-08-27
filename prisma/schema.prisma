@@ -615,6 +615,11 @@ model Job {
   // has passed, instead of a worker hot-looping on a job that just failed.
   availableAt DateTime  @default(now())
   lastError   String?   @db.Text
+  // JSON-serialized, set on successful completion only — a small summary a
+  // caller can poll for (e.g. { generatedCount, skippedCount }), never a
+  // large payload. Optional: most job types have nothing worth reporting
+  // back beyond "it finished."
+  result      String?   @db.Text
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
