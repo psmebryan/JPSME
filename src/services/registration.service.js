@@ -1,3 +1,4 @@
+const { Prisma } = require('@prisma/client');
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
 const mailService = require('./mail.service');
@@ -27,66 +28,74 @@ async function registerForEvent(user, eventId, invitation = null) {
   if (!event) throw new AppError('Event not found', 404);
   if (!event.isPublished) throw new AppError('This event is not open for registration', 400);
 
-  const existing = await prisma.eventRegistration.findUnique({
-    where: { userId_eventId: { userId: user.id, eventId: event.id } },
-  });
+  // Serializable isolation closes the same "two concurrent registrants take
+  // the last capacity slot" race that createCheckout/upsertPendingPaymentRegistration
+  // already guard against on the paid-event path — the existing-row check,
+  // capacity check, and create/reactivate must all happen atomically, or two
+  // requests can both pass the count check before either commits and oversell
+  // a capacity-limited free event.
+  const registration = await prisma.$transaction(
+    async (tx) => {
+      const existing = await tx.eventRegistration.findUnique({
+        where: { userId_eventId: { userId: user.id, eventId: event.id } },
+      });
 
-  // If an existing registration exists, allow re-activation when status is CANCELLED
-  if (existing) {
-    if (existing.status === 'REGISTERED') {
-      throw new AppError('You are already registered for this event', 409);
-    }
-    if (existing.status === 'PENDING_PAYMENT') {
-      throw new AppError('You have a pending payment for this event. Please complete or cancel it first.', 409);
-    }
+      // If an existing registration exists, allow re-activation when status is CANCELLED
+      if (existing) {
+        if (existing.status === 'REGISTERED') {
+          throw new AppError('You are already registered for this event', 409);
+        }
+        if (existing.status === 'PENDING_PAYMENT') {
+          throw new AppError('You have a pending payment for this event. Please complete or cancel it first.', 409);
+        }
 
-    // existing but not currently registered (e.g., CANCELLED) -> try to reactivate
-    if (event.capacity) {
-      const registrationCount = await countActiveRegistrations(event.id);
-      if (registrationCount >= event.capacity) {
-        throw new AppError('This event is full', 400);
+        // existing but not currently registered (e.g., CANCELLED) -> try to reactivate
+        if (event.capacity) {
+          const registrationCount = await countActiveRegistrations(event.id, tx);
+          if (registrationCount >= event.capacity) {
+            throw new AppError('This event is full', 400);
+          }
+        }
+
+        return tx.eventRegistration.update({
+          where: { id: existing.id },
+          data: {
+            status: 'REGISTERED',
+            fullName: `${user.firstName} ${user.lastName}`,
+            email: user.email,
+            phone: user.phone || null,
+            school: user.school || null,
+            invitationId: invitation ? invitation.id : undefined,
+          },
+        });
       }
-    }
 
-    const reactivated = await prisma.eventRegistration.update({
-      where: { id: existing.id },
-      data: {
-        status: 'REGISTERED',
-        fullName: `${user.firstName} ${user.lastName}`,
-        email: user.email,
-        phone: user.phone || null,
-        school: user.school || null,
-        invitationId: invitation ? invitation.id : undefined,
-      },
-    });
-    mailService.sendEventRegistrationEmail(user, event);
-    sheetsSyncService.syncEventRegistrations(event.id);
-    if (invitation) invitationService.markRegistered(invitation.id);
-    return reactivated;
-  }
+      if (event.capacity) {
+        const registrationCount = await countActiveRegistrations(event.id, tx);
+        if (registrationCount >= event.capacity) {
+          throw new AppError('This event is full', 400);
+        }
+      }
 
-  if (event.capacity) {
-    const registrationCount = await countActiveRegistrations(event.id);
-    if (registrationCount >= event.capacity) {
-      throw new AppError('This event is full', 400);
-    }
-  }
-
-  const created = await prisma.eventRegistration.create({
-    data: {
-      userId: user.id,
-      eventId: event.id,
-      fullName: `${user.firstName} ${user.lastName}`,
-      email: user.email,
-      phone: user.phone || null,
-      school: user.school || null,
-      invitationId: invitation ? invitation.id : undefined,
+      return tx.eventRegistration.create({
+        data: {
+          userId: user.id,
+          eventId: event.id,
+          fullName: `${user.firstName} ${user.lastName}`,
+          email: user.email,
+          phone: user.phone || null,
+          school: user.school || null,
+          invitationId: invitation ? invitation.id : undefined,
+        },
+      });
     },
-  });
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+  );
+
   mailService.sendEventRegistrationEmail(user, event);
   sheetsSyncService.syncEventRegistrations(event.id);
   if (invitation) invitationService.markRegistered(invitation.id);
-  return created;
+  return registration;
 }
 
 // Holds the registrant's capacity slot for a PAID event as PENDING_PAYMENT —
