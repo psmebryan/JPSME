@@ -219,6 +219,11 @@ model EventRegistration {
   invitation EventInvitation? @relation(fields: [invitationId], references: [id], onDelete: SetNull)
 
   @@unique([userId, eventId])
+  // countActiveRegistrations() (the capacity check on every registration
+  // attempt) and the admin registrations list both filter by eventId+status
+  // alone — the (userId, eventId) unique index above can't serve that
+  // (userId isn't a filter there), so without this it's a full table scan.
+  @@index([eventId, status])
 }
 
 // Admin-initiated invite for a specific event, sent by email. `userId` is set
@@ -537,6 +542,10 @@ model AuditLog {
   @@index([action])
   @@index([actorId])
   @@index([targetUserId])
+  // The admin payment detail page's audit-trail lookup filters by paymentId;
+  // audit_logs grows continuously (every webhook is logged), so this scans
+  // the whole table without an index.
+  @@index([paymentId])
   @@map("audit_logs")
 }
 
