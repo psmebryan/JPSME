@@ -2,12 +2,13 @@ function initAdminPage() {
   initUserApprovals();
   initLogoUpload();
   initMembershipFeeForm();
+  initGatewaySurchargeForm();
   initPaymentsEnabledToggle();
   initEventsTable();
   initArticlesTable();
   initInvitationsModule();
-  initInvitationsReportTable({ tableId: 'all-invitations-table', eventFilterId: 'all-inv-event-filter', chapterFilterId: 'all-inv-chapter-filter', schoolFilterId: 'all-inv-school-filter', statusFilterId: 'all-inv-status-filter', sourceFilterId: 'all-inv-source-filter', emptyStateId: 'all-inv-empty', paginationId: 'all-inv-pagination' });
-  initInvitationsReportTable({ tableId: 'invitations-table', chapterFilterId: 'event-inv-chapter-filter', schoolFilterId: 'event-inv-school-filter', statusFilterId: 'event-inv-status-filter', sourceFilterId: 'event-inv-source-filter', emptyStateId: 'event-inv-empty', paginationId: 'event-inv-pagination' });
+  initInvitationsReportTable({ tableId: 'all-invitations-table', eventFilterId: 'all-inv-event-filter', chapterFilterId: 'all-inv-chapter-filter', schoolFilterId: 'all-inv-school-filter', typeFilterId: 'all-inv-type-filter', statusFilterId: 'all-inv-status-filter', sourceFilterId: 'all-inv-source-filter', emptyStateId: 'all-inv-empty', paginationId: 'all-inv-pagination' });
+  initInvitationsReportTable({ tableId: 'invitations-table', chapterFilterId: 'event-inv-chapter-filter', schoolFilterId: 'event-inv-school-filter', typeFilterId: 'event-inv-type-filter', statusFilterId: 'event-inv-status-filter', sourceFilterId: 'event-inv-source-filter', emptyStateId: 'event-inv-empty', paginationId: 'event-inv-pagination' });
   initChapterAdmins();
   initSponsors();
   initCertificates();
@@ -332,6 +333,8 @@ function initPaymentsModule() {
         <td class="admin-td max-w-[140px] truncate">${escapeHtml(chapter)}</td>
         <td class="admin-td max-w-[160px] truncate">${escapeHtml(eventLabel)}</td>
         <td class="admin-td">${peso(p.amount)}</td>
+        <td class="admin-td text-slate-500">${p.status === 'PAID' ? '&minus;' + peso(p.gatewayFeeCentavos) : '-'}</td>
+        <td class="admin-td font-medium">${p.status === 'PAID' ? peso(p.amount - p.gatewayFeeCentavos) : '-'}</td>
         <td class="admin-td payment-status-cell">${paymentStatusBadgeHtml(p.status)}</td>
         <td class="admin-td">${new Date(p.createdAt).toLocaleDateString()}</td>
         <td class="admin-td text-xs text-slate-500 max-w-[160px] truncate">${escapeHtml(reference)}</td>
@@ -966,6 +969,26 @@ function initMembershipFeeForm() {
   });
 }
 
+function initGatewaySurchargeForm() {
+  const form = document.getElementById('gateway-surcharge-form');
+  if (!form) return;
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const percent = document.getElementById('gateway-surcharge-input').value;
+
+    try {
+      await apiFetch('/api/admin/settings/gateway-surcharge-percent', {
+        method: 'PUT',
+        body: JSON.stringify({ percent }),
+      });
+      showToast('Payment processing surcharge updated');
+    } catch (err) {
+      showToast(err.errors?.[0]?.msg || err.message, 'error');
+    }
+  });
+}
+
 // --- Payments kill switch (admin/settings page) ---
 function initPaymentsEnabledToggle() {
   const module = document.getElementById('payments-enabled-module');
@@ -1193,6 +1216,33 @@ function initInvitationsModule() {
     company.value = '';
   });
 
+  document.getElementById('invite-fetch-sheet')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = 'Fetching...';
+
+    try {
+      const res = await apiFetch('/api/admin/invitations/import-contacts');
+      const contacts = res.data.contacts || [];
+      if (!contacts.length) {
+        showToast(res.message || 'No contacts found in the sheet', 'error');
+        return;
+      }
+      let added = 0;
+      contacts.forEach((c) => {
+        if (addPending({ fullName: c.fullName, email: c.email, chapter: c.chapter, school: c.school, company: c.company }, true)) added += 1;
+      });
+      renderPendingList();
+      showToast(added ? `Added ${added} contact${added === 1 ? '' : 's'} from the sheet` : 'All contacts from the sheet were already on the list', added ? 'success' : 'error');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
+  });
+
   pendingListEl.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-remove-pending]');
     if (!btn) return;
@@ -1251,7 +1301,7 @@ function initInvitationsModule() {
 // accept, but which would defeat the point of the filters built here).
 const INVITATIONS_PAGE_SIZE = 20;
 
-function initInvitationsReportTable({ tableId, eventFilterId, chapterFilterId, schoolFilterId, statusFilterId, sourceFilterId, emptyStateId, paginationId }) {
+function initInvitationsReportTable({ tableId, eventFilterId, chapterFilterId, schoolFilterId, typeFilterId, statusFilterId, sourceFilterId, emptyStateId, paginationId }) {
   const table = document.getElementById(tableId);
   if (!table) return;
 
@@ -1260,6 +1310,7 @@ function initInvitationsReportTable({ tableId, eventFilterId, chapterFilterId, s
   const eventFilter = eventFilterId ? document.getElementById(eventFilterId) : null;
   const chapterFilter = document.getElementById(chapterFilterId);
   const schoolFilter = document.getElementById(schoolFilterId);
+  const typeFilter = typeFilterId ? document.getElementById(typeFilterId) : null;
   const statusFilter = document.getElementById(statusFilterId);
   const sourceFilter = sourceFilterId ? document.getElementById(sourceFilterId) : null;
   const emptyEl = document.getElementById(emptyStateId);
@@ -1271,11 +1322,13 @@ function initInvitationsReportTable({ tableId, eventFilterId, chapterFilterId, s
     const eventId = eventFilter ? eventFilter.value : '';
     const chapter = chapterFilter ? chapterFilter.value : '';
     const school = schoolFilter ? schoolFilter.value : '';
+    const type = typeFilter ? typeFilter.value : '';
     const status = statusFilter ? statusFilter.value : '';
     const source = sourceFilter ? sourceFilter.value : '';
     return (!eventId || row.dataset.eventId === eventId)
       && (!chapter || row.dataset.chapter === chapter)
       && (!school || row.dataset.school === school)
+      && (!type || row.dataset.type === type)
       && (!status || row.dataset.status === status)
       && (!source || row.dataset.source === source);
   }
@@ -1321,6 +1374,7 @@ function initInvitationsReportTable({ tableId, eventFilterId, chapterFilterId, s
   eventFilter?.addEventListener('change', applyFilters);
   chapterFilter?.addEventListener('change', applyFilters);
   schoolFilter?.addEventListener('change', applyFilters);
+  typeFilter?.addEventListener('change', applyFilters);
   statusFilter?.addEventListener('change', applyFilters);
   sourceFilter?.addEventListener('change', applyFilters);
 

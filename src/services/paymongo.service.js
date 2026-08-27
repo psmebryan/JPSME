@@ -63,20 +63,33 @@ async function paymongoRequest(method, path, body) {
 }
 
 // Creates a GCash-only Checkout Session for the given amount (integer centavos).
-// Returns { checkoutId, checkoutUrl }. amountCentavos is always server-computed
-// by the caller (never trust a client-sent amount) before this is called.
-async function createGcashCheckout({ amountCentavos, description, referenceNumber, successUrl, cancelUrl, metadata }) {
+// Returns { checkoutId, checkoutUrl }. amountCentavos/surchargeCentavos are
+// always server-computed by the caller (never trust a client-sent amount)
+// before this is called. When surchargeCentavos > 0, it's billed as its own
+// line item — PayMongo's hosted checkout page then itemizes it for the payer
+// (via show_line_items below) rather than silently folding it into one total.
+async function createGcashCheckout({ amountCentavos, surchargeCentavos = 0, description, referenceNumber, successUrl, cancelUrl, metadata }) {
+  const lineItems = [
+    {
+      amount: amountCentavos,
+      currency: 'PHP',
+      name: description,
+      quantity: 1,
+    },
+  ];
+  if (surchargeCentavos > 0) {
+    lineItems.push({
+      amount: surchargeCentavos,
+      currency: 'PHP',
+      name: 'Payment processing fee',
+      quantity: 1,
+    });
+  }
+
   const payload = {
     data: {
       attributes: {
-        line_items: [
-          {
-            amount: amountCentavos,
-            currency: 'PHP',
-            name: description,
-            quantity: 1,
-          },
-        ],
+        line_items: lineItems,
         payment_method_types: ['gcash'],
         description,
         reference_number: referenceNumber,

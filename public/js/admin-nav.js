@@ -71,13 +71,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!link) return;
 
     e.preventDefault();
-    if (link.getAttribute('href') !== window.location.pathname) {
+    // Compare against pathname+search, not pathname alone — two different
+    // sidebar links can share a pathname and differ only by query string
+    // (e.g. "Manage Invitations" vs "Invitation Requests" both live at
+    // /admin/invitations), and pathname-only comparison treated those as the
+    // same page, silently no-op'ing the click.
+    const currentUrl = window.location.pathname + window.location.search;
+    if (link.getAttribute('href') !== currentUrl) {
       loadAdminPage(link.getAttribute('href'), true);
     }
   });
 
   window.addEventListener('popstate', () => {
-    loadAdminPage(window.location.pathname, false);
+    // pathname alone would drop a query-string-differentiated page (e.g.
+    // "Invitation Requests" at /admin/invitations?source=SELF_REQUESTED) when
+    // navigating back/forward to it — same bug as the click handler above.
+    loadAdminPage(window.location.pathname + window.location.search, false);
   });
 });
 

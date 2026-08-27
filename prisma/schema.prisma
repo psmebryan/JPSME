@@ -109,6 +109,11 @@ enum AuditAction {
   SUSPICIOUS_PAYMENT_MISMATCH
   PAYMENT_RECONCILED
   USER_STATUS_CHANGED
+  // Payment confirmed but the membership auto-approve step itself threw —
+  // previously only console.error'd (invisible outside server logs); this
+  // makes it show up on the admin audit log so a stuck PENDING-despite-PAID
+  // account actually gets noticed and manually approved.
+  AUTO_APPROVAL_FAILED
 }
 
 model User {
@@ -429,7 +434,15 @@ model Payment {
   gateway           String         @default("paymongo")
   gatewayCheckoutId String?        @unique
   gatewayPaymentId  String?        @unique
+  // The actual fee/membership amount charged to the payer — JPSME absorbs
+  // PayMongo's own transaction fee out of this, it's never added on top.
   amount            Int
+  // What PayMongo actually deducted from `amount` before crediting JPSME —
+  // populated from the Payment resource's own `fee` field once the payment
+  // settles (see applyPaymentPaid), not estimated in advance. 0 until then,
+  // and stays 0 for a payment that never reaches PAID. `amount - gatewayFeeCentavos`
+  // is what JPSME actually received net.
+  gatewayFeeCentavos Int           @default(0)
   currency          String         @default("PHP")
   status            PaymentStatus  @default(PENDING)
   expiresAt         DateTime?

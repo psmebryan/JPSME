@@ -10,6 +10,26 @@ const mailService = require('./mail.service');
 const sheetsSyncService = require('./sheetsSync.service');
 const invitationService = require('./invitation.service');
 
+// Grosses up baseCentavos so that after PayMongo deducts its own percentage
+// cut from the TOTAL charged, JPSME still nets baseCentavos — i.e. the payer
+// absorbs the gateway's fee instead of JPSME. Simply adding baseCentavos *
+// percent would under-charge, since PayMongo's cut is taken from the
+// grossed-up total, not from the base fee alone: if T is the total and p the
+// fee rate, T - T*p = baseCentavos, so T = baseCentavos / (1 - p).
+// This is an upfront estimate to decide what to charge — PayMongo's actual
+// deducted fee (captured separately as gatewayFeeCentavos once the payment
+// settles, see applyPaymentPaid) can differ by a centavo or two due to their
+// own internal rounding, so the real net occasionally lands a centavo off
+// baseCentavos either way. No safety buffer here by design — charge exactly
+// what the formula says, nothing padded on top.
+async function calculateGatewaySurcharge(baseCentavos) {
+  if (baseCentavos <= 0) return 0;
+  const percent = await settingsService.getGatewaySurchargePercent();
+  const rate = percent / 100;
+  const total = baseCentavos / (1 - rate);
+  return Math.round(total - baseCentavos);
+}
+
 const ACTIVE_STATUSES = ['PENDING', 'PROCESSING'];
 const PAID_EVENT_TYPES = new Set(['checkout_session.payment.paid', 'payment.paid']);
 const FAILED_EVENT_TYPES = new Set(['checkout_session.payment.failed', 'payment.failed']);
@@ -210,6 +230,13 @@ async function createCheckout({ userId, purpose, eventId, amount, description, r
     throw new AppError(alreadyPaidMessage, 409);
   }
 
+  // `amount` is always the fee JPSME actually wants to net — the payer covers
+  // PayMongo's cut on top, so what actually gets charged (and stored as
+  // Payment.amount, since that's what the gateway will report back and
+  // verifyGatewayAmountMatches compares against) is the grossed-up total.
+  const surchargeCentavos = await calculateGatewaySurcharge(amount);
+  const totalAmount = amount + surchargeCentavos;
+
   // Serializable isolation closes the "double-click Pay" race: if two concurrent
   // requests both try to create a payment for the same user (+event, for the
   // event-fee case), MySQL forces one to fail with a write-conflict error
@@ -229,10 +256,16 @@ async function createCheckout({ userId, purpose, eventId, amount, description, r
           if (existing.status === 'PROCESSING') {
             throw new AppError('Your payment is already being processed. Please wait for confirmation.', 409);
           }
-          paymentRow = existing; // PENDING with no successful checkout yet — reuse it for a retry
+          // PENDING with no successful checkout yet — reuse it for a retry,
+          // refreshed to the current fee/surcharge (covers the surcharge
+          // rate changing, or a legacy pre-surcharge row, between attempts).
+          paymentRow = await tx.payment.update({
+            where: { id: existing.id },
+            data: { amount: totalAmount },
+          });
         } else {
           paymentRow = await tx.payment.create({
-            data: { userId: user.id, purpose, eventId: eventId || null, amount, currency: 'PHP', status: 'PENDING' },
+            data: { userId: user.id, purpose, eventId: eventId || null, amount: totalAmount, currency: 'PHP', status: 'PENDING' },
           });
         }
 
@@ -261,7 +294,8 @@ async function createCheckout({ userId, purpose, eventId, amount, description, r
 
   try {
     const { checkoutId, checkoutUrl } = await paymongoService.createGcashCheckout({
-      amountCentavos: payment.amount,
+      amountCentavos: amount,
+      surchargeCentavos,
       description,
       referenceNumber: `${referencePrefix}-${payment.id}`,
       successUrl,
@@ -430,11 +464,19 @@ async function verifyGatewayAmountMatches(localPayment, gatewayAmount, gatewayCu
 // EventRegistration from PENDING_PAYMENT to REGISTERED — that cross-table
 // invariant isn't DB-enforced, so a missing/wrong-state registration here is
 // logged loudly (console.error + audit metadata) rather than silently ignored.
-async function applyPaymentPaid(localPayment, { gatewayPaymentId, webhookRecordId, source, ipAddress } = {}) {
+async function applyPaymentPaid(localPayment, { gatewayPaymentId, gatewayFeeCentavos, webhookRecordId, source, ipAddress } = {}) {
   const result = await prisma.$transaction(async (tx) => {
     await tx.payment.update({
       where: { id: localPayment.id },
-      data: { status: 'PAID', paidAt: new Date(), gatewayPaymentId: gatewayPaymentId || localPayment.gatewayPaymentId },
+      data: {
+        status: 'PAID',
+        paidAt: new Date(),
+        gatewayPaymentId: gatewayPaymentId || localPayment.gatewayPaymentId,
+        // PayMongo's own reported cut — recorded for accounting (Total paid /
+        // Fee deducted / Net received on the admin report), not estimated in
+        // advance. Left at 0 if the gateway didn't report one.
+        ...(gatewayFeeCentavos !== undefined ? { gatewayFeeCentavos } : {}),
+      },
     });
 
     const latestAttempt = await tx.paymentAttempt.findFirst({
@@ -520,6 +562,17 @@ async function applyPaymentPaid(localPayment, { gatewayPaymentId, webhookRecordI
       }
     } catch (err) {
       console.error('applyPaymentPaid: failed to auto-approve membership for payment', localPayment.id, err.message);
+      // Previously this console.error was the ONLY record of the failure —
+      // invisible outside server logs, so a stuck PENDING-despite-PAID
+      // account could go unnoticed indefinitely (found exactly this happening
+      // to a real user). Logged here too so it surfaces on the admin audit
+      // log and actually gets someone's attention.
+      await auditService.log({
+        action: 'AUTO_APPROVAL_FAILED',
+        targetUserId: localPayment.userId,
+        paymentId: localPayment.id,
+        metadata: { error: err.message },
+      }).catch(() => {});
     }
   }
 
@@ -632,6 +685,9 @@ async function handlePaymentPaidEvent({ webhookRecord, resource, ipAddress }) {
   const gatewayCurrency = gatewayPayment?.attributes?.currency ?? gatewayPayment?.currency ?? 'PHP';
   const gatewayStatus = gatewayPayment?.attributes?.status ?? gatewayPayment?.status;
   const gatewayId = gatewayPayment?.id;
+  // Only present once PayMongo has actually settled the payment — this is
+  // their real deducted cut, not an estimate.
+  const gatewayFeeCentavos = gatewayPayment?.attributes?.fee ?? gatewayPayment?.fee;
 
   await verifyGatewayAmountMatches(localPayment, gatewayAmount, gatewayCurrency, {
     webhookId: webhookRecord.webhookId,
@@ -644,7 +700,7 @@ async function handlePaymentPaidEvent({ webhookRecord, resource, ipAddress }) {
     return { notPaid: true };
   }
 
-  await applyPaymentPaid(localPayment, { gatewayPaymentId: gatewayId, webhookRecordId: webhookRecord.id, source: 'webhook', ipAddress });
+  await applyPaymentPaid(localPayment, { gatewayPaymentId: gatewayId, gatewayFeeCentavos, webhookRecordId: webhookRecord.id, source: 'webhook', ipAddress });
 
   return { confirmed: true, paymentId: localPayment.id };
 }
@@ -794,7 +850,11 @@ async function reconcilePayment(paymentId, { triggeredBy = 'admin' } = {}) {
     const gatewayAmount = paidGatewayPayment.attributes?.amount;
     const gatewayCurrency = paidGatewayPayment.attributes?.currency ?? 'PHP';
     await verifyGatewayAmountMatches(payment, gatewayAmount, gatewayCurrency, {});
-    await applyPaymentPaid(payment, { gatewayPaymentId: paidGatewayPayment.id, source: 'reconcile' });
+    await applyPaymentPaid(payment, {
+      gatewayPaymentId: paidGatewayPayment.id,
+      gatewayFeeCentavos: paidGatewayPayment.attributes?.fee,
+      source: 'reconcile',
+    });
     await auditService.log({ action: 'PAYMENT_RECONCILED', paymentId: payment.id, metadata: { outcome: 'marked_paid', gatewayPaymentId: paidGatewayPayment.id, triggeredBy } });
     return { outcome: 'marked_paid', paymentId: payment.id };
   }
@@ -887,6 +947,7 @@ module.exports = {
   getPaymentSummary,
   createMembershipCheckout,
   createEventCheckout,
+  calculateGatewaySurcharge,
   processWebhookEvent,
   requestRefund,
   reconcilePayment,

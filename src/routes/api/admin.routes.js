@@ -6,6 +6,7 @@ const certificateApi = require('../../controllers/api/certificate.api');
 const adminPaymentApi = require('../../controllers/api/adminPayment.api');
 const adminEmailApi = require('../../controllers/api/adminEmail.api');
 const adminBroadcastApi = require('../../controllers/api/adminBroadcast.api');
+const invitationApi = require('../../controllers/api/invitation.api');
 const { apiAdmin, apiAdminOrChapterAdmin } = require('../../middleware/auth.middleware');
 const { verifyCsrfToken } = require('../../middleware/csrf.middleware');
 const { uploadLogo, uploadSponsorLogo, uploadCertificateBackground, uploadEmailAttachment } = require('../../middleware/upload.middleware');
@@ -87,6 +88,12 @@ router.put(
   verifyCsrfToken,
   body('feePhp').isFloat({ min: 0, max: 1000000 }).withMessage('Enter a valid fee amount'),
   adminApi.updateMembershipFee
+);
+router.put(
+  '/settings/gateway-surcharge-percent',
+  verifyCsrfToken,
+  body('percent').isFloat({ min: 0, max: 100 }).withMessage('Enter a valid percentage'),
+  adminApi.updateGatewaySurchargePercent
 );
 router.get('/settings/payments-enabled', adminApi.getPaymentsEnabled);
 router.put(
@@ -221,6 +228,9 @@ router.put(
   emailTemplateValidators,
   adminEmailApi.updateEventInvitationTemplate
 );
+
+router.get('/invitations/export', invitationApi.exportAllInvitationsExcel);
+router.get('/invitations/import-contacts', invitationApi.fetchContactsToInvite);
 
 // Broadcasts — main ADMIN only (inherited from router.use(apiAdmin) above).
 // Specific routes before the generic '/:id' route (same convention as event.routes.js).

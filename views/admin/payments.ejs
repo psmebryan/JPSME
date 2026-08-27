@@ -85,6 +85,8 @@ function peso(centavos) {
           <col class="w-32">
           <col class="w-36">
           <col class="w-24">
+          <col class="w-24">
+          <col class="w-24">
           <col class="w-32">
           <col class="w-28">
           <col class="w-40">
@@ -95,7 +97,9 @@ function peso(centavos) {
             <th class="admin-th">User</th>
             <th class="admin-th">Chapter</th>
             <th class="admin-th">Event</th>
-            <th class="admin-th">Amount</th>
+            <th class="admin-th">Total Paid</th>
+            <th class="admin-th">Fee Deducted</th>
+            <th class="admin-th">Net Received</th>
             <th class="admin-th">Status</th>
             <th class="admin-th">Date</th>
             <th class="admin-th">Reference</th>
@@ -109,6 +113,8 @@ function peso(centavos) {
               <td class="admin-td max-w-[140px] truncate"><%= (p.user.chapter && p.user.chapter.name) || '-' %></td>
               <td class="admin-td max-w-[160px] truncate"><%= p.event ? p.event.title : 'Membership' %></td>
               <td class="admin-td"><%- peso(p.amount) %></td>
+              <td class="admin-td text-slate-500"><%- p.status === 'PAID' ? '&minus;' + peso(p.gatewayFeeCentavos) : '-' %></td>
+              <td class="admin-td font-medium"><%- p.status === 'PAID' ? peso(p.amount - p.gatewayFeeCentavos) : '-' %></td>
               <td class="admin-td payment-status-cell"><%- statusBadgeHtml(p.status) %></td>
               <td class="admin-td"><%= new Date(p.createdAt).toLocaleDateString() %></td>
               <td class="admin-td text-xs text-slate-500 max-w-[160px] truncate"><%= p.gatewayPaymentId || p.gatewayCheckoutId || '-' %></td>

@@ -82,6 +82,54 @@ async function ensureEventTab(sheets, event) {
   return { sheetId: res.data.replies[0].addSheet.properties.sheetId, title };
 }
 
+// The one tab this file only ever READS, never writes over (every other tab
+// here — Membership, Event #N, Invitations — is a generated report this app
+// fully owns and rewrites on every sync). This one is admin-maintained: they
+// paste/type in rows of non-member contacts (Name, Email, School, Chapter,
+// Company) and the Invitations page pulls them in on demand via "Fetch from
+// Google Sheet". Created with just a header row if missing (so the admin
+// knows the expected columns), but existing content is never touched.
+const CONTACTS_TAB_NAME = 'Contacts to Invite';
+const CONTACTS_HEADER = ['Name', 'Email', 'School', 'Chapter', 'Company'];
+// Matches createInvitations' own per-request cap — no point fetching more
+// than can ever actually be sent in one batch.
+const MAX_IMPORTED_CONTACTS = 200;
+
+async function fetchContactsToInvite() {
+  if (!isConfigured()) {
+    throw new Error('Google Sheets is not configured.');
+  }
+  const sheets = getSheetsClient();
+  const tabs = await listTabs(sheets);
+  const exists = tabs.some((s) => s.properties.title === CONTACTS_TAB_NAME);
+
+  if (!exists) {
+    await ensureTab(sheets, CONTACTS_TAB_NAME);
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `'${CONTACTS_TAB_NAME}'!A1`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [CONTACTS_HEADER] },
+    });
+    return []; // just created — nothing to import yet
+  }
+
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `'${CONTACTS_TAB_NAME}'!A2:E${MAX_IMPORTED_CONTACTS + 1}`,
+  });
+
+  return (res.data.values || [])
+    .map(([fullName, email, school, chapter, company]) => ({
+      fullName: (fullName || '').trim(),
+      email: (email || '').trim(),
+      school: (school || '').trim() || null,
+      chapter: (chapter || '').trim() || null,
+      company: (company || '').trim() || null,
+    }))
+    .filter((c) => c.fullName && c.email); // blank/incomplete rows are silently skipped, not errors
+}
+
 async function deleteEventTab(eventId) {
   if (!isConfigured()) return;
   try {
@@ -229,6 +277,116 @@ async function syncMembership() {
   }
 }
 
+// One tab per event, same reasoning as ensureEventTab for registrations: a
+// single cross-event tab grows unbounded as invitation volume increases
+// across many events, eventually flooding one sheet with rows that don't
+// even belong to the event the admin is currently looking at. Matched by a
+// stable "Invites #<id> " prefix (not the full title) for the same reason
+// event tabs are — renaming the event renames its tab instead of orphaning
+// a duplicate. Kept as a visually distinct tab from "Event #<id> - <title>"
+// (registrations) rather than merged into it, since invitees and registrants
+// are overlapping but different sets of people.
+function eventInvitationsTabPrefix(eventId) {
+  return `Invites #${eventId} `;
+}
+function eventInvitationsTabTitle(event) {
+  const raw = `${eventInvitationsTabPrefix(event.id)}- ${event.title}`;
+  return raw.length > 100 ? `${raw.slice(0, 97)}...` : raw;
+}
+
+async function ensureEventInvitationsTab(sheets, event) {
+  const title = eventInvitationsTabTitle(event);
+  const tabs = await listTabs(sheets);
+  const found = tabs.find((s) => s.properties.title.startsWith(eventInvitationsTabPrefix(event.id)));
+
+  if (found) {
+    if (found.properties.title !== title) {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: SPREADSHEET_ID,
+        requestBody: {
+          requests: [{ updateSheetProperties: { properties: { sheetId: found.properties.sheetId, title }, fields: 'title' } }],
+        },
+      });
+    }
+    return { sheetId: found.properties.sheetId, title };
+  }
+
+  const res = await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    requestBody: { requests: [{ addSheet: { properties: { title } } }] },
+  });
+  return { sheetId: res.data.replies[0].addSheet.properties.sheetId, title };
+}
+
+async function deleteEventInvitationsTab(eventId) {
+  if (!isConfigured()) return;
+  try {
+    const sheets = getSheetsClient();
+    const tabs = await listTabs(sheets);
+    const found = tabs.find((s) => s.properties.title.startsWith(eventInvitationsTabPrefix(eventId)));
+    if (!found) return;
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: { requests: [{ deleteSheet: { sheetId: found.properties.sheetId } }] },
+    });
+  } catch (err) {
+    console.error('sheetsSync: failed to delete invitations tab for event', eventId, err.message);
+  }
+}
+
+async function syncInvitations(eventId) {
+  if (!isConfigured()) return;
+  try {
+    const sheets = getSheetsClient();
+    const event = await prisma.event.findUnique({ where: { id: Number(eventId) } });
+    if (!event) return; // event was deleted mid-flight (its tab is removed separately by deleteEventInvitationsTab)
+
+    const { sheetId, title } = await ensureEventInvitationsTab(sheets, event);
+
+    const invitations = await prisma.eventInvitation.findMany({
+      where: { eventId: event.id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const total = invitations.length;
+    const sentCount = invitations.filter((i) => i.sentAt).length;
+    const registeredCount = invitations.filter((i) => i.registeredAt).length;
+    const requestedCount = invitations.filter((i) => i.source === 'SELF_REQUESTED').length;
+    const attendingNotRegistered = invitations.filter((i) => !i.userId && i.rsvpStatus === 'ATTENDING' && !i.registeredAt).length;
+
+    const summary = [
+      `Total: ${total}`,
+      `Sent: ${sentCount}`,
+      `Registered: ${registeredCount} (${pct(registeredCount, total)})`,
+      `Requested: ${requestedCount}`,
+      `Attending but Not Registered: ${attendingNotRegistered}`,
+      `Last updated: ${timestamp()}`,
+    ].join('   |   ');
+
+    const rsvpLabels = { ATTENDING: 'Attending', NOT_ATTENDING: 'Not Attending', PENDING: 'No response' };
+    const header = ['Name', 'Email', 'Chapter', 'School', 'Company', 'Type', 'Source', 'Delivery Status', 'Sent At', 'Opened At', 'Clicked At', 'RSVP', 'Registered At'];
+    const rows = invitations.map((i) => [
+      i.fullName,
+      i.email,
+      i.chapter || '-',
+      i.school || '-',
+      i.company || '-',
+      i.userId ? 'Member' : 'Guest',
+      i.source === 'SELF_REQUESTED' ? 'Requested' : 'Admin-Sent',
+      i.status,
+      i.sentAt ? new Date(i.sentAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' }) : '-',
+      i.openedAt ? new Date(i.openedAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' }) : '-',
+      i.clickedAt ? new Date(i.clickedAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' }) : '-',
+      i.userId ? '-' : (rsvpLabels[i.rsvpStatus] || i.rsvpStatus),
+      i.registeredAt ? new Date(i.registeredAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' }) : '-',
+    ]);
+
+    await writeTab(sheets, sheetId, title, [[summary], [], header, ...rows], header.length);
+  } catch (err) {
+    console.error('sheetsSync: failed to sync invitations tab for event', eventId, err.message);
+  }
+}
+
 async function syncEventRegistrations(eventId) {
   if (!isConfigured()) return;
   try {
@@ -270,9 +428,17 @@ async function syncEventRegistrations(eventId) {
       `Last updated: ${timestamp()}`,
     ].filter(Boolean).join('   |   ');
 
-    const header = ['Name', 'Email', 'Phone', 'School', 'Status', 'Payment Status', 'Amount', 'Registered At'];
+    // "Amount Paid" is the actual charge on that registrant's own Payment row,
+    // not a static event.feeCentavos lookup — since the payer now covers
+    // PayMongo's surcharge on top of the fee, the real amount charged can
+    // differ registrant-to-registrant (e.g. if the surcharge rate changed
+    // between two people registering). "Fee Deducted"/"Net Received" mirror
+    // the admin Payments report, sourced from PayMongo's own reported fee
+    // once each payment actually settles (0/blank before then).
+    const header = ['Name', 'Email', 'Phone', 'School', 'Status', 'Payment Status', 'Amount Paid', 'Fee Deducted', 'Net Received', 'Registered At'];
     const rows = registrations.map((r) => {
       const p = latestPaymentByUser.get(r.userId);
+      const isPaid = p && p.status === 'PAID';
       return [
         r.fullName,
         r.email,
@@ -280,7 +446,9 @@ async function syncEventRegistrations(eventId) {
         r.school || '-',
         r.status,
         hasFee ? (p ? p.status : 'N/A') : 'FREE',
-        hasFee ? `PHP ${(event.feeCentavos / 100).toFixed(2)}` : '-',
+        hasFee && p ? `PHP ${(p.amount / 100).toFixed(2)}` : (hasFee ? '-' : 'FREE'),
+        hasFee && isPaid ? `PHP ${(p.gatewayFeeCentavos / 100).toFixed(2)}` : '-',
+        hasFee && isPaid ? `PHP ${((p.amount - p.gatewayFeeCentavos) / 100).toFixed(2)}` : '-',
         new Date(r.createdAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' }),
       ];
     });
@@ -291,4 +459,4 @@ async function syncEventRegistrations(eventId) {
   }
 }
 
-module.exports = { syncMembership, syncEventRegistrations, deleteEventTab, isConfigured };
+module.exports = { syncMembership, syncEventRegistrations, syncInvitations, fetchContactsToInvite, deleteEventTab, deleteEventInvitationsTab, isConfigured };

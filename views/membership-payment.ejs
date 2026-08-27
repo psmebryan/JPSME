@@ -1,5 +1,7 @@
 <%
 const feePhp = (feeCentavos / 100).toFixed(2);
+const surchargePhp = ((locals.surchargeCentavos || 0) / 100).toFixed(2);
+const totalPhp = ((feeCentavos + (locals.surchargeCentavos || 0)) / 100).toFixed(2);
 const payButtonStatuses = ['FAILED', 'EXPIRED', 'CANCELLED', 'REFUNDED'];
 const canPay = !payment || payment.status === 'PENDING' || payButtonStatuses.includes(payment.status);
 %>
@@ -31,7 +33,10 @@ const canPay = !payment || payment.status === 'PENDING' || payButtonStatuses.inc
       <% } else { %>
         <div>
           <p class="text-sm text-gray-500 mb-1">Registration Fee</p>
-          <p class="text-3xl font-extrabold text-gray-900">&#8369;<%= feePhp %></p>
+          <p class="text-3xl font-extrabold text-gray-900">&#8369;<%= totalPhp %></p>
+          <% if (locals.surchargeCentavos > 0) { %>
+            <p class="text-xs text-gray-400 mt-1">&#8369;<%= feePhp %> membership fee + &#8369;<%= surchargePhp %> payment processing fee</p>
+          <% } %>
         </div>
 
         <% if (payment && payButtonStatuses.includes(payment.status)) { %>

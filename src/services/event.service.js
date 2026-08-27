@@ -138,6 +138,7 @@ async function deleteEvent(id) {
   });
   await prisma.event.delete({ where: { id: Number(id) } });
   sheetsSyncService.deleteEventTab(id);
+  sheetsSyncService.deleteEventInvitationsTab(id);
 }
 
 /**

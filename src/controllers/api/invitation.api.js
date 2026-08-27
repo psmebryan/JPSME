@@ -2,6 +2,7 @@ const { validationResult } = require('express-validator');
 const asyncHandler = require('../../utils/asyncHandler');
 const { success, error } = require('../../utils/apiResponse');
 const invitationService = require('../../services/invitation.service');
+const sheetsSyncService = require('../../services/sheetsSync.service');
 
 const listInvitations = asyncHandler(async (req, res) => {
   const invitations = await invitationService.listInvitationsForEvent(req.params.id);
@@ -20,6 +21,32 @@ const createInvitations = asyncHandler(async (req, res) => {
 const resendInvitation = asyncHandler(async (req, res) => {
   const invitation = await invitationService.resendInvitation(req.params.invitationId);
   return success(res, { invitation }, 'Invitation resent');
+});
+
+const exportInvitationsExcel = asyncHandler(async (req, res) => {
+  const buffer = await invitationService.exportInvitationsExcel(req.params.id);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="event-${req.params.id}-invitations.xlsx"`);
+  res.send(buffer);
+});
+
+const exportAllInvitationsExcel = asyncHandler(async (req, res) => {
+  const buffer = await invitationService.exportInvitationsExcel(null);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="all-invitations.xlsx"');
+  res.send(buffer);
+});
+
+// Pulls rows from the admin-maintained "Contacts to Invite" tab in the live
+// Google Sheet (see sheetsSync.service.js's fetchContactsToInvite) so a bulk
+// list of non-member contacts can be added to the pending invite list in one
+// click instead of typed in one at a time via External Contact.
+const fetchContactsToInvite = asyncHandler(async (req, res) => {
+  if (!sheetsSyncService.isConfigured()) {
+    return error(res, 'Google Sheets is not configured for this app yet.', 503);
+  }
+  const contacts = await sheetsSyncService.fetchContactsToInvite();
+  return success(res, { contacts }, contacts.length ? `Fetched ${contacts.length} contact(s)` : 'The "Contacts to Invite" sheet is empty (or was just created — add rows there and try again).');
 });
 
 // Public, unauthenticated — a visitor who isn't a member (and so has nothing
@@ -48,4 +75,4 @@ const submitRsvp = asyncHandler(async (req, res) => {
   return success(res, { invitation }, 'RSVP recorded');
 });
 
-module.exports = { listInvitations, createInvitations, resendInvitation, requestInvitation, submitRsvp };
+module.exports = { listInvitations, createInvitations, resendInvitation, requestInvitation, submitRsvp, exportInvitationsExcel, exportAllInvitationsExcel, fetchContactsToInvite };

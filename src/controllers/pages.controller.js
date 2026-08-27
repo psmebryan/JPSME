@@ -107,7 +107,11 @@ const eventDetailPage = asyncHandler(async (req, res) => {
     isRegistered = registrationStatus === 'REGISTERED';
   }
 
-  res.render('event-details', { title: event.title, event, isRegistered, registrationStatus });
+  // Previewed before "Register & Pay" so the total on PayMongo's own checkout
+  // page (fee + this same surcharge, itemized) isn't a surprise.
+  const surchargeCentavos = event.feeCentavos > 0 ? await paymentService.calculateGatewaySurcharge(event.feeCentavos) : 0;
+
+  res.render('event-details', { title: event.title, event, isRegistered, registrationStatus, surchargeCentavos });
 });
 
 // PayMongo's redirect-return pages aside, this is the one other place a
@@ -138,7 +142,9 @@ const eventInvitePage = asyncHandler(async (req, res) => {
       : invitation.email.toLowerCase() !== req.session.user.email.toLowerCase();
   }
 
-  res.render('event-details', { title: event.title, event, isRegistered, registrationStatus, invitation, invitationMismatch });
+  const surchargeCentavos = event.feeCentavos > 0 ? await paymentService.calculateGatewaySurcharge(event.feeCentavos) : 0;
+
+  res.render('event-details', { title: event.title, event, isRegistered, registrationStatus, invitation, invitationMismatch, surchargeCentavos });
 });
 
 // One-click RSVP link embedded directly in the invitation email's
@@ -199,7 +205,10 @@ const membershipPaymentPage = asyncHandler(async (req, res) => {
     paymentService.getLatestMembershipPayment(req.session.user.id),
     settingsService.getMembershipFeeCentavos(),
   ]);
-  res.render('membership-payment', { title: 'Membership Payment', payment, feeCentavos });
+  // Shown before they click "Continue to Payment" so the total on PayMongo's
+  // own checkout page (fee + this same surcharge, itemized) isn't a surprise.
+  const surchargeCentavos = await paymentService.calculateGatewaySurcharge(feeCentavos);
+  res.render('membership-payment', { title: 'Membership Payment', payment, feeCentavos, surchargeCentavos });
 });
 
 const membershipPaymentReturnPage = asyncHandler(async (req, res) => {
@@ -288,12 +297,13 @@ const adminEventsPage = asyncHandler(async (req, res) => {
 });
 
 const adminSettingsPage = asyncHandler(async (req, res) => {
-  const [logoUrl, membershipFeeCentavos, paymentsEnabled] = await Promise.all([
+  const [logoUrl, membershipFeeCentavos, paymentsEnabled, gatewaySurchargePercent] = await Promise.all([
     settingsService.getLogoUrl(),
     settingsService.getMembershipFeeCentavos(),
     settingsService.getPaymentsEnabled(),
+    settingsService.getGatewaySurchargePercent(),
   ]);
-  renderAdmin(req, res, 'admin/settings', { title: 'Site Settings', logoUrl, membershipFeeCentavos, paymentsEnabled });
+  renderAdmin(req, res, 'admin/settings', { title: 'Site Settings', logoUrl, membershipFeeCentavos, paymentsEnabled, gatewaySurchargePercent });
 });
 
 const adminSponsorsPage = asyncHandler(async (req, res) => {

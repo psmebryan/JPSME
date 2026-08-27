@@ -119,6 +119,7 @@ router.get('/:id/registrations', apiAdmin, registrationApi.eventRegistrations);
 router.get('/:id/invitations', apiAdmin, invitationApi.listInvitations);
 router.post('/:id/invitations', apiAdmin, verifyCsrfToken, invitationLimiter, invitationApi.createInvitations);
 router.post('/:id/invitations/:invitationId/resend', apiAdmin, verifyCsrfToken, invitationLimiter, invitationApi.resendInvitation);
+router.get('/:id/invitations/export', apiAdmin, invitationApi.exportInvitationsExcel);
 
 // Public self-service request — anyone viewing the event page (member or not)
 // can ask to be invited; still goes through the session-backed CSRF check

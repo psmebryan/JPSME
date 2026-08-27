@@ -55,6 +55,16 @@ const registeredCount = invitationsList.filter((i) => i.registeredAt).length;
 const registeredPct = invitationsList.length ? Math.round((registeredCount / invitationsList.length) * 100) : 0;
 const requestedCount = invitationsList.filter((i) => i.source === 'SELF_REQUESTED').length;
 const attendingGuestCount = invitationsList.filter((i) => !i.userId && i.rsvpStatus === 'ATTENDING').length;
+// Invited vs Requested vs Registered comparison — same rows as the report
+// table below, just cross-tabbed by source so it's obvious which channel
+// actually converts to a registration, not just who got contacted.
+function sourceBreakdownRow(rows) {
+  const registered = rows.filter((i) => i.registeredAt).length;
+  const pct = rows.length ? Math.round((registered / rows.length) * 100) : 0;
+  return { total: rows.length, registered, pct };
+}
+const adminSentBreakdown = sourceBreakdownRow(invitationsList.filter((i) => i.source !== 'SELF_REQUESTED'));
+const requestedBreakdown = sourceBreakdownRow(invitationsList.filter((i) => i.source === 'SELF_REQUESTED'));
 %>
 <div class="max-w-5xl mx-auto">
   <div class="mb-6">
@@ -80,11 +90,16 @@ const attendingGuestCount = invitationsList.filter((i) => !i.userId && i.rsvpSta
     </div>
 
     <div class="admin-card p-5">
-      <h2 class="font-semibold text-slate-900 mb-4">All Invitations</h2>
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-semibold text-slate-900">All Invitations</h2>
+        <% if (invitations && invitations.length > 0) { %>
+          <a href="/api/admin/invitations/export" class="text-xs text-indigo-600 hover:underline">Export to Excel &#8595;</a>
+        <% } %>
+      </div>
       <% if (!invitations || invitations.length === 0) { %>
         <p class="empty-state">No invitations sent yet.</p>
       <% } else { %>
-        <div id="all-invitations-filters" class="grid gap-2 sm:grid-cols-5 mb-3">
+        <div id="all-invitations-filters" class="grid gap-2 sm:grid-cols-6 mb-3">
           <select id="all-inv-event-filter" class="form-input">
             <option value="">All Events</option>
             <% invEvents.forEach(([id, title]) => { %><option value="<%= id %>"><%= title %></option><% }) %>
@@ -96,6 +111,11 @@ const attendingGuestCount = invitationsList.filter((i) => !i.userId && i.rsvpSta
           <select id="all-inv-school-filter" class="form-input">
             <option value="">All Schools</option>
             <% invSchools.forEach(s => { %><option value="<%= s %>"><%= s %></option><% }) %>
+          </select>
+          <select id="all-inv-type-filter" class="form-input">
+            <option value="">Members &amp; Guests</option>
+            <option value="Member">Members Only</option>
+            <option value="Guest">Guests Only</option>
           </select>
           <select id="all-inv-status-filter" class="form-input">
             <option value="">All Statuses</option>
@@ -137,6 +157,7 @@ const attendingGuestCount = invitationsList.filter((i) => !i.userId && i.rsvpSta
                     data-event-id="<%= inv.event.id %>"
                     data-chapter="<%= inv.chapter || '' %>"
                     data-school="<%= inv.school || '' %>"
+                    data-type="<%= inv.userId ? 'Member' : 'Guest' %>"
                     data-status="<%= inv.status %>"
                     data-source="<%= inv.source %>"
                     data-sort-name="<%= inv.fullName.toLowerCase() %>"
@@ -246,7 +267,14 @@ const attendingGuestCount = invitationsList.filter((i) => !i.userId && i.rsvpSta
           <input id="invite-ext-school" placeholder="School (optional)" class="form-input" />
           <input id="invite-ext-company" placeholder="Company (optional)" class="form-input" />
         </div>
-        <button type="button" id="invite-add-external" class="btn-secondary text-sm mt-2">Add to List</button>
+        <div class="flex items-center gap-3 mt-2">
+          <button type="button" id="invite-add-external" class="btn-secondary text-sm">Add to List</button>
+          <button type="button" id="invite-fetch-sheet" class="text-sm text-indigo-600 hover:underline">Fetch from Google Sheet &#8595;</button>
+        </div>
+        <p class="mt-1 text-xs text-slate-400">
+          Pulls every row from the "Contacts to Invite" tab in the live Google Sheet straight into the list below —
+          bulk-add non-members without typing each one in here.
+        </p>
       </div>
 
       <div id="invite-pending-list" class="mb-4"></div>
@@ -257,7 +285,12 @@ const attendingGuestCount = invitationsList.filter((i) => !i.userId && i.rsvpSta
     <div class="admin-card p-5">
       <div class="flex items-center justify-between mb-4">
         <h2 class="font-semibold text-slate-900">Invitation Report</h2>
-        <a href="/admin/events/<%= selectedEvent.id %>/registrations" class="text-xs text-indigo-600 hover:underline">View registrants &rarr;</a>
+        <div class="flex items-center gap-4 text-xs">
+          <% if (invitations && invitations.length > 0) { %>
+            <a href="/api/events/<%= selectedEvent.id %>/invitations/export" class="text-indigo-600 hover:underline">Export to Excel &#8595;</a>
+          <% } %>
+          <a href="/admin/events/<%= selectedEvent.id %>/registrations" class="text-indigo-600 hover:underline">View registrants &rarr;</a>
+        </div>
       </div>
       <% if (!invitations || invitations.length === 0) { %>
         <p class="empty-state">No invitations sent yet.</p>
@@ -268,7 +301,34 @@ const attendingGuestCount = invitationsList.filter((i) => !i.userId && i.rsvpSta
           <strong class="text-slate-900"><%= attendingGuestCount %></strong> guests attending &middot;
           <strong class="text-slate-900"><%= requestedCount %></strong> self-requested
         </p>
-        <div class="grid gap-2 sm:grid-cols-4 mb-3">
+
+        <div class="mb-4 overflow-hidden rounded-lg border border-slate-200">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50">
+              <tr>
+                <th class="p-2 text-left font-medium text-slate-500">Source</th>
+                <th class="p-2 text-right font-medium text-slate-500">Sent To</th>
+                <th class="p-2 text-right font-medium text-slate-500">Registered</th>
+                <th class="p-2 text-right font-medium text-slate-500">Conversion</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-t border-slate-100">
+                <td class="p-2">Admin-Sent (picked from members or added manually)</td>
+                <td class="p-2 text-right"><%= adminSentBreakdown.total %></td>
+                <td class="p-2 text-right"><%= adminSentBreakdown.registered %></td>
+                <td class="p-2 text-right font-medium"><%= adminSentBreakdown.pct %>%</td>
+              </tr>
+              <tr class="border-t border-slate-100">
+                <td class="p-2">Self-Requested (public form on the event page)</td>
+                <td class="p-2 text-right"><%= requestedBreakdown.total %></td>
+                <td class="p-2 text-right"><%= requestedBreakdown.registered %></td>
+                <td class="p-2 text-right font-medium"><%= requestedBreakdown.pct %>%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="grid gap-2 sm:grid-cols-5 mb-3">
           <select id="event-inv-chapter-filter" class="form-input">
             <option value="">All Chapters</option>
             <% invChapters.forEach(c => { %><option value="<%= c %>"><%= c %></option><% }) %>
@@ -276,6 +336,11 @@ const attendingGuestCount = invitationsList.filter((i) => !i.userId && i.rsvpSta
           <select id="event-inv-school-filter" class="form-input">
             <option value="">All Schools</option>
             <% invSchools.forEach(s => { %><option value="<%= s %>"><%= s %></option><% }) %>
+          </select>
+          <select id="event-inv-type-filter" class="form-input">
+            <option value="">Members &amp; Guests</option>
+            <option value="Member">Members Only</option>
+            <option value="Guest">Guests Only</option>
           </select>
           <select id="event-inv-status-filter" class="form-input">
             <option value="">All Statuses</option>
@@ -316,6 +381,7 @@ const attendingGuestCount = invitationsList.filter((i) => !i.userId && i.rsvpSta
                 <tr class="admin-tr" data-invitation-row="<%= inv.id %>"
                     data-chapter="<%= inv.chapter || '' %>"
                     data-school="<%= inv.school || '' %>"
+                    data-type="<%= inv.userId ? 'Member' : 'Guest' %>"
                     data-status="<%= inv.status %>"
                     data-source="<%= inv.source %>"
                     data-sort-name="<%= inv.fullName.toLowerCase() %>"

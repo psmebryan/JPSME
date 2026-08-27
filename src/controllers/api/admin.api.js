@@ -113,6 +113,15 @@ const updateMembershipFee = asyncHandler(async (req, res) => {
   return success(res, { feeCentavos: centavos }, 'Membership fee updated');
 });
 
+const updateGatewaySurchargePercent = asyncHandler(async (req, res) => {
+  const percent = Number(req.body.percent);
+  if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+    return error(res, 'Enter a valid percentage', 422);
+  }
+  await settingsService.setGatewaySurchargePercent(percent);
+  return success(res, { percent }, 'Payment processing surcharge updated');
+});
+
 const getPaymentsEnabled = asyncHandler(async (req, res) => {
   const enabled = await settingsService.getPaymentsEnabled();
   return success(res, { enabled });
@@ -170,4 +179,4 @@ const removeChapterAdmin = asyncHandler(async (req, res) => {
   return success(res, { result }, 'Chapter admin removed');
 });
 
-module.exports = { listUsers, listChapterMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, getPaymentsEnabled, updatePaymentsEnabled, listSponsors, createSponsor, deleteSponsor, listChapterAdmins, assignChapterAdmin, removeChapterAdmin };
+module.exports = { listUsers, listChapterMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, listSponsors, createSponsor, deleteSponsor, listChapterAdmins, assignChapterAdmin, removeChapterAdmin };

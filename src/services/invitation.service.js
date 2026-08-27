@@ -1,7 +1,9 @@
 const crypto = require('crypto');
+const ExcelJS = require('exceljs');
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
 const mailService = require('./mail.service');
+const sheetsSyncService = require('./sheetsSync.service');
 
 function generateToken() {
   return crypto.randomBytes(24).toString('hex');
@@ -74,6 +76,7 @@ async function createInvitations(eventId, invitees) {
     results.push(sent);
   }
 
+  sheetsSyncService.syncInvitations(event.id);
   return results;
 }
 
@@ -84,7 +87,9 @@ async function resendInvitation(invitationId) {
   });
   if (!invitation) throw new AppError('Invitation not found', 404);
   if (invitation.registeredAt) throw new AppError('This person has already registered — nothing to resend.', 409);
-  return sendInvitation(invitation, invitation.event);
+  const result = await sendInvitation(invitation, invitation.event);
+  sheetsSyncService.syncInvitations(invitation.eventId);
+  return result;
 }
 
 async function listInvitationsForEvent(eventId) {
@@ -103,6 +108,113 @@ async function listAllInvitations() {
     orderBy: { createdAt: 'desc' },
     include: { event: { select: { id: true, title: true } } },
   });
+}
+
+function fmtDateTime(date) {
+  return date ? new Date(date).toLocaleString() : '';
+}
+
+// eventId: a specific event's invitations, or null/undefined for the
+// cross-event "All Invitations" export. Two sheets: a Summary the admin asked
+// for directly (how many invited/sent, who registered, who RSVP'd Attending
+// but never actually registered, source breakdown) plus a full Details sheet
+// so any of those groups can be isolated by filtering in Excel itself rather
+// than needing a separate tab per question.
+async function exportInvitationsExcel(eventId) {
+  const invitations = eventId
+    ? await listInvitationsForEvent(eventId)
+    : await listAllInvitations();
+
+  const event = eventId ? await prisma.event.findUnique({ where: { id: Number(eventId) } }) : null;
+  if (eventId && !event) throw new AppError('Event not found', 404);
+
+  const registered = invitations.filter((i) => i.registeredAt);
+  // Guest-only signal (see recordRsvp) — a member invitee's real "coming or
+  // not" answer is registeredAt, not rsvpStatus.
+  const rsvpAttendingNotRegistered = invitations.filter((i) => !i.userId && i.rsvpStatus === 'ATTENDING' && !i.registeredAt);
+  const adminSent = invitations.filter((i) => i.source !== 'SELF_REQUESTED');
+  const selfRequested = invitations.filter((i) => i.source === 'SELF_REQUESTED');
+  const sent = invitations.filter((i) => i.sentAt);
+  const bounced = invitations.filter((i) => i.status === 'BOUNCED' || i.status === 'FAILED');
+
+  const workbook = new ExcelJS.Workbook();
+
+  const summary = workbook.addWorksheet('Summary');
+  summary.columns = [
+    { header: 'Metric', key: 'metric', width: 45 },
+    { header: 'Count', key: 'count', width: 14 },
+  ];
+  summary.getRow(1).font = { bold: true };
+  const summaryRows = [
+    { metric: eventId ? `Event: ${event.title}` : 'All Events', count: '' },
+    { metric: 'Generated', count: fmtDateTime(new Date()) },
+    { metric: '', count: '' },
+    { metric: 'Total Invited', count: invitations.length },
+    { metric: 'Emails Sent', count: sent.length },
+    { metric: 'Bounced / Failed to Deliver', count: bounced.length },
+    { metric: 'Registered', count: registered.length },
+    { metric: 'Responded "Attending" but Not Yet Registered', count: rsvpAttendingNotRegistered.length },
+    { metric: '', count: '' },
+    { metric: 'Admin-Sent — Total', count: adminSent.length },
+    { metric: 'Admin-Sent — Registered', count: adminSent.filter((i) => i.registeredAt).length },
+    { metric: 'Self-Requested — Total', count: selfRequested.length },
+    { metric: 'Self-Requested — Registered', count: selfRequested.filter((i) => i.registeredAt).length },
+  ];
+  summaryRows.forEach((row) => summary.addRow(row));
+  summary.getColumn('count').alignment = { horizontal: 'right' };
+
+  const details = workbook.addWorksheet('All Invitations');
+  const detailColumns = [
+    { header: 'Name', key: 'fullName', width: 26 },
+    { header: 'Email', key: 'email', width: 30 },
+  ];
+  if (!eventId) detailColumns.push({ header: 'Event', key: 'event', width: 26 });
+  detailColumns.push(
+    { header: 'Chapter', key: 'chapter', width: 18 },
+    { header: 'School', key: 'school', width: 22 },
+    { header: 'Company', key: 'company', width: 22 },
+    { header: 'Type', key: 'type', width: 12 },
+    { header: 'Source', key: 'source', width: 16 },
+    { header: 'Delivery Status', key: 'status', width: 16 },
+    { header: 'Sent At', key: 'sentAt', width: 20 },
+    { header: 'Opened At', key: 'openedAt', width: 20 },
+    { header: 'Clicked At', key: 'clickedAt', width: 20 },
+    { header: 'RSVP (Guests)', key: 'rsvp', width: 16 },
+    { header: 'Registered At', key: 'registeredAt', width: 20 }
+  );
+  details.columns = detailColumns;
+  details.getRow(1).font = { bold: true };
+
+  const rsvpLabels = { ATTENDING: 'Attending', NOT_ATTENDING: 'Not Attending', PENDING: 'No response' };
+
+  invitations.forEach((inv) => {
+    details.addRow({
+      fullName: inv.fullName,
+      email: inv.email,
+      event: inv.event ? inv.event.title : undefined,
+      chapter: inv.chapter || '',
+      school: inv.school || '',
+      company: inv.company || '',
+      type: inv.userId ? 'Member' : 'Guest',
+      source: inv.source === 'SELF_REQUESTED' ? 'Requested' : 'Admin-Sent',
+      status: inv.status,
+      sentAt: fmtDateTime(inv.sentAt),
+      openedAt: fmtDateTime(inv.openedAt),
+      clickedAt: fmtDateTime(inv.clickedAt),
+      rsvp: inv.userId ? '' : (rsvpLabels[inv.rsvpStatus] || inv.rsvpStatus),
+      registeredAt: fmtDateTime(inv.registeredAt),
+    });
+  });
+
+  // Excel's own header-row filter dropdowns — every column (Type, Source,
+  // Status, Chapter, School, RSVP, etc.) becomes filterable/sortable right
+  // inside Excel, on top of whatever's already filtered here on the admin
+  // page. columnLetter covers up to Z, which comfortably fits this sheet's
+  // column count either way (13 per-event, 14 cross-event).
+  const columnLetter = (n) => String.fromCharCode('A'.charCodeAt(0) + n - 1);
+  details.autoFilter = { from: 'A1', to: `${columnLetter(detailColumns.length)}1` };
+
+  return workbook.xlsx.writeBuffer();
 }
 
 async function getInvitationByToken(token) {
@@ -141,10 +253,12 @@ async function recordRsvp(token, eventId, status) {
   if (invitation.userId) {
     throw new AppError('This invitation belongs to a member account — log in and register instead.', 409);
   }
-  return prisma.eventInvitation.update({
+  const updated = await prisma.eventInvitation.update({
     where: { id: invitation.id },
     data: { rsvpStatus: status, rsvpAt: new Date() },
   });
+  sheetsSyncService.syncInvitations(invitation.eventId);
+  return updated;
 }
 
 // Verifies the logged-in user is actually who this invitation was sent to
@@ -185,10 +299,11 @@ async function resolveInvitationForUser(token, eventId, user) {
 // means everywhere else in this app (confirmed, not just started).
 async function markRegistered(invitationId) {
   if (!invitationId) return;
-  await prisma.eventInvitation.update({
+  const updated = await prisma.eventInvitation.update({
     where: { id: Number(invitationId) },
     data: { registeredAt: new Date() },
-  }).catch(() => {}); // never let this block the registration it's tracking
+  }).catch(() => null); // never let this block the registration it's tracking
+  if (updated) sheetsSyncService.syncInvitations(updated.eventId);
 }
 
 // Brevo webhook → delivery-lifecycle status only (sent/delivered/bounced/
@@ -229,6 +344,7 @@ async function applyWebhookEvent({ tag, eventType, reason }) {
   if (normalized === 'opened' || normalized === 'firstopening' || normalized === 'uniqueopened') {
     if (!invitation.openedAt) {
       await prisma.eventInvitation.update({ where: { id: invitationId }, data: { openedAt: new Date() } });
+      sheetsSyncService.syncInvitations(invitation.eventId);
     }
     return { updated: true, invitationId, field: 'openedAt' };
   }
@@ -247,6 +363,7 @@ async function applyWebhookEvent({ tag, eventType, reason }) {
     where: { id: invitationId },
     data: { status: nextStatus, failureReason: reason ? String(reason).slice(0, 191) : invitation.failureReason },
   });
+  sheetsSyncService.syncInvitations(invitation.eventId);
   return { updated: true, invitationId, field: 'status', value: nextStatus };
 }
 
@@ -341,6 +458,7 @@ module.exports = {
   resendInvitation,
   listInvitationsForEvent,
   listAllInvitations,
+  exportInvitationsExcel,
   reconcileInvitation,
   findInvitationsNeedingReconciliation,
   getInvitationByToken,

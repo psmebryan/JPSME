@@ -20,8 +20,14 @@
   <% const registered = typeof isRegistered !== 'undefined' && isRegistered; %>
   <% const status = typeof registrationStatus !== 'undefined' ? registrationStatus : null; %>
   <% const hasFee = event.feeCentavos > 0; %>
+  <% const surchargeCentavos = locals.surchargeCentavos || 0; %>
   <% if (hasFee) { %>
-    <p class="text-lg font-semibold text-gray-900 mb-3">Registration Fee: &#8369;<%= (event.feeCentavos / 100).toFixed(2) %></p>
+    <p class="text-lg font-semibold text-gray-900 mb-3">
+      Registration Fee: &#8369;<%= ((event.feeCentavos + surchargeCentavos) / 100).toFixed(2) %>
+      <% if (surchargeCentavos > 0) { %>
+        <span class="block text-xs font-normal text-gray-400 mt-0.5">&#8369;<%= (event.feeCentavos / 100).toFixed(2) %> event fee + &#8369;<%= (surchargeCentavos / 100).toFixed(2) %> payment processing fee</span>
+      <% } %>
+    </p>
   <% } %>
 
   <% if (isGuestInvite) { %>

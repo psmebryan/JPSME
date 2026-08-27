@@ -14,6 +14,20 @@ const DEFAULT_MEMBERSHIP_FEE_CENTAVOS = 50000; // placeholder ₱500.00 — set 
 // checkout must still be able to confirm/fail via its webhook regardless.
 const PAYMENTS_ENABLED_KEY = 'payments_enabled';
 
+// The percentage PayMongo deducts from every GCash charge before crediting
+// JPSME (currently 2.23% + 12% VAT on that fee ≈ 2.4976%, per
+// paymongo.com/pricing — re-check there if this ever needs updating, PayMongo
+// can change published rates without notice). Used to gross up what the payer
+// is charged so JPSME still nets the full intended fee — see
+// payment.service.js's calculateGatewaySurcharge. Stored as a plain decimal
+// percent string (e.g. "2.4976"), not centavos — this multiplies an amount,
+// it isn't one. Note: this is an upfront estimate for what to charge, not the
+// real deducted amount — the actual fee PayMongo reports afterward (recorded
+// separately as Payment.gatewayFeeCentavos) can differ by a centavo or two
+// due to their own internal rounding, which is why that field exists too.
+const GATEWAY_SURCHARGE_PERCENT_KEY = 'gateway_surcharge_percent';
+const DEFAULT_GATEWAY_SURCHARGE_PERCENT = 2.4976;
+
 async function getSetting(key, fallback = null) {
   const setting = await prisma.siteSetting.findUnique({ where: { key } });
   return setting ? setting.value : fallback;
@@ -54,6 +68,16 @@ async function setPaymentsEnabled(enabled) {
   return setSetting(PAYMENTS_ENABLED_KEY, enabled ? 'true' : 'false');
 }
 
+async function getGatewaySurchargePercent() {
+  const value = await getSetting(GATEWAY_SURCHARGE_PERCENT_KEY, String(DEFAULT_GATEWAY_SURCHARGE_PERCENT));
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_GATEWAY_SURCHARGE_PERCENT;
+}
+
+async function setGatewaySurchargePercent(percent) {
+  return setSetting(GATEWAY_SURCHARGE_PERCENT_KEY, String(percent));
+}
+
 module.exports = {
   getSetting,
   setSetting,
@@ -63,7 +87,10 @@ module.exports = {
   setMembershipFeeCentavos,
   getPaymentsEnabled,
   setPaymentsEnabled,
+  getGatewaySurchargePercent,
+  setGatewaySurchargePercent,
   LOGO_KEY,
   MEMBERSHIP_FEE_KEY,
   PAYMENTS_ENABLED_KEY,
+  GATEWAY_SURCHARGE_PERCENT_KEY,
 };
