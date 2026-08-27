@@ -1,7 +1,9 @@
+const path = require('path');
 const { validationResult } = require('express-validator');
 const asyncHandler = require('../../utils/asyncHandler');
 const { success, error } = require('../../utils/apiResponse');
 const articleService = require('../../services/article.service');
+const storageService = require('../../services/storage.service');
 
 function checkValidation(req, res) {
   const result = validationResult(req);
@@ -31,7 +33,11 @@ const createArticle = asyncHandler(async (req, res) => {
   if (!checkValidation(req, res)) return;
   const payload = { ...req.body };
   if (req.file) {
-    payload.imageUrl = `/uploads/articles/${req.file.filename}`;
+    payload.imageUrl = await storageService.saveUpload(req.file.buffer, {
+      folder: 'articles',
+      prefix: 'articles',
+      extension: path.extname(req.file.originalname).toLowerCase(),
+    });
   }
   const article = await articleService.createArticle(payload);
   return success(res, { article }, 'Article created', 201);
@@ -41,7 +47,11 @@ const updateArticle = asyncHandler(async (req, res) => {
   if (!checkValidation(req, res)) return;
   const payload = { ...req.body };
   if (req.file) {
-    payload.imageUrl = `/uploads/articles/${req.file.filename}`;
+    payload.imageUrl = await storageService.saveUpload(req.file.buffer, {
+      folder: 'articles',
+      prefix: 'articles',
+      extension: path.extname(req.file.originalname).toLowerCase(),
+    });
   }
   const article = await articleService.updateArticle(req.params.id, payload);
   return success(res, { article }, 'Article updated');

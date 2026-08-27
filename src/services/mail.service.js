@@ -2,18 +2,19 @@ const path = require('path');
 const config = require('../config');
 const { transporter, MAIL_FROM } = require('../config/mailer');
 const emailTemplateService = require('./emailTemplate.service');
+const storageService = require('./storage.service');
 const { substituteTokens, formatDate, fullName } = require('../utils/templateTokens');
-
-const PROJECT_ROOT = path.join(__dirname, '..', '..');
-const PUBLIC_UPLOADS_ROOT = path.join(PROJECT_ROOT, 'public', 'uploads');
 
 function getAppUrl() {
   return config.appUrl;
 }
 
+// nodemailer's attachments contract (both the Brevo shim and the real SMTP
+// transport in config/mailer.js) needs a real local path — one of the few
+// remaining spots that can't go through storageService's normal
+// read/readStream, see its getAbsolutePath doc comment.
 function attachmentToAbsolutePath(publicPath) {
-  const relative = publicPath.replace(/^\//, '').replace(/^uploads\//, '');
-  return path.join(PUBLIC_UPLOADS_ROOT, relative);
+  return storageService.getAbsolutePath(publicPath);
 }
 
 // Templates are authored as plain text with {{token}} placeholders (same

@@ -1,6 +1,8 @@
+const path = require('path');
 const asyncHandler = require('../../utils/asyncHandler');
 const { success, error } = require('../../utils/apiResponse');
 const broadcastService = require('../../services/broadcastEmail.service');
+const storageService = require('../../services/storage.service');
 
 function parseAudience(raw) {
   try {
@@ -36,7 +38,13 @@ const createBroadcast = asyncHandler(async (req, res) => {
   if (!subject || !String(subject).trim()) return error(res, 'Subject is required', 422);
   if (!bodyHtml || !String(bodyHtml).trim()) return error(res, 'Body is required', 422);
 
-  const attachmentPath = req.file ? `/uploads/email-attachments/${req.file.filename}` : null;
+  const attachmentPath = req.file
+    ? await storageService.saveUpload(req.file.buffer, {
+        folder: 'email-attachments',
+        prefix: 'emailattach',
+        extension: path.extname(req.file.originalname).toLowerCase(),
+      })
+    : null;
 
   const broadcast = await broadcastService.createBroadcast({
     subject: String(subject).trim(),

@@ -1,16 +1,9 @@
-const fs = require('fs');
-const fsp = require('fs').promises;
-const path = require('path');
-const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
 const ExcelJS = require('exceljs');
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
+const storageService = require('./storage.service');
 const { substituteTokens, formatDate, fullName } = require('../utils/templateTokens');
-
-const PROJECT_ROOT = path.join(__dirname, '..', '..');
-const PUBLIC_UPLOADS_ROOT = path.join(PROJECT_ROOT, 'public', 'uploads');
-const CERTIFICATES_STORAGE_ROOT = path.join(PROJECT_ROOT, 'storage', 'certificates', 'events');
 
 const DEFAULT_MEMBERSHIP_TITLE = 'Certificate of Membership';
 const DEFAULT_MEMBERSHIP_BODY =
@@ -19,27 +12,28 @@ const DEFAULT_MEMBERSHIP_BODY =
 const DEFAULT_EVENT_TITLE = 'Certificate of Participation';
 const DEFAULT_EVENT_BODY = 'This certifies that {{fullName}} participated in {{eventTitle}} held on {{eventDate}}.';
 
-async function safeUnlink(absPath) {
-  if (!absPath) return;
-  try {
-    await fsp.unlink(absPath);
-  } catch (err) {
-    // File may already be gone — deletion is best-effort.
-  }
-}
-
-function backgroundToAbsolutePath(publicPath) {
-  const relative = publicPath.replace(/^\//, '').replace(/^uploads\//, '');
-  return path.join(PUBLIC_UPLOADS_ROOT, relative);
-}
-
 function drawFallbackBackground(doc, width, height) {
   doc.rect(0, 0, width, height).fill('#fdfaf3');
   doc.rect(24, 24, width - 48, height - 48).lineWidth(3).stroke('#c9a24b');
   doc.rect(34, 34, width - 68, height - 68).lineWidth(1).stroke('#c9a24b');
 }
 
-function renderCertificatePdf(template, fields) {
+async function renderCertificatePdf(template, fields) {
+  // Resolved up front (storageService is async) so the actual pdfkit
+  // rendering below — inherently event/stream-based — only ever deals with
+  // a plain Buffer, never a path. pdfkit's doc.image() accepts a Buffer
+  // directly, so this needs no on-disk temp file either way.
+  let backgroundBuffer = null;
+  if (template.backgroundImage) {
+    try {
+      if (await storageService.exists(template.backgroundImage)) {
+        backgroundBuffer = await storageService.read(template.backgroundImage);
+      }
+    } catch (err) {
+      backgroundBuffer = null;
+    }
+  }
+
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 0 });
     const chunks = [];
@@ -50,15 +44,12 @@ function renderCertificatePdf(template, fields) {
     const { width, height } = doc.page;
     let drewBackground = false;
 
-    if (template.backgroundImage) {
-      const imgPath = backgroundToAbsolutePath(template.backgroundImage);
-      if (fs.existsSync(imgPath)) {
-        try {
-          doc.image(imgPath, 0, 0, { width, height });
-          drewBackground = true;
-        } catch (err) {
-          drewBackground = false;
-        }
+    if (backgroundBuffer) {
+      try {
+        doc.image(backgroundBuffer, 0, 0, { width, height });
+        drewBackground = true;
+      } catch (err) {
+        drewBackground = false;
       }
     }
     if (!drewBackground) {
@@ -111,7 +102,7 @@ async function upsertMembershipTemplate({ title, bodyText, textColor }) {
 
 async function setMembershipTemplateBackground(publicPath) {
   const template = await getMembershipTemplate();
-  if (template.backgroundImage) await safeUnlink(backgroundToAbsolutePath(template.backgroundImage));
+  if (template.backgroundImage) await storageService.remove(template.backgroundImage);
   return prisma.certificateTemplate.update({ where: { id: template.id }, data: { backgroundImage: publicPath } });
 }
 
@@ -143,7 +134,7 @@ async function upsertEventTemplate(eventId, { title, bodyText, textColor }) {
 
 async function setEventTemplateBackground(eventId, publicPath) {
   const template = await getEventTemplate(eventId);
-  if (template.backgroundImage) await safeUnlink(backgroundToAbsolutePath(template.backgroundImage));
+  if (template.backgroundImage) await storageService.remove(template.backgroundImage);
   return prisma.certificateTemplate.update({ where: { id: template.id }, data: { backgroundImage: publicPath } });
 }
 
@@ -209,9 +200,6 @@ async function generateEventCertificatesBulk({ eventId, userIds, adminUserId, fo
   });
   const existingByUser = new Map(existing.map((c) => [c.userId, c]));
 
-  const outDir = path.join(CERTIFICATES_STORAGE_ROOT, String(eventId));
-  await fsp.mkdir(outDir, { recursive: true });
-
   const generated = [];
   const skipped = [];
 
@@ -240,21 +228,22 @@ async function generateEventCertificatesBulk({ eventId, userIds, adminUserId, fo
 
     // eslint-disable-next-line no-await-in-loop -- certificates are rendered sequentially to avoid spiking memory on large bulk runs
     const buffer = await renderCertificatePdf(template, fields);
-    const filename = `cert-${reg.userId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.pdf`;
-    const absPath = path.join(outDir, filename);
     // eslint-disable-next-line no-await-in-loop
-    await fsp.writeFile(absPath, buffer);
-    const relativePath = path.relative(PROJECT_ROOT, absPath);
+    const filePath = await storageService.saveGenerated(buffer, {
+      folder: `certificates/events/${eventId}`,
+      prefix: `cert-${reg.userId}`,
+      extension: '.pdf',
+    });
 
     if (existingCert) {
       // eslint-disable-next-line no-await-in-loop
-      await safeUnlink(path.join(PROJECT_ROOT, existingCert.filePath));
+      await storageService.remove(existingCert.filePath);
       // Regenerated content should be re-reviewed before members can download it again.
       // eslint-disable-next-line no-await-in-loop
       const updated = await prisma.eventCertificate.update({
         where: { id: existingCert.id },
         data: {
-          filePath: relativePath,
+          filePath,
           generatedAt: new Date(),
           generatedBy: Number(adminUserId),
           released: false,
@@ -269,7 +258,7 @@ async function generateEventCertificatesBulk({ eventId, userIds, adminUserId, fo
         data: {
           eventId: Number(eventId),
           userId: reg.userId,
-          filePath: relativePath,
+          filePath,
           generatedBy: Number(adminUserId),
         },
       });
@@ -398,9 +387,9 @@ async function getEventCertificateRecord(eventId, userId) {
   return record;
 }
 
-// Resolves a stored event certificate to a filesystem path + friendly download filename.
-// requireReleased gates the member's own self-download link; the main admin can
-// always fetch the file regardless of release status.
+// Resolves a stored event certificate to a storage key + friendly download
+// filename. requireReleased gates the member's own self-download link; the
+// main admin can always fetch the file regardless of release status.
 async function getEventCertificateDownload(eventId, userId, { requireReleased = false } = {}) {
   const record = await getEventCertificateRecord(eventId, userId);
   if (requireReleased && !record.released) {
@@ -410,10 +399,9 @@ async function getEventCertificateDownload(eventId, userId, { requireReleased = 
     prisma.event.findUnique({ where: { id: Number(eventId) } }),
     prisma.user.findUnique({ where: { id: Number(userId) } }),
   ]);
-  const absPath = path.join(PROJECT_ROOT, record.filePath);
   const slug = (value) => String(value || '').replace(/[^a-z0-9]+/gi, '-').replace(/(^-|-$)/g, '');
   const filename = `certificate-${slug(event && event.title)}-${slug(user && fullName(user))}.pdf`;
-  return { absPath, filename };
+  return { key: record.filePath, filename };
 }
 
 // Only returns events whose certificate has been released — a generated-but-not-yet-
@@ -428,12 +416,11 @@ async function getCertifiedEventIds(userId, eventIds) {
 }
 
 async function deleteEventCertificateAssets(eventId) {
-  const dir = path.join(CERTIFICATES_STORAGE_ROOT, String(eventId));
-  await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
+  await storageService.removeFolder(`storage/certificates/events/${eventId}`);
 
   const template = await prisma.certificateTemplate.findUnique({ where: { eventId: Number(eventId) } });
   if (template && template.backgroundImage) {
-    await safeUnlink(backgroundToAbsolutePath(template.backgroundImage));
+    await storageService.remove(template.backgroundImage);
   }
 }
 

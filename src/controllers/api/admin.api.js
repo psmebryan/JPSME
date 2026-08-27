@@ -1,9 +1,11 @@
+const path = require('path');
 const asyncHandler = require('../../utils/asyncHandler');
 const { success, error } = require('../../utils/apiResponse');
 const userService = require('../../services/user.service');
 const settingsService = require('../../services/settings.service');
 const sponsorService = require('../../services/sponsor.service');
 const paymentService = require('../../services/payment.service');
+const storageService = require('../../services/storage.service');
 
 // Enriches each user with their latest membership-payment status so the admin
 // can see who's paid before approving — one batched query, not N.
@@ -104,7 +106,11 @@ const deleteUser = asyncHandler(async (req, res) => {
 const uploadLogo = asyncHandler(async (req, res) => {
   if (!req.file) return error(res, 'No logo file uploaded', 400);
 
-  const publicPath = `/uploads/logo/${req.file.filename}`;
+  const publicPath = await storageService.saveUpload(req.file.buffer, {
+    folder: 'logo',
+    prefix: 'logo',
+    extension: path.extname(req.file.originalname).toLowerCase(),
+  });
   await settingsService.setLogoUrl(publicPath);
   return success(res, { logoUrl: publicPath }, 'Logo updated');
 });
@@ -161,9 +167,14 @@ const createSponsor = asyncHandler(async (req, res) => {
   if (!req.file) return error(res, 'A sponsor logo is required', 400);
   const name = (req.body.name || '').trim();
   if (!name) return error(res, 'Sponsor name is required', 422);
+  const logoUrl = await storageService.saveUpload(req.file.buffer, {
+    folder: 'sponsors',
+    prefix: 'sponsors',
+    extension: path.extname(req.file.originalname).toLowerCase(),
+  });
   const sponsor = await sponsorService.createSponsor({
     name,
-    logoUrl: `/uploads/sponsors/${req.file.filename}`,
+    logoUrl,
     websiteUrl: (req.body.websiteUrl || '').trim(),
   });
   return success(res, { sponsor }, 'Sponsor added', 201);

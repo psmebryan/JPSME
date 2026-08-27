@@ -1,8 +1,10 @@
+const path = require('path');
 const { validationResult } = require('express-validator');
 const asyncHandler = require('../../utils/asyncHandler');
 const { success, error } = require('../../utils/apiResponse');
 const certificateService = require('../../services/certificate.service');
 const jobService = require('../../services/job.service');
+const storageService = require('../../services/storage.service');
 
 function checkValidation(req, res) {
   const result = validationResult(req);
@@ -17,6 +19,24 @@ function sendPdfBuffer(res, buffer, filename) {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
   res.send(buffer);
+}
+
+// Replaces res.download(absPath, filename) — that API only ever works with a
+// real local filesystem path, which storageService deliberately doesn't
+// hand out to callers (an S3-backed driver has no such path). Streaming
+// through storageService.readStream instead keeps this endpoint driver-
+// agnostic; the promise wrapper lets asyncHandler forward a stream error
+// (e.g. the underlying file is missing) the same way it forwards any other
+// rejected promise, mirroring what res.download's error callback used to do.
+function streamDownload(res, key, filename, contentType = 'application/pdf') {
+  return new Promise((resolve, reject) => {
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    const stream = storageService.readStream(key);
+    stream.on('error', reject);
+    stream.on('end', resolve);
+    stream.pipe(res);
+  });
 }
 
 // --- Membership template (main admin only) ---
@@ -34,7 +54,11 @@ const updateMembershipTemplate = asyncHandler(async (req, res) => {
 
 const uploadMembershipBackground = asyncHandler(async (req, res) => {
   if (!req.file) return error(res, 'No background image uploaded', 400);
-  const publicPath = `/uploads/certificates/backgrounds/${req.file.filename}`;
+  const publicPath = await storageService.saveUpload(req.file.buffer, {
+    folder: 'certificates/backgrounds',
+    prefix: 'certbg',
+    extension: path.extname(req.file.originalname).toLowerCase(),
+  });
   const template = await certificateService.setMembershipTemplateBackground(publicPath);
   return success(res, { template }, 'Background image updated');
 });
@@ -60,7 +84,11 @@ const updateEventTemplate = asyncHandler(async (req, res) => {
 
 const uploadEventBackground = asyncHandler(async (req, res) => {
   if (!req.file) return error(res, 'No background image uploaded', 400);
-  const publicPath = `/uploads/certificates/backgrounds/${req.file.filename}`;
+  const publicPath = await storageService.saveUpload(req.file.buffer, {
+    folder: 'certificates/backgrounds',
+    prefix: 'certbg',
+    extension: path.extname(req.file.originalname).toLowerCase(),
+  });
   const template = await certificateService.setEventTemplateBackground(req.params.eventId, publicPath);
   return success(res, { template }, 'Background image updated');
 });
@@ -104,8 +132,8 @@ const exportEventCertificatesExcel = asyncHandler(async (req, res) => {
 
 const downloadEventCertificateAsAdmin = asyncHandler(async (req, res) => {
   // Main admin can always fetch the file regardless of release status.
-  const { absPath, filename } = await certificateService.getEventCertificateDownload(req.params.eventId, req.params.userId);
-  res.download(absPath, filename);
+  const { key, filename } = await certificateService.getEventCertificateDownload(req.params.eventId, req.params.userId);
+  await streamDownload(res, key, filename);
 });
 
 const setEventCertificateReleased = asyncHandler(async (req, res) => {
@@ -126,12 +154,12 @@ const downloadMembershipCertificate = asyncHandler(async (req, res) => {
 });
 
 const downloadMyEventCertificate = asyncHandler(async (req, res) => {
-  const { absPath, filename } = await certificateService.getEventCertificateDownload(
+  const { key, filename } = await certificateService.getEventCertificateDownload(
     req.params.eventId,
     req.session.user.id,
     { requireReleased: true }
   );
-  res.download(absPath, filename);
+  await streamDownload(res, key, filename);
 });
 
 module.exports = {
