@@ -7,6 +7,8 @@
     "start": "node src/cluster.js",
     "start:cluster": "node src/cluster.js",
     "dev": "node --watch src/server.js",
+    "worker": "node src/worker.js",
+    "worker:dev": "node --watch src/worker.js",
     "build:css": "tailwindcss -i ./src/styles/tailwind.css -o ./public/css/tailwind.css --minify",
     "watch:css": "tailwindcss -i ./src/styles/tailwind.css -o ./public/css/tailwind.css --watch",
     "prisma:generate": "prisma generate",

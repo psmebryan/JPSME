@@ -1,7 +1,7 @@
 const { Prisma } = require('@prisma/client');
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
-const mailService = require('./mail.service');
+const jobService = require('./job.service');
 const sheetsSyncService = require('./sheetsSync.service');
 const invitationService = require('./invitation.service');
 
@@ -92,7 +92,12 @@ async function registerForEvent(user, eventId, invitation = null) {
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
   );
 
-  mailService.sendEventRegistrationEmail(user, event);
+  // Durable and retryable via the job queue (src/worker.js), instead of the
+  // previous fire-and-forget mailService call — a transient Brevo failure no
+  // longer just silently drops the confirmation email.
+  jobService.enqueue('SEND_EVENT_REGISTRATION_EMAIL', { userId: user.id, eventId: event.id }).catch((err) => {
+    console.error('registerForEvent: failed to enqueue confirmation email job:', err.message);
+  });
   sheetsSyncService.syncEventRegistrations(event.id);
   if (invitation) invitationService.markRegistered(invitation.id);
   return registration;

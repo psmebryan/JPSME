@@ -588,6 +588,40 @@ enum BroadcastStatus {
   FAILED
 }
 
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// The "local" JOB_DRIVER (config.jobs.driver) — a durable, DB-backed queue so
+// a crash between "enqueue" and "process" never silently loses the job, the
+// way a plain in-memory queue or an un-awaited fire-and-forget call would. A
+// future SQS-backed driver would replace job.service.js's implementation
+// without this row shape needing to change (a worker process still needs a
+// place to record attempts/failures for observability).
+model Job {
+  id          Int       @id @default(autoincrement())
+  type        String
+  // JSON-serialized — must be plain IDs/values a handler can rehydrate from
+  // the DB, never a live object reference, since a job can be processed by a
+  // worker process restarted long after it was enqueued.
+  payload     String    @db.Text
+  status      JobStatus @default(PENDING)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  // Retry backoff: a failed job becomes claimable again only once this time
+  // has passed, instead of a worker hot-looping on a job that just failed.
+  availableAt DateTime  @default(now())
+  lastError   String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, availableAt])
+  @@map("jobs")
+}
+
 // An admin-composed one-off email blast to all members or a hand-picked
 // subset. No per-recipient tracking table — this row IS the audit trail
 // (who sent what, to how many, aggregate outcome).
