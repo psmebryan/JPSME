@@ -24,6 +24,21 @@ const listUsers = asyncHandler(async (req, res) => {
   return success(res, { users: await withMembershipPaymentStatus(users) });
 });
 
+// Paginated + searchable — backs the "Manage Users" table specifically
+// (listUsers above stays unbounded for the approvals queue, which is
+// naturally small regardless of total membership size).
+const listMembers = asyncHandler(async (req, res) => {
+  const { status, chapterId, search, page } = req.query;
+  const result = await userService.listMembersForAdmin({
+    status: status || undefined,
+    chapterId: chapterId || undefined,
+    search: search || undefined,
+    page: Math.max(1, Number(page) || 1),
+  });
+  const users = await withMembershipPaymentStatus(result.users);
+  return success(res, { ...result, users });
+});
+
 const listChapterMembers = asyncHandler(async (req, res) => {
   // If apiAdminOrChapterAdmin is used, controller can check req.chapterScope
   const chapterId = req.query.chapterId || req.chapterScope;
@@ -179,4 +194,4 @@ const removeChapterAdmin = asyncHandler(async (req, res) => {
   return success(res, { result }, 'Chapter admin removed');
 });
 
-module.exports = { listUsers, listChapterMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, listSponsors, createSponsor, deleteSponsor, listChapterAdmins, assignChapterAdmin, removeChapterAdmin };
+module.exports = { listUsers, listMembers, listChapterMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, listSponsors, createSponsor, deleteSponsor, listChapterAdmins, assignChapterAdmin, removeChapterAdmin };

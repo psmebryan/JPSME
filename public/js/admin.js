@@ -718,7 +718,7 @@ function initUserApprovals() {
   if (viewMode === 'approvals') {
     loadPendingUsers(table);
   } else {
-    loadAllUsers(table);
+    initMembersFilterAndPagination(table);
   }
 
   table.addEventListener('click', async (e) => {
@@ -769,8 +769,12 @@ function initUserApprovals() {
       try {
         await apiFetch(`/api/admin/users/${id}`, { method: 'DELETE' });
         showToast('User deleted');
-        del.closest('tr').remove();
-        maybeShowEmptyState(table);
+        if (table.__reloadMembers) {
+          await table.__reloadMembers();
+        } else {
+          del.closest('tr').remove();
+          maybeShowEmptyState(table);
+        }
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -841,44 +845,94 @@ async function loadPendingUsers(table) {
   }
 }
 
-async function loadAllUsers(table) {
-  const tbody = table.querySelector('tbody');
-  try {
-    const res = await apiFetch('/api/admin/users');
-    tbody.innerHTML = res.data.users
-      .map(
-        (u) => {
-          const canEdit = (window.currentAdmin && window.currentAdmin.role === 'ADMIN') || (window.currentAdmin && window.currentAdmin.role === 'CHAPTER_ADMIN' && u.chapter && Number(u.chapter.id) === Number(window.currentAdmin.chapterId));
-          const assignAllowed = (window.currentAdmin && window.currentAdmin.role === 'ADMIN');
-          return `
-            <tr data-user-id="${u.id}" class="admin-tr align-top">
-              <td class="admin-td">${escapeHtml(u.firstName)} ${escapeHtml(u.lastName)}</td>
-              <td class="admin-td max-w-[220px] truncate" title="${escapeHtml(u.email)}">${escapeHtml(u.email)}</td>
-              <td class="admin-td max-w-[160px] truncate">${escapeHtml(u.school || '-')}</td>
-              <td class="admin-td max-w-[140px] truncate">${escapeHtml((u.chapter && u.chapter.name) || '-')}</td>
-              <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
-              <td class="admin-td">${membershipPaymentBadge(u)}</td>
-              <td class="admin-td text-right">
-                <div class="flex flex-wrap justify-end items-center gap-2">
-                  ${canEdit ? `<a href="/admin/users/${u.id}/edit" class="text-indigo-600 hover:underline text-sm font-medium">Edit</a>` : ''}
-                  ${canEdit ? `<button data-delete-user="${u.id}" class="text-red-600 hover:underline text-sm font-medium">Delete</button>` : ''}
-                  ${assignAllowed ? `<button data-assign-toggle="${u.id}" class="text-indigo-600 hover:underline text-sm font-medium">Assign</button>` : ''}
-                </div>
-                ${assignAllowed ? `<div class="assign-panel hidden w-full mt-2 flex flex-wrap justify-end items-center gap-2">
-                  <select class="assign-select form-input py-1.5 w-auto">
-                    <option value="">Select chapter</option>
-                    ${window.adminChapters.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
-                  </select>
-                  <button data-assign-confirm="${u.id}" class="btn-primary px-3 py-1.5 text-sm">Confirm</button>
-                </div>` : ''}
-              </td>
-            </tr>`
-        }      )
-      .join('');
-    maybeShowEmptyState(table);
-  } catch (err) {
-    showToast(err.message, 'error');
+function memberRowHtml(u) {
+  const canEdit = (window.currentAdmin && window.currentAdmin.role === 'ADMIN') || (window.currentAdmin && window.currentAdmin.role === 'CHAPTER_ADMIN' && u.chapter && Number(u.chapter.id) === Number(window.currentAdmin.chapterId));
+  const assignAllowed = (window.currentAdmin && window.currentAdmin.role === 'ADMIN');
+  return `
+    <tr data-user-id="${u.id}" class="admin-tr align-top">
+      <td class="admin-td">${escapeHtml(u.firstName)} ${escapeHtml(u.lastName)}</td>
+      <td class="admin-td max-w-[220px] truncate" title="${escapeHtml(u.email)}">${escapeHtml(u.email)}</td>
+      <td class="admin-td max-w-[160px] truncate">${escapeHtml(u.school || '-')}</td>
+      <td class="admin-td max-w-[140px] truncate">${escapeHtml((u.chapter && u.chapter.name) || '-')}</td>
+      <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
+      <td class="admin-td">${membershipPaymentBadge(u)}</td>
+      <td class="admin-td text-right">
+        <div class="flex flex-wrap justify-end items-center gap-2">
+          ${canEdit ? `<a href="/admin/users/${u.id}/edit" class="text-indigo-600 hover:underline text-sm font-medium">Edit</a>` : ''}
+          ${canEdit ? `<button data-delete-user="${u.id}" class="text-red-600 hover:underline text-sm font-medium">Delete</button>` : ''}
+          ${assignAllowed ? `<button data-assign-toggle="${u.id}" class="text-indigo-600 hover:underline text-sm font-medium">Assign</button>` : ''}
+        </div>
+        ${assignAllowed ? `<div class="assign-panel hidden w-full mt-2 flex flex-wrap justify-end items-center gap-2">
+          <select class="assign-select form-input py-1.5 w-auto">
+            <option value="">Select chapter</option>
+            ${window.adminChapters.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
+          </select>
+          <button data-assign-confirm="${u.id}" class="btn-primary px-3 py-1.5 text-sm">Confirm</button>
+        </div>` : ''}
+      </td>
+    </tr>`;
+}
+
+function renderMembersPagination(pagination, page, totalPages) {
+  if (!pagination) return;
+  pagination.dataset.page = page;
+  pagination.dataset.totalPages = totalPages;
+  if (totalPages <= 1) {
+    pagination.innerHTML = '';
+    return;
   }
+  let html = '';
+  for (let p = 1; p <= totalPages; p += 1) {
+    html += `<button type="button" data-members-page="${p}" class="px-3 py-1.5 text-sm rounded-md border ${p === page ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}">${p}</button>`;
+  }
+  pagination.innerHTML = html;
+}
+
+// Server-side search/filter/pagination for the "Manage Users" (list) view —
+// the full member roster, the one admin table most likely to actually reach
+// thousands of rows, unlike the naturally-small pending-approvals queue.
+function initMembersFilterAndPagination(table) {
+  const tbody = table.querySelector('tbody');
+  const filterForm = document.getElementById('members-filter-form');
+  const pagination = document.getElementById('members-pagination');
+
+  async function loadMembers(page) {
+    const formData = filterForm ? new FormData(filterForm) : new FormData();
+    const params = new URLSearchParams();
+    ['search', 'chapterId', 'status'].forEach((key) => {
+      const value = formData.get(key);
+      if (value) params.set(key, value);
+    });
+    params.set('page', page);
+
+    try {
+      const res = await apiFetch(`/api/admin/members?${params.toString()}`);
+      const { users, totalPages, page: currentPage } = res.data;
+      tbody.innerHTML = users.map(memberRowHtml).join('');
+      maybeShowEmptyState(table);
+      renderMembersPagination(pagination, currentPage, totalPages);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  filterForm?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    loadMembers(1);
+  });
+
+  pagination?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-members-page]');
+    if (!btn) return;
+    loadMembers(Number(btn.getAttribute('data-members-page')));
+  });
+
+  // Exposed so the shared users-table click handler (delete) can re-fetch
+  // the current page instead of just removing the row — otherwise the page
+  // is left one short of pageSize until the admin manually changes pages.
+  table.__reloadMembers = () => loadMembers(Number(pagination?.dataset.page) || 1);
+
+  loadMembers(1);
 }
 
 // Renders each user's latest membership-payment status as a small badge for

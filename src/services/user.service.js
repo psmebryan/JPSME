@@ -16,6 +16,44 @@ async function listByStatus(status) {
   return users.map(toPublicUser);
 }
 
+// Paginated + searchable listing for the admin "Manage Users" table — the
+// full member roster, which is the one place in the app most likely to
+// actually reach thousands of rows. Deliberately separate from
+// listByStatus() above, which stays unbounded on purpose: it also backs the
+// invitation member-picker and a few other small internal lookups that need
+// every matching row at once, not a page of them.
+async function listMembersForAdmin({ status, chapterId, search, page = 1, pageSize = 25 } = {}) {
+  const where = { role: { not: 'ADMIN' } };
+  if (status) where.status = status;
+  if (chapterId) where.chapterId = Number(chapterId);
+  const term = (search || '').trim();
+  if (term) {
+    where.OR = [
+      { firstName: { contains: term } },
+      { lastName: { contains: term } },
+      { email: { contains: term } },
+    ];
+  }
+
+  const [total, users] = await Promise.all([
+    prisma.user.count({ where }),
+    prisma.user.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: { chapter: true },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ]);
+
+  return {
+    users: users.map(toPublicUser),
+    total,
+    page,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+}
+
 // The single choke point for every status transition, manual or automatic —
 // admin.api.js's approve/reject buttons and payment.service.js's
 // auto-approve-on-payment both call this, never touch User.status directly.
@@ -143,4 +181,4 @@ async function deleteUser(userId) {
   return { deleted: true };
 }
 
-module.exports = { listByStatus, setStatus, listAdmins, listByChapter, getById, updateUser, deleteUser };
+module.exports = { listByStatus, listMembersForAdmin, setStatus, listAdmins, listByChapter, getById, updateUser, deleteUser };

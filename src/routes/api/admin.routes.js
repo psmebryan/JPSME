@@ -78,6 +78,13 @@ router.post('/chapter-admins/remove', apiAdmin, adminApi.removeChapterAdmin);
 router.use(apiAdmin);
 
 router.get('/users', adminApi.listUsers);
+router.get(
+  '/members',
+  query('page').optional({ checkFalsy: true }).isInt({ min: 1 }).withMessage('Invalid page'),
+  query('chapterId').optional({ checkFalsy: true }).isInt().withMessage('Invalid chapterId filter'),
+  query('status').optional({ checkFalsy: true }).isIn(['PENDING', 'APPROVED', 'REJECTED']).withMessage('Invalid status filter'),
+  adminApi.listMembers
+);
 router.post('/users/:id/approve', verifyCsrfToken, param('id').isInt(), adminApi.approveUser);
 router.post('/users/:id/reject', verifyCsrfToken, param('id').isInt(), adminApi.rejectUser);
 
