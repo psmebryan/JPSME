@@ -41,7 +41,7 @@ router.get('/membership-payment', ensureAuth, pages.membershipPaymentPage);
 router.get('/membership-payment/return', ensureAuth, pages.membershipPaymentReturnPage);
 router.get('/logout', (req, res) => {
   req.session.destroy(() => {
-    res.clearCookie('connect.sid');
+    res.clearCookie('jpsme.sid');
     res.redirect('/login');
   });
 });
@@ -114,7 +114,7 @@ router.get('/admin/articles/:id/edit', ensureMainAdminOnly, pages.adminEditArtic
 
 router.get('/admin/logout', (req, res) => {
   req.session.destroy(() => {
-    res.clearCookie('connect.sid');
+    res.clearCookie('jpsme.sid');
     res.redirect('/admin/login');
   });
 });

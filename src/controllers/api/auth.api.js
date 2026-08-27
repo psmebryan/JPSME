@@ -41,7 +41,7 @@ const login = asyncHandler(async (req, res) => {
 
 const logout = asyncHandler(async (req, res) => {
   req.session.destroy(() => {
-    res.clearCookie('connect.sid');
+    res.clearCookie('jpsme.sid');
     return success(res, null, 'Logged out');
   });
 });

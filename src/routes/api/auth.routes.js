@@ -27,6 +27,18 @@ const resendVerificationLimiter = rateLimit({
   message: { success: false, message: 'Too many requests. Please try again later.' },
 });
 
+// Every other sensitive endpoint here has its own limiter beyond the global
+// baseline (login, resend-verification) — registration didn't, despite being
+// a classic target for mass fake-account creation and email-bombing (each
+// one triggers a real verification email send).
+const registerLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many registration attempts. Please try again later.' },
+});
+
 const registerValidators = [
   body('firstName').trim().notEmpty().withMessage('First name is required').isLength({ max: 100 }),
   body('lastName').trim().notEmpty().withMessage('Last name is required').isLength({ max: 100 }),
@@ -64,7 +76,7 @@ const profileValidators = [
   }).withMessage('A valid chapter is required'),
 ];
 
-router.post('/register', verifyCsrfToken, registerValidators, authApi.register);
+router.post('/register', verifyCsrfToken, registerLimiter, registerValidators, authApi.register);
 router.post('/login', verifyCsrfToken, loginLimiter, loginValidators, authApi.login);
 router.post('/logout', verifyCsrfToken, authApi.logout);
 router.get('/me', apiAuth, authApi.me);

@@ -30,6 +30,30 @@ function oneOf(name, allowed, fallback) {
   return value;
 }
 
+// Both the .env.example placeholder and this project's own dev-only value
+// (the .env checked out for local XAMPP work) are checked by name — a
+// generic "too short" fallback below also catches any other weak secret
+// nobody bothered to replace. Only enforced in production so local dev never
+// has to think about it.
+const PLACEHOLDER_SESSION_SECRETS = new Set([
+  'change-this-to-a-long-random-string',
+  'dev-only-secret-change-me-please-8f92k3nd8s',
+]);
+const MIN_SESSION_SECRET_LENGTH = 32;
+
+function requireSessionSecret() {
+  const value = process.env.SESSION_SECRET;
+  if (process.env.NODE_ENV === 'production') {
+    if (!value || PLACEHOLDER_SESSION_SECRETS.has(value) || value.length < MIN_SESSION_SECRET_LENGTH) {
+      throw new Error(
+        `SESSION_SECRET is missing, a known placeholder, or too short (< ${MIN_SESSION_SECRET_LENGTH} chars) — ` +
+        'refusing to start in production. Generate a real one, e.g.: node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"'
+      );
+    }
+  }
+  return value;
+}
+
 const config = {
   get env() { return process.env.NODE_ENV || 'development'; },
   get isProduction() { return process.env.NODE_ENV === 'production'; },
@@ -43,7 +67,7 @@ const config = {
   },
 
   session: {
-    get secret() { return process.env.SESSION_SECRET; },
+    get secret() { return requireSessionSecret(); },
     get store() { return oneOf('SESSION_STORE', ['mysql'], 'mysql'); },
   },
 

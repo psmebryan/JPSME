@@ -7,6 +7,14 @@ const sheetsSyncService = require("./sheetsSync.service");
 const SALT_ROUNDS = 12;
 const normalizeName = (value) => String(value || '').trim().toUpperCase();
 
+// Precomputed once at startup — compared against when the email doesn't
+// exist, purely to burn roughly the same amount of time as the real
+// bcrypt.compare below. Without this, a missing account returns
+// immediately while a wrong password takes ~100ms, and that timing
+// difference alone lets an attacker enumerate which emails have accounts
+// without ever seeing a different error message.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('not-a-real-password', SALT_ROUNDS);
+
 const userInclude = {
   chapter: {
     include: {
@@ -94,6 +102,12 @@ async function registerUser({
 async function login(email, password, { context = "user" } = {}) {
   const user = await prisma.user.findUnique({ where: { email }, include: userInclude });
   if (!user) {
+    // Still run a bcrypt compare (against a hash nobody's real password will
+    // ever match) so this takes roughly the same time as the "wrong
+    // password" path below — otherwise a missing account returns near-
+    // instantly while a wrong password takes ~100ms, and that timing gap
+    // alone lets an attacker enumerate registered emails.
+    await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
     throw new AppError("Invalid email or password", 401);
   }
 

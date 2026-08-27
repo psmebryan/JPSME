@@ -132,6 +132,7 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use(
   session({
+    name: 'jpsme.sid', // avoid the express-session default 'connect.sid', which fingerprints the stack to anyone probing the site
     secret: config.session.secret,
     store: sessionStore,
     resave: false,
@@ -154,6 +155,17 @@ app.set('layout', 'layout');
 
 // Uploaded files always get a fresh random filename (upload.middleware.js), so a
 // "same" URL never serves different content — long caching is safe here.
+//
+// SECURITY-LOAD-BEARING ORDERING: this must stay registered after helmet()
+// above, not before. Profile images/logos/sponsor logos allow SVG uploads,
+// and an SVG can embed a <script> — verifyImageSignature.js only checks that
+// the file looks like an image, it doesn't sanitize SVG content. What
+// actually neutralizes that is the CSP header helmet attaches to every
+// response, including this static one: script-src has no 'unsafe-inline'
+// and a per-request nonce a pre-uploaded file could never contain, so a
+// malicious SVG opened directly in a browser tab has its embedded script
+// blocked. Moving this static mount before helmet (e.g. "for performance")
+// would silently remove that protection.
 app.use('/uploads', express.static(path.join(__dirname, '..', 'public', 'uploads'), { maxAge: '7d', etag: true }));
 
 // Everything else (app JS/CSS/images) lives at a FIXED filename that does
