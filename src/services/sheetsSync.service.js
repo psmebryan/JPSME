@@ -1,7 +1,8 @@
 const { google } = require('googleapis');
+const config = require('../config');
 const prisma = require('../config/prisma');
 
-const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID;
+const SPREADSHEET_ID = config.googleSheets.sheetId;
 
 // Deliberately does NOT require payment.service.js (which requires this file
 // to trigger syncs) — that would create a circular require where whichever
@@ -12,8 +13,8 @@ let sheetsClient = null;
 function getSheetsClient() {
   if (!sheetsClient) {
     const auth = new google.auth.JWT({
-      email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      key: (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+      email: config.googleSheets.serviceAccountEmail,
+      key: (config.googleSheets.serviceAccountPrivateKey || '').replace(/\\n/g, '\n'),
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
     sheetsClient = google.sheets({ version: 'v4', auth });
@@ -23,7 +24,7 @@ function getSheetsClient() {
 
 let warnedNotConfigured = false;
 function isConfigured() {
-  const configured = !!(SPREADSHEET_ID && process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY);
+  const configured = !!(SPREADSHEET_ID && config.googleSheets.serviceAccountEmail && config.googleSheets.serviceAccountPrivateKey);
   if (!configured && !warnedNotConfigured) {
     warnedNotConfigured = true;
     console.warn('sheetsSync: GOOGLE_SHEETS_ID / GOOGLE_SERVICE_ACCOUNT_EMAIL / GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY not set — live report sync disabled.');

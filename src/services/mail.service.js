@@ -1,4 +1,5 @@
 const path = require('path');
+const config = require('../config');
 const { transporter, MAIL_FROM } = require('../config/mailer');
 const emailTemplateService = require('./emailTemplate.service');
 const { substituteTokens, formatDate, fullName } = require('../utils/templateTokens');
@@ -7,7 +8,7 @@ const PROJECT_ROOT = path.join(__dirname, '..', '..');
 const PUBLIC_UPLOADS_ROOT = path.join(PROJECT_ROOT, 'public', 'uploads');
 
 function getAppUrl() {
-  return process.env.APP_URL || `http://localhost:${process.env.PORT || 3000}`;
+  return config.appUrl;
 }
 
 function attachmentToAbsolutePath(publicPath) {

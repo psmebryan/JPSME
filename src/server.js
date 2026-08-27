@@ -1,9 +1,10 @@
 const app = require('./app');
+const config = require('./config');
 const prisma = require('./config/prisma');
 const { startReconciliationSweep, stopReconciliationSweep } = require('./jobs/paymentReconciliationSweep.job');
 const { startInvitationReconciliationSweep, stopInvitationReconciliationSweep } = require('./jobs/invitationReconciliationSweep.job');
 
-const PORT = process.env.PORT || 3000;
+const PORT = config.port;
 
 async function start() {
   try {

@@ -1,4 +1,3 @@
-require('dotenv').config();
 const crypto = require('crypto');
 const path = require('path');
 const express = require('express');
@@ -7,6 +6,7 @@ const helmet = require('helmet');
 const compression = require('compression');
 const expressLayouts = require('express-ejs-layouts');
 
+const config = require('./config');
 const pagesRoutes = require('./routes/pages.routes');
 const apiRoutes = require('./routes/api');
 const { issueCsrfToken } = require('./middleware/csrf.middleware');
@@ -15,12 +15,11 @@ const settingsService = require('./services/settings.service');
 const sessionStore = require('./config/sessionStore');
 
 const app = express();
-const isProduction = process.env.NODE_ENV === 'production';
 
 // Only trust X-Forwarded-* headers when we know there's an actual reverse proxy
 // in front (set TRUST_PROXY=true once deployed behind one) — trusting them
 // blindly lets clients spoof their IP and dodge the rate limiters below.
-if (process.env.TRUST_PROXY === 'true') {
+if (config.trustProxy) {
   app.set('trust proxy', 1);
 }
 
@@ -56,13 +55,13 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use(
   session({
-    secret: process.env.SESSION_SECRET,
+    secret: config.session.secret,
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: isProduction,
+      secure: config.isProduction,
       sameSite: 'lax',
       maxAge: 1000 * 60 * 60 * 8, // 8 hours
     },

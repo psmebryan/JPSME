@@ -1,11 +1,12 @@
+const config = require('../config');
 const invitationService = require('../services/invitation.service');
 const sheetsSyncService = require('../services/sheetsSync.service');
 
 // How far back an invitation is still worth polling Brevo about — see
 // findInvitationsNeedingReconciliation for why this stays bounded rather than
 // checking every invitation ever sent.
-const LOOKBACK_DAYS = Number(process.env.INVITATION_RECONCILIATION_LOOKBACK_DAYS) || 14;
-const SWEEP_INTERVAL_MINUTES = Number(process.env.INVITATION_RECONCILIATION_SWEEP_INTERVAL_MINUTES) || 30;
+const LOOKBACK_DAYS = config.jobs.invitationReconciliation.lookbackDays;
+const SWEEP_INTERVAL_MINUTES = config.jobs.invitationReconciliation.sweepIntervalMinutes;
 
 async function runSweep() {
   let candidates;
@@ -17,7 +18,7 @@ async function runSweep() {
   }
 
   if (candidates.length === 0) return;
-  if (!process.env.BREVO_API_KEY) return; // nothing to poll without a configured provider
+  if (!config.email.brevoApiKey) return; // nothing to poll without a configured provider
 
   console.log(`Invitation reconciliation sweep: checking ${candidates.length} invitation(s)...`);
   const outcomes = {};

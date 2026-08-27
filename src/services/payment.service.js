@@ -1,4 +1,5 @@
 const { Prisma } = require('@prisma/client');
+const config = require('../config');
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
 const settingsService = require('./settings.service');
@@ -52,7 +53,7 @@ const SAFE_USER_SELECT = {
 };
 
 function appUrl() {
-  return process.env.APP_URL || `http://localhost:${process.env.PORT || 3000}`;
+  return config.appUrl;
 }
 
 // --- Reads ---

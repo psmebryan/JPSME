@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const config = require('../config');
 const AppError = require('../utils/AppError');
 
 // Reference: https://docs.paymongo.com (Checkout Sessions, Refunds, Webhooks —
@@ -7,7 +8,7 @@ const AppError = require('../utils/AppError');
 const PAYMONGO_API_BASE = 'https://api.paymongo.com/v1';
 
 function getSecretKey() {
-  const key = process.env.PAYMONGO_SECRET_KEY;
+  const key = config.payment.paymongoSecretKey;
   if (!key) throw new AppError('Payment gateway is not configured', 503);
   return key;
 }
@@ -162,7 +163,7 @@ const SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
 // `li` in live mode. Must run BEFORE any JSON parsing of the body — even a single
 // byte of reformatting invalidates the signature.
 function verifyWebhookSignature(rawBody, signatureHeader) {
-  const secret = process.env.PAYMONGO_WEBHOOK_SECRET;
+  const secret = config.payment.paymongoWebhookSecret;
   if (!secret || !signatureHeader || typeof rawBody !== 'string') return false;
 
   const parts = {};
@@ -182,7 +183,7 @@ function verifyWebhookSignature(rawBody, signatureHeader) {
 
   const expectedHex = crypto.createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex');
 
-  const isLiveMode = (process.env.PAYMONGO_SECRET_KEY || '').startsWith('sk_live_');
+  const isLiveMode = (config.payment.paymongoSecretKey || '').startsWith('sk_live_');
   const candidate = isLiveMode ? liveSignature : testSignature;
   if (!candidate) return false;
 

@@ -1,4 +1,5 @@
 const path = require('path');
+const config = require('../config');
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
 const { transporter, MAIL_FROM } = require('../config/mailer');
@@ -7,7 +8,7 @@ const { substituteTokens, fullName } = require('../utils/templateTokens');
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
 const PUBLIC_UPLOADS_ROOT = path.join(PROJECT_ROOT, 'public', 'uploads');
 
-const SEND_INTERVAL_MS = Number(process.env.BROADCAST_SEND_INTERVAL_MS) || 350;
+const SEND_INTERVAL_MS = config.jobs.broadcastSendIntervalMs;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));

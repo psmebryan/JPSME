@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const config = require('../../config');
 const asyncHandler = require('../../utils/asyncHandler');
 const { error } = require('../../utils/apiResponse');
 const paymongoService = require('../../services/paymongo.service');
@@ -29,7 +30,7 @@ const handlePaymongoWebhook = asyncHandler(async (req, res) => {
 // timingSafeEqual rather than === so a byte-by-byte comparison can't leak
 // how much of the token an attacker guessed correctly via response timing.
 function isValidBrevoToken(req) {
-  const expected = process.env.BREVO_WEBHOOK_SECRET;
+  const expected = config.email.brevoWebhookSecret;
   const provided = req.query.token;
   if (!expected || !provided) return false;
   const expectedBuf = Buffer.from(expected);

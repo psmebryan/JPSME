@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const ExcelJS = require('exceljs');
+const config = require('../config');
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
 const mailService = require('./mail.service');
@@ -382,7 +383,7 @@ async function fetchBrevoEventsForInvitation(invitationId) {
   let res;
   try {
     res = await fetch(url, {
-      headers: { 'api-key': process.env.BREVO_API_KEY, Accept: 'application/json' },
+      headers: { 'api-key': config.email.brevoApiKey, Accept: 'application/json' },
       signal: AbortSignal.timeout(BREVO_REQUEST_TIMEOUT_MS),
     });
   } catch (err) {
