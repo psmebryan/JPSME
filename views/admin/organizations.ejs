@@ -1,0 +1,157 @@
+<%
+const organizations = locals.organizations || [];
+const total = locals.total || 0;
+const page = locals.page || 1;
+const totalPages = locals.totalPages || 1;
+const q = locals.q || '';
+const type = locals.type || '';
+const needsReview = locals.needsReview || false;
+const reviewCount = locals.reviewCount || 0;
+const root = locals.root || null;
+const TYPES = ['NATIONAL', 'REGION', 'CLUSTER', 'CHAPTER', 'STUDENT_UNIT'];
+const TYPE_LABEL = {
+  NATIONAL: 'National', REGION: 'Region', CLUSTER: 'Cluster',
+  CHAPTER: 'Chapter', STUDENT_UNIT: 'Student Unit',
+};
+const TYPE_BADGE = {
+  NATIONAL: 'badge-purple', REGION: 'badge-blue', CLUSTER: 'badge-sky',
+  CHAPTER: 'badge-green', STUDENT_UNIT: 'badge-slate',
+};
+%>
+
+<h1 class="admin-h1 mb-2">Organization Management</h1>
+<p class="admin-subtitle mb-6">
+  One tree, variable depth — an organization may sit under any other. Levels that don't
+  exist for a branch are simply absent; nothing is padded.
+</p>
+
+<% if (reviewCount > 0) { %>
+  <div class="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4">
+    <p class="text-sm text-amber-900">
+      <strong><%= reviewCount %></strong> organization<%= reviewCount === 1 ? '' : 's' %>
+      need review. The official workbook did not record a cluster/chapter parent for these,
+      so they were attached at their region rather than guessed. Open one to set its real parent.
+      <a href="/admin/organizations?needsReview=1" class="ml-2 font-semibold underline">Show them</a>
+    </p>
+  </div>
+<% } %>
+
+<section class="admin-card overflow-hidden mb-8">
+  <form method="GET" action="/admin/organizations" class="flex flex-wrap items-end gap-3 border-b border-slate-200 p-4">
+    <div>
+      <label class="form-label">Search</label>
+      <input type="search" name="q" value="<%= q %>" placeholder="Name or institution" class="form-input">
+    </div>
+    <div>
+      <label class="form-label">Type</label>
+      <select name="type" class="form-input">
+        <option value="">All types</option>
+        <% TYPES.forEach(t => { %>
+          <option value="<%= t %>" <%= type === t ? 'selected' : '' %>><%= TYPE_LABEL[t] %></option>
+        <% }) %>
+      </select>
+    </div>
+    <label class="flex items-center gap-2 text-sm text-slate-600 pb-2">
+      <input type="checkbox" name="needsReview" value="1" <%= needsReview ? 'checked' : '' %>>
+      Needs review only
+    </label>
+    <button type="submit" class="btn-primary">Apply</button>
+  </form>
+
+  <div class="overflow-x-auto">
+    <table class="admin-table">
+      <thead class="admin-table-head">
+        <tr>
+          <th class="admin-th">Name</th>
+          <th class="admin-th">Type</th>
+          <th class="admin-th">Institution</th>
+          <th class="admin-th">Depth</th>
+          <th class="admin-th">Children</th>
+          <th class="admin-th">Members</th>
+          <th class="admin-th">Status</th>
+          <th class="admin-th text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="admin-tbody">
+        <% organizations.forEach(o => { %>
+          <tr class="admin-tr align-top">
+            <td class="admin-td font-medium"><%= o.name %></td>
+            <td class="admin-td"><span class="<%= TYPE_BADGE[o.type] || 'badge-slate' %>"><%= TYPE_LABEL[o.type] || o.type %></span></td>
+            <td class="admin-td max-w-[220px] truncate"><%= o.institution || '-' %></td>
+            <td class="admin-td"><%= o.depth %></td>
+            <td class="admin-td"><%= o._count ? o._count.children : 0 %></td>
+            <td class="admin-td"><%= o._count ? o._count.users : 0 %></td>
+            <td class="admin-td">
+              <% if (o.needsReview) { %><span class="badge-amber">Needs review</span>
+              <% } else if (!o.isActive) { %><span class="badge-slate">Inactive</span>
+              <% } else { %><span class="badge-green">OK</span><% } %>
+            </td>
+            <td class="admin-td text-right">
+              <a href="/admin/organizations/<%= o.id %>/edit" class="text-indigo-600 hover:underline text-sm font-medium">Edit</a>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <% if (!organizations.length) { %>
+      <p class="empty-state">No organizations match these filters.</p>
+    <% } %>
+  </div>
+
+  <%- include('../partials/pagination', {
+    currentPage: page,
+    totalPages: totalPages,
+    baseQuery: { q, type, needsReview: needsReview ? '1' : '' },
+    pageParam: 'page'
+  }) %>
+</section>
+
+<section class="admin-card p-5">
+  <h2 class="text-lg font-semibold text-slate-800 mb-1">Add an organization</h2>
+  <p class="admin-subtitle mb-4">
+    Any type may sit under any parent — pick whichever level is actually correct.
+  </p>
+  <form action="/admin/organizations" method="POST" class="grid gap-3 sm:grid-cols-2">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <div>
+      <label class="form-label">Name</label>
+      <input name="name" required class="form-input" placeholder="e.g. JPSME Cavite Chapter">
+    </div>
+    <div>
+      <label class="form-label">Type</label>
+      <select name="type" required class="form-input">
+        <% TYPES.filter(t => t !== 'NATIONAL').forEach(t => { %>
+          <option value="<%= t %>"><%= TYPE_LABEL[t] %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div>
+      <label class="form-label">Parent organization</label>
+      <select name="parentId" required class="form-input">
+        <% if (root) { %><option value="<%= root.id %>"><%= root.name %></option><% } %>
+        <% organizations.filter(o => !root || o.id !== root.id).forEach(o => { %>
+          <option value="<%= o.id %>"><%= o.name %> (<%= TYPE_LABEL[o.type] %>)</option>
+        <% }) %>
+      </select>
+      <p class="mt-1 text-xs text-slate-400">Only organizations on this page are listed — search above to narrow first.</p>
+    </div>
+    <div>
+      <label class="form-label">Institution (optional)</label>
+      <input name="institution" class="form-input">
+    </div>
+    <div>
+      <label class="form-label">Email (optional)</label>
+      <input name="email" type="email" class="form-input">
+    </div>
+    <div>
+      <label class="form-label">Year founded (optional)</label>
+      <input name="yearFounded" type="number" min="1900" max="2100" class="form-input">
+    </div>
+    <label class="flex items-center gap-2 text-sm text-slate-600 sm:col-span-2">
+      <input type="checkbox" name="isActive" checked> Active
+    </label>
+    <div class="sm:col-span-2">
+      <button type="submit" class="btn-primary">Create organization</button>
+    </div>
+  </form>
+</section>

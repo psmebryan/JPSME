@@ -18,7 +18,7 @@
 
       <% if (typeof restricted !== 'undefined' && restricted) { %>
         <!-- Chapter admins can edit their members' basic details, but not role
-             or chapter assignment — shown read-only instead of as inputs, and
+             or organization assignment — shown read-only instead of as inputs, and
              the backend strips these two fields even if sent anyway. -->
         <div>
           <label class="form-label">Role</label>
@@ -26,32 +26,32 @@
           <p class="text-xs text-slate-400 mt-0.5">Only the main admin can change a member's role.</p>
         </div>
         <div>
-          <label class="form-label">Chapter</label>
-          <p class="mt-1 text-sm text-slate-600"><%= user.chapter ? user.chapter.name : '(none)' %></p>
-          <p class="text-xs text-slate-400 mt-0.5">Contact the main admin to reassign a member's chapter.</p>
+          <label class="form-label">Organization</label>
+          <p class="mt-1 text-sm text-slate-600"><%= user.organization ? user.organization.name : '(none)' %></p>
+          <p class="text-xs text-slate-400 mt-0.5">Contact the main admin to reassign a member's organization.</p>
         </div>
       <% } else { %>
         <div>
           <label class="form-label">Role</label>
           <select name="role" class="form-input">
             <option value="USER" <%= user.role === 'USER' ? 'selected' : '' %>>User</option>
-            <option value="CHAPTER_ADMIN" <%= user.role === 'CHAPTER_ADMIN' ? 'selected' : '' %>>Chapter Admin</option>
+            <option value="CHAPTER_ADMIN" <%= user.role === 'CHAPTER_ADMIN' ? 'selected' : '' %>>Organization Admin</option>
             <option value="ADMIN" <%= user.role === 'ADMIN' ? 'selected' : '' %>>Admin</option>
           </select>
         </div>
         <div>
-          <label class="form-label">Chapter</label>
-          <select name="chapterId" class="form-input">
+          <label class="form-label">Organization</label>
+          <select name="organizationId" class="form-input">
             <option value="">(none)</option>
-            <% chapters.forEach(c => { %>
-              <option value="<%= c.id %>" <%= user.chapter && user.chapter.id === c.id ? 'selected' : '' %>><%= c.name %></option>
+            <% (organizations || []).forEach(c => { %>
+              <option value="<%= c.id %>" <%= user.organization && user.organization.id === c.id ? 'selected' : '' %>><%= c.name %></option>
             <% }) %>
           </select>
         </div>
       <% } %>
 
       <div class="flex justify-between items-center pt-2">
-        <a href="<%= typeof restricted !== 'undefined' && restricted ? '/admin/chapter-members' : '/admin/users/all' %>" class="text-sm text-slate-500 hover:underline">&larr; Back</a>
+        <a href="<%= typeof restricted !== 'undefined' && restricted ? '/admin/organization-members' : '/admin/users/all' %>" class="text-sm text-slate-500 hover:underline">&larr; Back</a>
         <button type="submit" class="btn-primary">Save</button>
       </div>
     </div>
@@ -64,13 +64,13 @@
     const form = e.target;
     const data = Object.fromEntries(new FormData(form));
     delete data._csrf;
-    // When restricted, the role/chapterId inputs don't exist in the DOM at all,
+    // When restricted, the role/organizationId inputs don't exist in the DOM at all,
     // so FormData never includes them — nothing extra to strip here client-side.
     // Email stays in the payload but is ignored server-side either way.
     try {
       await apiFetch(form.action, { method: 'PUT', body: JSON.stringify(data) });
       showToast('<%= typeof restricted !== "undefined" && restricted ? "Member updated" : "User updated" %>');
-      window.location.href = '<%= typeof restricted !== "undefined" && restricted ? "/admin/chapter-members" : "/admin/users/all" %>';
+      window.location.href = '<%= typeof restricted !== "undefined" && restricted ? "/admin/organization-members" : "/admin/users/all" %>';
     } catch (err) {
       showToast(err.message, 'error');
     }

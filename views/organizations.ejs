@@ -1,0 +1,49 @@
+<%
+const root = locals.root || null;
+const children = locals.children || [];
+const TYPE_LABEL = {
+  NATIONAL: 'National', REGION: 'Region', CLUSTER: 'Cluster',
+  CHAPTER: 'Chapter', STUDENT_UNIT: 'Student Unit',
+};
+%>
+
+<section class="relative left-1/2 -ml-[50vw] w-screen border-b border-[#26365f] bg-[radial-gradient(circle_at_14%_25%,#1c1442_0,transparent_35%),#080f29]">
+  <div class="max-w-6xl mx-auto px-4 py-16">
+    <nav class="text-sm text-slate-400 mb-4"><a href="/">Home</a><span class="mx-2">&gt;</span><span class="font-bold text-amber-400">Organizations</span></nav>
+    <h1 class="text-4xl sm:text-5xl font-extrabold text-white"><%= root ? root.name : 'JPSME Organizations' %></h1>
+  </div>
+</section>
+
+<div class="max-w-6xl mx-auto px-4 py-16">
+  <nav class="text-sm text-gray-500 mb-8" aria-label="Breadcrumb">
+    <a href="/" class="hover:text-indigo-600">Home</a>
+    <span class="mx-2">&gt;</span>
+    <span class="text-gray-700 font-medium">Organizations</span>
+  </nav>
+
+  <div class="grid gap-10 lg:grid-cols-[.65fr_1.35fr]">
+    <div>
+      <h2 class="text-3xl font-extrabold">Our Organizations<br>Across the Philippines</h2>
+      <p class="mt-6 leading-7 text-slate-400">
+        JPSME is organized as an umbrella of regions, clusters, chapters, and student units.
+        Not every branch has every level — explore a region below to see exactly what sits
+        beneath it.
+      </p>
+    </div>
+    <div>
+      <% if (!children.length) { %>
+        <p class="text-center text-sm text-gray-500">No organizations have been added yet.</p>
+      <% } else { %>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <% children.forEach(child => { %>
+            <a href="/organizations/<%= child.id %>"
+               class="bg-indigo-950 border-2 border-amber-400 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
+              <span class="inline-block text-[11px] font-semibold uppercase tracking-wide text-amber-400 mb-2"><%= TYPE_LABEL[child.type] || child.type %></span>
+              <h3 class="text-lg font-bold text-white leading-snug"><%= child.name %></h3>
+            </a>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+  </div>
+</div>

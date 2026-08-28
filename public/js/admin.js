@@ -9,7 +9,7 @@ function initAdminPage() {
   initInvitationsModule();
   initInvitationsReportTable({ moduleId: 'all-invitations-module', tableId: 'all-invitations-table', formId: 'all-invitations-filter-form', emptyStateId: 'all-inv-empty', paginationId: 'all-inv-pagination', includeEventColumn: true });
   initInvitationsReportTable({ moduleId: 'event-invitations-module', tableId: 'invitations-table', formId: 'event-invitations-filter-form', emptyStateId: 'event-inv-empty', paginationId: 'event-inv-pagination', includeEventColumn: false });
-  initChapterAdmins();
+  initOrganizationAdmins();
   initSponsors();
   initCertificates();
   initPaymentsModule();
@@ -143,8 +143,8 @@ function initBroadcastModule() {
       const userIds = Array.from(document.querySelectorAll('.broadcast-row-checkbox:checked')).map((cb) => Number(cb.value));
       return { scope: 'selected', userIds };
     }
-    const chapterId = document.getElementById('audience-chapter')?.value || '';
-    return chapterId ? { scope: 'all', chapterId: Number(chapterId) } : { scope: 'all' };
+    const organizationId = document.getElementById('audience-organization')?.value || '';
+    return organizationId ? { scope: 'all', organizationId: Number(organizationId) } : { scope: 'all' };
   }
 
   async function refreshAudienceCount() {
@@ -726,11 +726,11 @@ function initUserApprovals() {
   if (!table || !module) return;
 
   const viewMode = module.dataset.viewMode || 'approvals';
-  // parse chapters passed from server fragment (dataset holds JSON string)
+  // organizations passed from the server fragment (dataset holds a JSON string)
   try {
-    window.adminChapters = module.dataset.chapters ? JSON.parse(module.dataset.chapters) : (window.adminChapters || []);
+    window.adminOrganizations = module.dataset.organizations ? JSON.parse(module.dataset.organizations) : (window.adminOrganizations || []);
   } catch (err) {
-    window.adminChapters = window.adminChapters || [];
+    window.adminOrganizations = window.adminOrganizations || [];
   }
   try {
     window.currentAdmin = module.dataset.currentUser ? JSON.parse(module.dataset.currentUser) : (window.currentAdmin || null);
@@ -760,10 +760,10 @@ function initUserApprovals() {
       const userId = assignConfirm.getAttribute('data-assign-confirm');
       const row = assignConfirm.closest('tr');
       const select = row.querySelector('.assign-select');
-      const chapterId = select ? select.value : null;
-      if (!chapterId) return showToast('Please select a chapter to assign', 'error');
+      const organizationId = select ? select.value : null;
+      if (!organizationId) return showToast('Please select an organization to assign', 'error');
 
-      await doAssign({ chapterId, userId, row, force: false });
+      await doAssign({ organizationId, userId, row });
       return;
     }
 
@@ -805,28 +805,22 @@ function initUserApprovals() {
   });
 }
 
-// Assign (or reassign) a chapter admin. If the chapter already has a
-// different admin, the API responds 409 — we surface that as a confirm()
-// prompt and retry with force:true only if the admin agrees to replace.
-async function doAssign({ chapterId, userId, row, force }) {
+// Assign (or reassign) an organization admin. An organization may now have
+// more than one admin, and a user administers at most one organization, so
+// reassigning simply moves them — the old force/409 replace prompt is gone.
+async function doAssign({ organizationId, userId, row }) {
   try {
-    await apiFetch('/api/admin/chapter-admins/assign', {
+    await apiFetch('/api/admin/organization-admins/assign', {
       method: 'POST',
-      body: JSON.stringify({ chapterId, userId, note: 'Assigned via users page', force }),
+      body: JSON.stringify({ organizationId, userId, note: 'Assigned via users page' }),
     });
-    showToast(force ? 'Chapter admin replaced' : 'Chapter admin assigned');
-    const chapterName = (window.adminChapters || []).find(c => String(c.id) === String(chapterId))?.name || '';
-    const chapterCell = row.querySelector('td:nth-child(4)');
-    if (chapterCell) chapterCell.textContent = chapterName;
+    showToast('Organization admin assigned');
+    const orgName = (window.adminOrganizations || []).find(c => String(c.id) === String(organizationId))?.name || '';
+    const orgCell = row.querySelector('td:nth-child(4)');
+    if (orgCell) orgCell.textContent = orgName;
     const panel = row.querySelector('.assign-panel');
     if (panel) panel.classList.add('hidden');
   } catch (err) {
-    if (err.status === 409) {
-      if (confirm(`${err.message}\n\nReplace them?`)) {
-        await doAssign({ chapterId, userId, row, force: true });
-      }
-      return;
-    }
     showToast(err.message, 'error');
   }
 }
@@ -842,7 +836,7 @@ async function loadPendingUsers(table) {
           <td class="admin-td">${escapeHtml(u.firstName)} ${escapeHtml(u.lastName)}</td>
           <td class="admin-td max-w-[220px] truncate" title="${escapeHtml(u.email)}">${escapeHtml(u.email)}</td>
           <td class="admin-td max-w-[160px] truncate">${escapeHtml(u.school || '-')}</td>
-          <td class="admin-td max-w-[140px] truncate">${escapeHtml((u.chapter && u.chapter.name) || '-')}</td>
+          <td class="admin-td max-w-[140px] truncate">${escapeHtml((u.organization && u.organization.name) || '-')}</td>
           <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
           <td class="admin-td">${membershipPaymentBadge(u)}</td>
           <td class="admin-td text-right">
@@ -853,8 +847,8 @@ async function loadPendingUsers(table) {
             </div>
             <div class="assign-panel hidden w-full mt-2 flex flex-wrap justify-end items-center gap-2">
               <select class="assign-select form-input py-1.5 w-auto">
-                <option value="">Select chapter</option>
-                ${window.adminChapters.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
+                <option value="">Select organization</option>
+                ${(window.adminOrganizations || []).map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
               </select>
               <button data-assign-confirm="${u.id}" class="btn-primary px-3 py-1.5 text-sm">Confirm</button>
             </div>
@@ -869,14 +863,14 @@ async function loadPendingUsers(table) {
 }
 
 function memberRowHtml(u) {
-  const canEdit = (window.currentAdmin && window.currentAdmin.role === 'ADMIN') || (window.currentAdmin && window.currentAdmin.role === 'CHAPTER_ADMIN' && u.chapter && Number(u.chapter.id) === Number(window.currentAdmin.chapterId));
+  const canEdit = (window.currentAdmin && window.currentAdmin.role === 'ADMIN') || (window.currentAdmin && window.currentAdmin.role === 'CHAPTER_ADMIN' && u.organization && Number(u.organization.id) === Number(window.currentAdmin.organizationId));
   const assignAllowed = (window.currentAdmin && window.currentAdmin.role === 'ADMIN');
   return `
     <tr data-user-id="${u.id}" class="admin-tr align-top">
       <td class="admin-td">${escapeHtml(u.firstName)} ${escapeHtml(u.lastName)}</td>
       <td class="admin-td max-w-[220px] truncate" title="${escapeHtml(u.email)}">${escapeHtml(u.email)}</td>
       <td class="admin-td max-w-[160px] truncate">${escapeHtml(u.school || '-')}</td>
-      <td class="admin-td max-w-[140px] truncate">${escapeHtml((u.chapter && u.chapter.name) || '-')}</td>
+      <td class="admin-td max-w-[140px] truncate">${escapeHtml((u.organization && u.organization.name) || '-')}</td>
       <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
       <td class="admin-td">${membershipPaymentBadge(u)}</td>
       <td class="admin-td text-right">
@@ -887,8 +881,8 @@ function memberRowHtml(u) {
         </div>
         ${assignAllowed ? `<div class="assign-panel hidden w-full mt-2 flex flex-wrap justify-end items-center gap-2">
           <select class="assign-select form-input py-1.5 w-auto">
-            <option value="">Select chapter</option>
-            ${window.adminChapters.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
+            <option value="">Select organization</option>
+            ${(window.adminOrganizations || []).map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
           </select>
           <button data-assign-confirm="${u.id}" class="btn-primary px-3 py-1.5 text-sm">Confirm</button>
         </div>` : ''}
@@ -922,7 +916,7 @@ function initMembersFilterAndPagination(table) {
   async function loadMembers(page) {
     const formData = filterForm ? new FormData(filterForm) : new FormData();
     const params = new URLSearchParams();
-    ['search', 'chapterId', 'status'].forEach((key) => {
+    ['search', 'organizationId', 'status'].forEach((key) => {
       const value = formData.get(key);
       if (value) params.set(key, value);
     });
@@ -1520,63 +1514,41 @@ function initInvitationsReportTable({ moduleId, tableId, formId, emptyStateId, p
   table.__reloadInvitations = () => loadInvitations(Number(paginationEl?.dataset.page) || 1);
 }
 
-// --- Chapter Admins grid (admin/chapter-admins page) ---
-function initChapterAdmins() {
-  const toggleBtn = document.getElementById('toggle-assign-panel');
-  const panel = document.getElementById('assign-panel');
-  if (!toggleBtn || !panel) return; // not on this page
+// --- Organization Admins (admin/organization-admins page) ---
+// Assignment is by userId now: an organization may have several admins, and a
+// user administers at most one organization, so reassigning just moves them —
+// there's no 'this org already has an admin' conflict to resolve any more.
+function initOrganizationAdmins() {
+  const assignForm = document.getElementById('assign-org-admin-form');
+  if (!assignForm) return; // not on this page
 
-  toggleBtn.addEventListener('click', () => panel.classList.toggle('hidden'));
-
-  document.querySelectorAll('[data-view-chapter]').forEach((el) => {
-    el.addEventListener('click', () => {
-      window.location.href = `/admin/chapter-members?chapterId=${el.getAttribute('data-view-chapter')}`;
-    });
-  });
-
-  const assignForm = document.getElementById('assign-form');
-  if (assignForm) {
-    assignForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const chapterId = document.getElementById('assign-chapterId').value;
-      const userId = document.getElementById('assign-userId').value;
-      const note = document.getElementById('assign-note').value;
-      if (!chapterId || !userId) return showToast('Please select a chapter and a user', 'error');
-      await doAssignChapterAdmin({ chapterId, userId, note, force: false });
-    });
-  }
-
-  async function doAssignChapterAdmin({ chapterId, userId, note, force }) {
+  assignForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const organizationId = document.getElementById('assign-organizationId').value;
+    const userId = document.getElementById('assign-userId').value;
+    if (!organizationId || !userId) return showToast('Please select an organization and a member', 'error');
     try {
-      await apiFetch('/api/admin/chapter-admins/assign', {
+      await apiFetch('/api/admin/organization-admins/assign', {
         method: 'POST',
-        body: JSON.stringify({ chapterId, userId, note: note || 'Assigned via Chapter Admins page', force }),
+        body: JSON.stringify({ organizationId, userId, note: 'Assigned via Organization Admins page' }),
       });
-      showToast(force ? 'Chapter admin replaced' : 'Chapter admin assigned');
+      showToast('Organization admin assigned');
       window.location.reload();
     } catch (err) {
-      if (err.status === 409) {
-        if (confirm(`${err.message}\n\nReplace them?`)) {
-          await doAssignChapterAdmin({ chapterId, userId, note, force: true });
-        }
-        return;
-      }
       showToast(err.message, 'error');
     }
-  }
+  });
 
-  document.querySelectorAll('[data-remove-chapter]').forEach((btn) => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const chapterId = btn.getAttribute('data-remove-chapter');
-      const chapterName = btn.getAttribute('data-chapter-name');
-      if (!confirm(`Remove the chapter admin for "${chapterName}"?`)) return;
+  document.querySelectorAll('[data-remove-org-admin]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const userId = btn.getAttribute('data-remove-org-admin');
+      if (!confirm('Remove this organization admin? They will revert to a regular member.')) return;
       try {
-        await apiFetch('/api/admin/chapter-admins/remove', {
+        await apiFetch('/api/admin/organization-admins/remove', {
           method: 'POST',
-          body: JSON.stringify({ chapterId, note: 'Removed via Chapter Admins page' }),
+          body: JSON.stringify({ userId, note: 'Removed via Organization Admins page' }),
         });
-        showToast('Chapter admin removed');
+        showToast('Organization admin removed');
         window.location.reload();
       } catch (err) {
         showToast(err.message, 'error');

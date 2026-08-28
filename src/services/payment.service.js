@@ -46,10 +46,10 @@ const SAFE_USER_SELECT = {
   email: true,
   phone: true,
   school: true,
-  chapterId: true,
+  organizationId: true,
   role: true,
   status: true,
-  chapter: true,
+  organization: true,
 };
 
 function appUrl() {
@@ -120,7 +120,7 @@ async function getPaymentForViewer(paymentId, viewer) {
 // `purpose` unset means "all purposes" — event-fee payments show up alongside
 // membership payments by default now that both exist; pass an explicit
 // purpose to filter down to one.
-function buildAdminPaymentWhere({ status, chapterId, dateFrom, dateTo, purpose, eventId }) {
+function buildAdminPaymentWhere({ status, organizationId, organizationIds, dateFrom, dateTo, purpose, eventId }) {
   const where = {};
   if (purpose) where.purpose = purpose;
   if (eventId) where.eventId = Number(eventId);
@@ -130,14 +130,18 @@ function buildAdminPaymentWhere({ status, chapterId, dateFrom, dateTo, purpose, 
     if (dateFrom) where.createdAt.gte = new Date(dateFrom);
     if (dateTo) where.createdAt.lte = new Date(dateTo);
   }
-  if (chapterId) {
-    where.user = { chapterId: Number(chapterId) };
+  // Subtree-aware: filtering by a cluster includes payments from members of
+  // the chapters and student units beneath it, not just its direct members.
+  if (Array.isArray(organizationIds)) {
+    where.user = { organizationId: { in: organizationIds } };
+  } else if (organizationId) {
+    where.user = { organizationId: Number(organizationId) };
   }
   return where;
 }
 
-async function listPaymentsForAdmin({ status, chapterId, dateFrom, dateTo, purpose, eventId, page = 1, pageSize = 20 }) {
-  const where = buildAdminPaymentWhere({ status, chapterId, dateFrom, dateTo, purpose, eventId });
+async function listPaymentsForAdmin({ status, organizationId, organizationIds, dateFrom, dateTo, purpose, eventId, page = 1, pageSize = 20 }) {
+  const where = buildAdminPaymentWhere({ status, organizationId, organizationIds, dateFrom, dateTo, purpose, eventId });
 
   const [total, payments] = await Promise.all([
     prisma.payment.count({ where }),

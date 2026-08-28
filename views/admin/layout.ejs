@@ -93,21 +93,21 @@
           </div>
         </div>
 
-        <div class="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Chapter Management</div>
+        <div class="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Organization Management</div>
         <div class="px-1">
           <button id="chapter-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-white/5 hover:text-white focus:outline-none">
-            <span class="flex items-center gap-2.5"><svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('map') %></svg> Chapters</span>
+            <span class="flex items-center gap-2.5"><svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('map') %></svg> Organizations</span>
             <svg id="chapter-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('chevron') %></svg>
           </button>
           <div id="chapter-submenu" class="mt-1 space-y-0.5 hidden">
-            <a href="/admin/chapters" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Chapters</a>
-            <a href="/admin/chapter-admins" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Chapter Admins</a>
+            <a href="/admin/organizations" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Organizations</a>
+            <a href="/admin/organization-admins" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Organization Admins</a>
           </div>
         </div>
       <% } else if (isChapterAdmin) { %>
-        <a href="/admin/chapter-members" data-admin-link class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors">
+        <a href="/admin/organization-members" data-admin-link class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors">
           <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('users') %></svg>
-          My Chapter Members
+          My Organization Members
         </a>
       <% } %>
 

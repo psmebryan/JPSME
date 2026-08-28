@@ -1,0 +1,76 @@
+<%
+const assignments = locals.assignments || [];
+const organizations = locals.organizations || [];
+const users = locals.users || [];
+const TYPE_LABEL = {
+  NATIONAL: 'National', REGION: 'Region', CLUSTER: 'Cluster',
+  CHAPTER: 'Chapter', STUDENT_UNIT: 'Student Unit',
+};
+%>
+
+<h1 class="admin-h1 mb-2">Organization Admins</h1>
+<p class="admin-subtitle mb-6">
+  An admin's authority covers their organization <em>and everything beneath it</em> — assigning
+  someone to a cluster gives them its chapters and student units too. A user administers at
+  most one organization; assigning them elsewhere moves them.
+</p>
+
+<section class="admin-card p-5 mb-8">
+  <h2 class="text-lg font-semibold text-slate-800 mb-4">Assign an admin</h2>
+  <form id="assign-org-admin-form" class="grid gap-3 sm:grid-cols-[1fr_1fr_auto] items-end">
+    <div>
+      <label class="form-label">Organization</label>
+      <select id="assign-organizationId" class="form-input" required>
+        <option value="">Select an organization…</option>
+        <% organizations.forEach(o => { %>
+          <option value="<%= o.id %>"><%= o.name %> (<%= TYPE_LABEL[o.type] || o.type %>)</option>
+        <% }) %>
+      </select>
+    </div>
+    <div>
+      <label class="form-label">Member</label>
+      <select id="assign-userId" class="form-input" required>
+        <option value="">Select a member…</option>
+        <% users.forEach(u => { %>
+          <option value="<%= u.id %>"><%= u.firstName %> <%= u.lastName %> — <%= u.email %></option>
+        <% }) %>
+      </select>
+    </div>
+    <button type="submit" class="btn-primary">Assign</button>
+  </form>
+</section>
+
+<section class="admin-card overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="admin-table">
+      <thead class="admin-table-head">
+        <tr>
+          <th class="admin-th">Admin</th>
+          <th class="admin-th">Email</th>
+          <th class="admin-th">Organization</th>
+          <th class="admin-th">Type</th>
+          <th class="admin-th">Assigned</th>
+          <th class="admin-th text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="admin-tbody">
+        <% assignments.forEach(a => { %>
+          <tr class="admin-tr">
+            <td class="admin-td font-medium"><%= a.user.firstName %> <%= a.user.lastName %></td>
+            <td class="admin-td max-w-[220px] truncate"><%= a.user.email %></td>
+            <td class="admin-td"><%= a.organization.name %></td>
+            <td class="admin-td"><span class="badge-slate"><%= TYPE_LABEL[a.organization.type] || a.organization.type %></span></td>
+            <td class="admin-td"><%= new Date(a.assignedAt).toLocaleDateString() %></td>
+            <td class="admin-td text-right">
+              <a href="/admin/organization-members?organizationId=<%= a.organization.id %>" class="text-indigo-600 hover:underline text-sm font-medium">Members</a>
+              <button type="button" data-remove-org-admin="<%= a.user.id %>" class="ml-3 text-red-600 hover:underline text-sm font-medium">Remove</button>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <% if (!assignments.length) { %>
+      <p class="empty-state">No organization admins assigned yet.</p>
+    <% } %>
+  </div>
+</section>

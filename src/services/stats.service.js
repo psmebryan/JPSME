@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma');
 const auditService = require('./audit.service');
+const organizationService = require('./organization.service');
 
 // Real counts for the homepage stats bar (no invented marketing numbers).
 async function getHomeStats() {
@@ -61,7 +62,7 @@ async function getMainAdminDashboard() {
     revenueAgg,
     newUsersInWindow,
     paidPaymentsInWindow,
-    chapters,
+    regions,
     auditLogPage,
     upcomingEvents,
   ] = await Promise.all([
@@ -71,9 +72,13 @@ async function getMainAdminDashboard() {
     prisma.payment.aggregate({ where: { status: 'PAID' }, _sum: { amount: true } }),
     prisma.user.findMany({ where: { role: 'USER', createdAt: { gte: windowStart } }, select: { createdAt: true } }),
     prisma.payment.findMany({ where: { status: 'PAID', paidAt: { gte: windowStart } }, select: { paidAt: true, amount: true } }),
-    prisma.chapter.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true, _count: { select: { users: { where: { role: 'USER', status: 'APPROVED' } } } } },
+    // Regions are the useful top-level breakdown now that the hierarchy is
+    // variable-depth — counting only direct members of each organization
+    // would badly under-report a region whose members all sit in student
+    // units beneath it, so this aggregates each region's whole subtree below.
+    prisma.organization.findMany({
+      where: { isActive: true, type: 'REGION' },
+      select: { id: true, name: true, path: true },
     }),
     auditService.listAuditLogs({ page: 1 }),
     prisma.event.findMany({
@@ -84,8 +89,19 @@ async function getMainAdminDashboard() {
     }),
   ]);
 
-  const membersByChapter = chapters
-    .map((c) => ({ name: c.name, count: c._count.users }))
+  // Subtree aggregation in one pass: fetch every approved member's
+  // organization path once, then attribute each to whichever region's path is
+  // a prefix of theirs. Avoids a per-region count query while still counting
+  // members who sit several levels below the region.
+  const memberOrgs = await prisma.user.findMany({
+    where: { role: 'USER', status: 'APPROVED', organizationId: { not: null } },
+    select: { organization: { select: { path: true } } },
+  });
+  const membersByOrganization = regions
+    .map((r) => ({
+      name: r.name,
+      count: memberOrgs.filter((m) => m.organization && m.organization.path.startsWith(r.path)).length,
+    }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 8);
 
@@ -98,18 +114,21 @@ async function getMainAdminDashboard() {
     },
     registrationsByMonth: bucketByMonth(newUsersInWindow, 'createdAt', months),
     revenueByMonth: sumByMonth(paidPaymentsInWindow, 'paidAt', 'amount', months),
-    membersByChapter,
+    membersByOrganization,
     recentActivity: auditLogPage.logs.slice(0, 8),
     upcomingEvents,
   };
 }
 
-// CHAPTER_ADMIN dashboard — scoped to their own chapter, no payment/revenue
-// data (matches the zero-payment-access rule enforced everywhere else).
-async function getChapterAdminDashboard(chapterId) {
+// Scoped-admin dashboard — covers their organization AND its descendants, so
+// a cluster admin sees the members of the chapters/units beneath them rather
+// than only those attached directly to the cluster. No payment/revenue data
+// (matches the zero-payment-access rule enforced everywhere else).
+async function getOrganizationAdminDashboard(organizationId) {
+  const scopeIds = await organizationService.getDescendantIds(organizationId);
   const [totalMembers, pendingApprovals, upcomingEvents] = await Promise.all([
-    prisma.user.count({ where: { role: 'USER', status: 'APPROVED', chapterId: Number(chapterId) } }),
-    prisma.user.count({ where: { role: 'USER', status: 'PENDING', chapterId: Number(chapterId) } }),
+    prisma.user.count({ where: { role: 'USER', status: 'APPROVED', organizationId: { in: scopeIds } } }),
+    prisma.user.count({ where: { role: 'USER', status: 'PENDING', organizationId: { in: scopeIds } } }),
     prisma.event.findMany({
       where: { isPublished: true, startDate: { gte: new Date() } },
       orderBy: { startDate: 'asc' },
@@ -124,4 +143,4 @@ async function getChapterAdminDashboard(chapterId) {
   };
 }
 
-module.exports = { getHomeStats, getMainAdminDashboard, getChapterAdminDashboard };
+module.exports = { getHomeStats, getMainAdminDashboard, getOrganizationAdminDashboard };

@@ -23,16 +23,18 @@ function textToHtml(text) {
   return String(text || '').replace(/\n/g, '<br>');
 }
 
-// scope 'all' -> every APPROVED USER (optionally narrowed to one chapter);
+// scope 'all' -> every APPROVED USER (optionally narrowed to one organization
+// subtree — organizationIds carries the org plus its descendants);
 // scope 'selected' -> exactly the given userIds. Never trusts a client-sent
 // recipient LIST for 'all' — only the filter criteria.
-function buildAudienceWhere({ scope, status, chapterId, userIds }) {
+function buildAudienceWhere({ scope, status, organizationId, organizationIds, userIds }) {
   if (scope === 'selected') {
     const ids = (userIds || []).map(Number).filter((id) => Number.isInteger(id));
     return { id: { in: ids } };
   }
   const where = { role: 'USER', status: status || 'APPROVED' };
-  if (chapterId) where.chapterId = Number(chapterId);
+  if (Array.isArray(organizationIds)) where.organizationId = { in: organizationIds };
+  else if (organizationId) where.organizationId = Number(organizationId);
   return where;
 }
 

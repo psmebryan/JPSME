@@ -16,7 +16,7 @@ function fmt(date) {
 const invitationsList = typeof invitations !== 'undefined' ? invitations : [];
 const invitedStatusRows = typeof invitedEmailStatuses !== 'undefined' ? invitedEmailStatuses : [];
 const invitedEmails = new Map(invitedStatusRows.map((inv) => [inv.email.toLowerCase(), inv.status]));
-const distinctChapters = [...new Set(members.map((m) => (m.chapter && m.chapter.name) || '').filter(Boolean))].sort();
+const distinctChapters = [...new Set(members.map((m) => (m.organization && m.organization.name) || '').filter(Boolean))].sort();
 const distinctSchools = [...new Set(members.map((m) => m.school || '').filter(Boolean))].sort();
 const opts = typeof filterOptions !== 'undefined' ? filterOptions : { chapters: [], schools: [], events: [] };
 function memberOrGuestBadge(userId) {
@@ -214,7 +214,7 @@ function sortArrowHeader(label, key) {
             </thead>
             <tbody id="invite-member-tbody">
               <% members.forEach(m => { %>
-                <% const chapterName = (m.chapter && m.chapter.name) || ''; %>
+                <% const chapterName = (m.organization && m.organization.name) || ''; %>
                 <% const invitedStatus = invitedEmails.get(m.email.toLowerCase()); %>
                 <tr class="invite-member-row border-t border-slate-100 <%= invitedStatus ? 'bg-slate-50' : '' %>"
                     data-search="<%= `${m.firstName} ${m.lastName} ${m.email} ${chapterName} ${m.school || ''}`.toLowerCase() %>"

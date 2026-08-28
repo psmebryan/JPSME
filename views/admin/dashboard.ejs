@@ -95,20 +95,20 @@ function statBadge(name, colorClass) {
 
     <div class="grid gap-4 mb-6 lg:grid-cols-2">
       <div class="admin-card p-5">
-        <h2 class="font-semibold text-slate-900 mb-4">Members by Chapter</h2>
-        <% if (membersByChapter.length === 0) { %>
-          <p class="empty-state">No chapters yet.</p>
+        <h2 class="font-semibold text-slate-900 mb-4">Members by Region</h2>
+        <% if (membersByOrganization.length === 0) { %>
+          <p class="empty-state">No organizations yet.</p>
         <% } else { %>
-          <% const maxChapter = Math.max(1, ...membersByChapter.map(c => c.count)); %>
+          <% const maxOrg = Math.max(1, ...membersByOrganization.map(c => c.count)); %>
           <div class="space-y-3">
-            <% membersByChapter.forEach(c => { %>
+            <% membersByOrganization.forEach(c => { %>
               <div>
                 <div class="flex items-center justify-between text-sm mb-1">
                   <span class="text-slate-700 truncate pr-2"><%= c.name %></span>
                   <span class="text-slate-500 font-medium shrink-0"><%= c.count %></span>
                 </div>
                 <div class="w-full bg-slate-100 rounded-full h-2">
-                  <div class="bg-indigo-500 h-2 rounded-full" style="width: <%= Math.max(3, Math.round((c.count / maxChapter) * 100)) %>%"></div>
+                  <div class="bg-indigo-500 h-2 rounded-full" style="width: <%= Math.max(3, Math.round((c.count / maxOrg) * 100)) %>%"></div>
                 </div>
               </div>
             <% }) %>
@@ -139,14 +139,14 @@ function statBadge(name, colorClass) {
     </div>
   <% } else { %>
     <div class="grid grid-cols-2 gap-4 mb-6 max-w-lg">
-      <a href="/admin/chapter-members" class="admin-card p-5 hover:shadow-md transition flex items-start justify-between gap-3">
+      <a href="/admin/organization-members" class="admin-card p-5 hover:shadow-md transition flex items-start justify-between gap-3">
         <div>
           <p class="text-3xl font-bold text-slate-900"><%= totals.totalMembers %></p>
           <p class="text-sm text-slate-500">Members in my chapter</p>
         </div>
         <%- statBadge('users', 'bg-indigo-50 text-indigo-600') %>
       </a>
-      <a href="/admin/chapter-members" class="admin-card p-5 hover:shadow-md transition flex items-start justify-between gap-3">
+      <a href="/admin/organization-members" class="admin-card p-5 hover:shadow-md transition flex items-start justify-between gap-3">
         <div>
           <p class="text-3xl font-bold text-amber-600"><%= totals.pendingApprovals %></p>
           <p class="text-sm text-slate-500">Pending approvals</p>

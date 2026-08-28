@@ -25,7 +25,7 @@ const openEmailSubmenu = makeSubmenuToggle('email-management-toggle', 'email-sub
 const openInvitationSubmenu = makeSubmenuToggle('invitation-management-toggle', 'invitation-submenu', 'invitation-management-chevron');
 
 function openSubmenuForPath(path) {
-  if (path.startsWith('/admin/chapters') || path.startsWith('/admin/chapter-members')) {
+  if (path.startsWith('/admin/organizations') || path.startsWith('/admin/organization-members') || path.startsWith('/admin/organization-admins')) {
     openChapterSubmenu(true);
   }
   if (path.startsWith('/admin/users')) {

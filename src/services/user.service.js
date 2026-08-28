@@ -4,6 +4,7 @@ const { toPublicUser } = require('./auth.service');
 const mailService = require('./mail.service');
 const auditService = require('./audit.service');
 const sheetsSyncService = require('./sheetsSync.service');
+const organizationService = require('./organization.service');
 const normalizeName = (value) => String(value || '').trim().toUpperCase();
 
 async function listByStatus(status) {
@@ -11,7 +12,7 @@ async function listByStatus(status) {
   const users = await prisma.user.findMany({
     where: { ...where, role: { not: 'ADMIN' } },
     orderBy: { createdAt: 'desc' },
-    include: { chapter: true },
+    include: { organization: true },
   });
   return users.map(toPublicUser);
 }
@@ -22,10 +23,15 @@ async function listByStatus(status) {
 // listByStatus() above, which stays unbounded on purpose: it also backs the
 // invitation member-picker and a few other small internal lookups that need
 // every matching row at once, not a page of them.
-async function listMembersForAdmin({ status, chapterId, search, page = 1, pageSize = 25 } = {}) {
+// `organizationIds` is a subtree (from req.orgScope.descendantIds), not a
+// single id — a scoped admin sees their own organization AND everything
+// beneath it. `organizationId` alone filters to exactly one organization,
+// which is what the admin's filter dropdown passes.
+async function listMembersForAdmin({ status, organizationId, organizationIds, search, page = 1, pageSize = 25 } = {}) {
   const where = { role: { not: 'ADMIN' } };
   if (status) where.status = status;
-  if (chapterId) where.chapterId = Number(chapterId);
+  if (Array.isArray(organizationIds)) where.organizationId = { in: organizationIds };
+  else if (organizationId) where.organizationId = Number(organizationId);
   const term = (search || '').trim();
   if (term) {
     where.OR = [
@@ -40,7 +46,7 @@ async function listMembersForAdmin({ status, chapterId, search, page = 1, pageSi
     prisma.user.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      include: { chapter: true },
+      include: { organization: true },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
@@ -73,7 +79,7 @@ async function setStatus(userId, status, { actorId = null, reason = null, paymen
   const updated = await prisma.user.update({
     where: { id: Number(userId) },
     data: { status },
-    include: { chapter: true },
+    include: { organization: true },
   });
 
   // Skip logging a no-op "changed from X to X" (e.g. re-approving an
@@ -113,18 +119,24 @@ async function listAdmins() {
   return admins;
 }
 
-// List users by chapter (members)
-async function listByChapter(chapterId) {
+// Members of an organization SUBTREE — the organization itself plus every
+// descendant. Replaces listByChapter(), which could only ever match one exact
+// chapter; a cluster admin now correctly sees members of the chapters and
+// student units beneath them.
+async function listByOrganization(organizationId, { includeDescendants = true } = {}) {
+  const where = includeDescendants
+    ? { organizationId: { in: await organizationService.getDescendantIds(organizationId) } }
+    : { organizationId: Number(organizationId) };
   const users = await prisma.user.findMany({
-    where: { chapterId: Number(chapterId) },
+    where,
     orderBy: { createdAt: 'desc' },
-    include: { chapter: true },
+    include: { organization: true },
   });
   return users.map(toPublicUser);
 }
 
 async function getById(userId) {
-  const user = await prisma.user.findUnique({ where: { id: Number(userId) }, include: { chapter: true } });
+  const user = await prisma.user.findUnique({ where: { id: Number(userId) }, include: { organization: true } });
   if (!user) throw new AppError('User not found', 404);
   return toPublicUser(user);
 }
@@ -159,17 +171,17 @@ async function updateUser(userId, data) {
     const roleVal = data.role;
     if (roleVal === 'CHAPTER_ADMIN' || roleVal === 'USER') allowed.role = roleVal;
   }
-  if (Object.prototype.hasOwnProperty.call(data, 'chapterId')) {
-    if (data.chapterId === '' || data.chapterId === null || data.chapterId === undefined) {
-      allowed.chapterId = null;
+  if (Object.prototype.hasOwnProperty.call(data, 'organizationId')) {
+    if (data.organizationId === '' || data.organizationId === null || data.organizationId === undefined) {
+      allowed.organizationId = null;
     } else {
-      const val = Number(data.chapterId);
-      if (Number.isNaN(val)) throw new AppError('Invalid chapter selection', 400);
-      allowed.chapterId = val;
+      const val = Number(data.organizationId);
+      if (Number.isNaN(val)) throw new AppError('Invalid organization selection', 400);
+      allowed.organizationId = val;
     }
   }
 
-  const updated = await prisma.user.update({ where: { id: Number(userId) }, data: allowed, include: { chapter: true } });
+  const updated = await prisma.user.update({ where: { id: Number(userId) }, data: allowed, include: { organization: true } });
   return toPublicUser(updated);
 }
 
@@ -181,4 +193,4 @@ async function deleteUser(userId) {
   return { deleted: true };
 }
 
-module.exports = { listByStatus, listMembersForAdmin, setStatus, listAdmins, listByChapter, getById, updateUser, deleteUser };
+module.exports = { listByStatus, listMembersForAdmin, setStatus, listAdmins, listByOrganization, getById, updateUser, deleteUser };

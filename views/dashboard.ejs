@@ -34,8 +34,8 @@
         <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
           <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Chapter</p>
           <p class="mt-2 text-sm font-medium text-gray-900">
-            <% if (userProfile.chapter && userProfile.chapter.name) { %>
-              <%= userProfile.chapter.name %>
+            <% if (userProfile.organization && userProfile.organization.name) { %>
+              <%= userProfile.organization.name %>
             <% } else { %>
               Not assigned yet
             <% } %>
@@ -67,11 +67,11 @@
           </div>
 
           <div>
-            <label for="chapterId" class="block text-sm font-medium mb-1">Chapter</label>
-            <select id="chapterId" name="chapterId" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <label for="organizationId" class="block text-sm font-medium mb-1">Organization</label>
+            <select id="organizationId" name="organizationId" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
               <option value="">Not assigned</option>
-              <% chapters.forEach(chapter => { %>
-                <option value="<%= chapter.id %>" <%= String(userProfile.chapterId) === String(chapter.id) ? 'selected' : '' %>><%= chapter.name %></option>
+              <% (organizations || []).forEach(org => { %>
+                <option value="<%= org.id %>" <%= String(userProfile.organizationId) === String(org.id) ? 'selected' : '' %>><%= org.name %></option>
               <% }) %>
             </select>
           </div>
@@ -140,7 +140,7 @@
           middleInitial: formData.get('middleInitial')?.toString().trim() || null,
           school: formData.get('school')?.toString().trim() || null,
           phone: formData.get('phone')?.toString().trim() || null,
-          chapterId: formData.get('chapterId') || null,
+          organizationId: formData.get('organizationId') || null,
         };
 
         try {

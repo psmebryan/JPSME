@@ -6,6 +6,7 @@ const settingsService = require('../../services/settings.service');
 const sponsorService = require('../../services/sponsor.service');
 const paymentService = require('../../services/payment.service');
 const storageService = require('../../services/storage.service');
+const organizationAdminService = require('../../services/organizationAdmin.service');
 
 // Enriches each user with their latest membership-payment status so the admin
 // can see who's paid before approving — one batched query, not N.
@@ -30,10 +31,10 @@ const listUsers = asyncHandler(async (req, res) => {
 // (listUsers above stays unbounded for the approvals queue, which is
 // naturally small regardless of total membership size).
 const listMembers = asyncHandler(async (req, res) => {
-  const { status, chapterId, search, page } = req.query;
+  const { status, organizationId, search, page } = req.query;
   const result = await userService.listMembersForAdmin({
     status: status || undefined,
-    chapterId: chapterId || undefined,
+    organizationId: organizationId || undefined,
     search: search || undefined,
     page: Math.max(1, Number(page) || 1),
   });
@@ -41,18 +42,26 @@ const listMembers = asyncHandler(async (req, res) => {
   return success(res, { ...result, users });
 });
 
-const listChapterMembers = asyncHandler(async (req, res) => {
-  // If apiAdminOrChapterAdmin is used, controller can check req.chapterScope
-  const chapterId = req.query.chapterId || req.chapterScope;
-  if (!chapterId) {
-    // admin: no chapterId provided -> list all chapters members grouped? We'll return all users if admin
-    if (req.session.user && req.session.user.role === 'ADMIN') {
-      const users = await userService.listByStatus();
-      return success(res, { users });
+// Members of an organization and everything beneath it. A scoped admin is
+// confined to their own subtree (req.orgScope); a main admin may pass any
+// organizationId, or none to list everyone.
+const listOrganizationMembers = asyncHandler(async (req, res) => {
+  const requested = req.query.organizationId;
+
+  if (req.orgScope) {
+    // A scoped admin may only ever query inside their own subtree.
+    if (requested && !req.orgScope.descendantIds.includes(Number(requested))) {
+      return error(res, 'Access denied', 403);
     }
-    return error(res, 'Chapter id required', 400);
+    const users = await userService.listByOrganization(requested || req.orgScope.id);
+    return success(res, { users });
   }
-  const users = await userService.listByChapter(chapterId);
+
+  if (requested) {
+    const users = await userService.listByOrganization(requested);
+    return success(res, { users });
+  }
+  const users = await userService.listByStatus();
   return success(res, { users });
 });
 
@@ -76,12 +85,14 @@ const updateUser = asyncHandler(async (req, res) => {
   const userId = req.params.id;
   let payload = { ...req.body };
 
-  if (req.chapterScope) {
+  if (req.orgScope) {
     const target = await userService.getById(userId);
-    if (target.chapterId !== req.chapterScope) return error(res, 'Access denied', 403);
+    if (!req.orgScope.descendantIds.includes(Number(target.organizationId))) {
+      return error(res, 'Access denied', 403);
+    }
 
-    // Chapter admins may only touch these fields on their own members —
-    // never email, role, or chapterId, even if sent directly to the API.
+    // Scoped admins may only touch these fields on their own members —
+    // never email, role, or organizationId, even if sent directly to the API.
     const allowedFields = ['firstName', 'middleInitial', 'lastName', 'phone', 'school'];
     payload = Object.fromEntries(
       Object.entries(payload).filter(([key]) => allowedFields.includes(key))
@@ -94,10 +105,12 @@ const updateUser = asyncHandler(async (req, res) => {
 
 const deleteUser = asyncHandler(async (req, res) => {
   const userId = req.params.id;
-  if (req.chapterScope) {
+  if (req.orgScope) {
     const target = await userService.getById(userId);
-    const targetChapterId = target.chapterId ?? (target.chapter && target.chapter.id);
-    if (Number(targetChapterId) !== Number(req.chapterScope)) return error(res, 'Access denied', 403);
+    const targetOrgId = target.organizationId ?? (target.organization && target.organization.id);
+    if (!req.orgScope.descendantIds.includes(Number(targetOrgId))) {
+      return error(res, 'Access denied', 403);
+    }
   }
   const result = await userService.deleteUser(userId);
   return success(res, { result }, 'User deleted');
@@ -185,24 +198,24 @@ const deleteSponsor = asyncHandler(async (req, res) => {
   return success(res, null, 'Sponsor removed');
 });
 
-// Chapter admin assignments
-const listChapterAdmins = asyncHandler(async (req, res) => {
-  const assignments = await require('../../services/chapterAdmin.service').listAssignments();
+// Organization admin assignments
+const listOrganizationAdmins = asyncHandler(async (req, res) => {
+  const assignments = await organizationAdminService.listAssignments();
   return success(res, { assignments });
 });
 
-const assignChapterAdmin = asyncHandler(async (req, res) => {
-  const { chapterId, userId, note, force } = req.body;
+const assignOrganizationAdmin = asyncHandler(async (req, res) => {
+  const { organizationId, userId, note } = req.body;
   const changedBy = req.session.user.id;
-  const assignment = await require('../../services/chapterAdmin.service').assignChapterAdmin({ chapterId, userId, changedBy, note, force });
-  return success(res, { assignment }, 'Chapter admin assigned');
+  const assignment = await organizationAdminService.assignOrganizationAdmin({ organizationId, userId, changedBy, note });
+  return success(res, { assignment }, 'Organization admin assigned');
 });
 
-const removeChapterAdmin = asyncHandler(async (req, res) => {
-  const { chapterId, note } = req.body;
+const removeOrganizationAdmin = asyncHandler(async (req, res) => {
+  const { userId, note } = req.body;
   const changedBy = req.session.user.id;
-  const result = await require('../../services/chapterAdmin.service').removeAssignment({ chapterId, changedBy, note });
-  return success(res, { result }, 'Chapter admin removed');
+  const result = await organizationAdminService.removeAssignment({ userId, changedBy, note });
+  return success(res, { result }, 'Organization admin removed');
 });
 
-module.exports = { listUsers, listMembers, listChapterMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, listSponsors, createSponsor, deleteSponsor, listChapterAdmins, assignChapterAdmin, removeChapterAdmin };
+module.exports = { listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin };

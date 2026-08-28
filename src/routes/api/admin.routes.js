@@ -58,7 +58,7 @@ const broadcastLimiter = rateLimit({
 const router = Router();
 
 // Allow ADMIN and CHAPTER_ADMIN (scoped) for chapter member endpoints
-router.get('/chapter-members', apiAdminOrChapterAdmin, adminApi.listChapterMembers);
+router.get('/organization-members', apiAdminOrChapterAdmin, adminApi.listOrganizationMembers);
 router.put('/users/:id', apiAdminOrChapterAdmin, verifyCsrfToken, adminApi.updateUser);
 router.delete('/users/:id', apiAdminOrChapterAdmin, verifyCsrfToken, adminApi.deleteUser);
 
@@ -71,9 +71,9 @@ const paymentListValidators = [
 ];
 
 // Chapter admin assignment endpoints (ADMIN only)
-router.get('/chapter-admins', apiAdmin, adminApi.listChapterAdmins);
-router.post('/chapter-admins/assign', apiAdmin, adminApi.assignChapterAdmin);
-router.post('/chapter-admins/remove', apiAdmin, adminApi.removeChapterAdmin);
+router.get('/organization-admins', apiAdmin, adminApi.listOrganizationAdmins);
+router.post('/organization-admins/assign', apiAdmin, verifyCsrfToken, adminApi.assignOrganizationAdmin);
+router.post('/organization-admins/remove', apiAdmin, verifyCsrfToken, adminApi.removeOrganizationAdmin);
 
 // Remaining routes require full ADMIN
 router.use(apiAdmin);
@@ -82,7 +82,7 @@ router.get('/users', adminApi.listUsers);
 router.get(
   '/members',
   query('page').optional({ checkFalsy: true }).isInt({ min: 1 }).withMessage('Invalid page'),
-  query('chapterId').optional({ checkFalsy: true }).isInt().withMessage('Invalid chapterId filter'),
+  query('organizationId').optional({ checkFalsy: true }).isInt().withMessage('Invalid organizationId filter'),
   query('status').optional({ checkFalsy: true }).isIn(['PENDING', 'APPROVED', 'REJECTED']).withMessage('Invalid status filter'),
   adminApi.listMembers
 );

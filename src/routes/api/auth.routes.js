@@ -46,11 +46,11 @@ const registerValidators = [
   body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
   body('phone').optional({ checkFalsy: true }).trim().isLength({ max: 30 }),
   body('school').optional({ checkFalsy: true }).trim().isLength({ max: 150 }),
-  body('chapterId')
-    .notEmpty().withMessage('Please select a chapter')
+  body('organizationId')
+    .notEmpty().withMessage('Please select your organization')
     .bail()
     .custom((value) => Number.isInteger(Number(value)) && Number(value) > 0)
-    .withMessage('Please select a valid chapter'),
+    .withMessage('Please select a valid organization'),
   // Where to send them once approved (e.g. an event they clicked "Create an
   // account" from). Real safety (same-site-only) is enforced server-side in
   // auth.service.js's sanitizeRedirectPath — this is just a length cap.
@@ -70,10 +70,10 @@ const profileValidators = [
   body('middleInitial').optional({ checkFalsy: true }).trim().isLength({ max: 2 }).withMessage('Middle initial must be at most 2 characters'),
   body('phone').optional({ checkFalsy: true }).trim().isLength({ max: 30 }).withMessage('Phone number is too long'),
   body('school').optional({ checkFalsy: true }).trim().isLength({ max: 150 }).withMessage('School name is too long'),
-  body('chapterId').optional({ nullable: true }).custom((value) => {
+  body('organizationId').optional({ nullable: true }).custom((value) => {
     if (value === '' || value === null || value === undefined) return true;
     return Number.isInteger(Number(value));
-  }).withMessage('A valid chapter is required'),
+  }).withMessage('A valid organization is required'),
 ];
 
 router.post('/register', verifyCsrfToken, registerLimiter, registerValidators, authApi.register);

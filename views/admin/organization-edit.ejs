@@ -1,0 +1,121 @@
+<%
+const organization = locals.organization;
+const ancestors = locals.ancestors || [];
+const children = locals.children || [];
+const organizations = locals.organizations || [];
+const TYPES = ['NATIONAL', 'REGION', 'CLUSTER', 'CHAPTER', 'STUDENT_UNIT'];
+const TYPE_LABEL = {
+  NATIONAL: 'National', REGION: 'Region', CLUSTER: 'Cluster',
+  CHAPTER: 'Chapter', STUDENT_UNIT: 'Student Unit',
+};
+const pathLabel = [...ancestors, organization].map(o => o.name).join(' › ');
+%>
+
+<a href="/admin/organizations" class="text-sm text-indigo-600 hover:underline">&larr; Back to organizations</a>
+<h1 class="admin-h1 mt-3 mb-1">Edit Organization</h1>
+<p class="admin-subtitle mb-6"><%= pathLabel %></p>
+
+<% if (organization.needsReview) { %>
+  <div class="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4">
+    <p class="text-sm font-semibold text-amber-900 mb-1">This organization needs review</p>
+    <p class="text-sm text-amber-900"><%= organization.importNote || 'Imported from the official workbook with incomplete information.' %></p>
+    <p class="mt-2 text-sm text-amber-900">
+      Set the correct parent below, then untick “Needs review” to clear the flag.
+    </p>
+  </div>
+<% } %>
+
+<form action="/admin/organizations/<%= organization.id %>" method="POST" class="admin-card p-5 grid gap-4 sm:grid-cols-2 max-w-3xl">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <input type="hidden" name="currentParentId" value="<%= organization.parentId || '' %>">
+
+  <div>
+    <label class="form-label">Name</label>
+    <input name="name" value="<%= organization.name %>" required class="form-input">
+  </div>
+  <div>
+    <label class="form-label">Type</label>
+    <select name="type" class="form-input">
+      <% TYPES.forEach(t => { %>
+        <option value="<%= t %>" <%= organization.type === t ? 'selected' : '' %>><%= TYPE_LABEL[t] %></option>
+      <% }) %>
+    </select>
+  </div>
+
+  <div class="sm:col-span-2">
+    <label class="form-label">Parent organization</label>
+    <% if (!organization.parentId) { %>
+      <p class="text-sm text-slate-500">This is the national root — it has no parent.</p>
+    <% } else { %>
+      <select name="parentId" class="form-input">
+        <% organizations.filter(o => o.id !== organization.id).forEach(o => { %>
+          <option value="<%= o.id %>" <%= organization.parentId === o.id ? 'selected' : '' %>>
+            <%= o.name %> (<%= TYPE_LABEL[o.type] %>)
+          </option>
+        <% }) %>
+      </select>
+      <p class="mt-1 text-xs text-slate-400">
+        Moving this organization moves everything beneath it too. Moving it under one of its
+        own descendants is rejected.
+      </p>
+    <% } %>
+  </div>
+
+  <div>
+    <label class="form-label">Institution</label>
+    <input name="institution" value="<%= organization.institution || '' %>" class="form-input">
+  </div>
+  <div>
+    <label class="form-label">Email</label>
+    <input name="email" type="email" value="<%= organization.email || '' %>" class="form-input">
+  </div>
+  <div>
+    <label class="form-label">Code</label>
+    <input name="code" value="<%= organization.code || '' %>" class="form-input">
+  </div>
+  <div>
+    <label class="form-label">Year founded</label>
+    <input name="yearFounded" type="number" min="1900" max="2100" value="<%= organization.yearFounded || '' %>" class="form-input">
+  </div>
+
+  <label class="flex items-center gap-2 text-sm text-slate-600">
+    <input type="checkbox" name="isActive" <%= organization.isActive ? 'checked' : '' %>> Active
+  </label>
+  <label class="flex items-center gap-2 text-sm text-slate-600">
+    <input type="checkbox" name="needsReview" <%= organization.needsReview ? 'checked' : '' %>> Needs review
+  </label>
+
+  <div class="sm:col-span-2 flex items-center gap-3 pt-2">
+    <button type="submit" class="btn-primary">Save changes</button>
+    <a href="/admin/organizations" class="text-sm text-slate-500 hover:underline">Cancel</a>
+  </div>
+</form>
+
+<section class="admin-card p-5 mt-6 max-w-3xl">
+  <h2 class="text-lg font-semibold text-slate-800 mb-3">
+    Sub-organizations (<%= children.length %>)
+  </h2>
+  <% if (!children.length) { %>
+    <p class="text-sm text-slate-500">
+      Nothing sits beneath this organization. That's valid — not every branch has every level.
+    </p>
+  <% } else { %>
+    <ul class="divide-y divide-slate-100">
+      <% children.forEach(c => { %>
+        <li class="py-2 flex items-center justify-between">
+          <span><%= c.name %> <span class="text-xs text-slate-400">(<%= TYPE_LABEL[c.type] %>)</span></span>
+          <a href="/admin/organizations/<%= c.id %>/edit" class="text-sm text-indigo-600 hover:underline">Edit</a>
+        </li>
+      <% }) %>
+    </ul>
+  <% } %>
+</section>
+
+<% if (!children.length && organization.parentId) { %>
+  <form action="/admin/organizations/<%= organization.id %>/delete" method="POST" class="mt-6 max-w-3xl"
+        data-confirm="Delete this organization? This cannot be undone.">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <button type="submit" class="text-sm text-red-600 hover:underline">Delete this organization</button>
+    <p class="mt-1 text-xs text-slate-400">Only possible because it has no sub-organizations. Members must be reassigned first.</p>
+  </form>
+<% } %>

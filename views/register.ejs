@@ -115,22 +115,35 @@
 
             <div>
               <p class="font-mono text-xs tracking-[0.2em] uppercase text-indigo-950/60 border-b border-indigo-950/10 pb-2 mb-4">
-                02 &mdash; Chapter Assignment
+                02 &mdash; Organization Affiliation
               </p>
-              <label class="block text-sm font-medium mb-1" for="chapterId">Chapter</label>
-              <select id="chapterId" name="chapterId" required
-                class="jpsme-select w-full border border-gray-300 rounded-md px-3 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                <option value="" disabled selected>Select your chapter</option>
-                <% (typeof chapters !== 'undefined' ? chapters : []).forEach(chapter => { %>
-                  <option value="<%= chapter.id %>">
-                    <%= chapter.name %><% if (chapter.area) { %> &mdash; <%= chapter.area.name %><% } %>
-                  </option>
-                <% }) %>
-              </select>
+              <label class="block text-sm font-medium mb-1" for="organization-search">Your organization</label>
+
+              <!-- Search-driven picker: the member types their school or
+                   organization name rather than drilling through region →
+                   cluster → chapter, which they'd have to know in advance and
+                   which doesn't even exist at every level for every branch. -->
+              <input id="organization-search" type="text" autocomplete="off"
+                placeholder="Search your school, unit, or chapter&hellip;"
+                class="w-full border border-gray-300 rounded-md px-3 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+              <input type="hidden" id="organizationId" name="organizationId" required
+                     value="<%= locals.organizations && organizations.length === 0 ? '' : '' %>">
+
+              <div id="organization-results"
+                   class="hidden mt-1 max-h-60 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-sm"></div>
+
+              <div id="organization-selected" class="hidden mt-2 rounded-md border border-indigo-200 bg-indigo-50 p-3">
+                <p class="text-sm font-semibold text-indigo-900" id="organization-selected-name"></p>
+                <p class="text-xs text-indigo-700 mt-0.5" id="organization-selected-path"></p>
+                <button type="button" id="organization-clear" class="mt-2 text-xs text-indigo-600 hover:underline">Change</button>
+              </div>
+
               <p class="text-xs text-slate-500 mt-1.5">
-                This determines which chapter's events and leadership you're associated with.
+                Pick whichever organization you actually belong to &mdash; a student unit,
+                chapter, cluster, or region. We'll work out the rest of your organizational
+                path automatically.
               </p>
-              <p id="chapter-error" class="hidden text-xs text-red-600 mt-1">Please select a chapter.</p>
+              <p id="chapter-error" class="hidden text-xs text-red-600 mt-1">Please select your organization.</p>
             </div>
 
             <div>

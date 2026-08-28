@@ -2,6 +2,7 @@ const { Prisma } = require('@prisma/client');
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
 const jobService = require('./job.service');
+const organizationService = require('./organization.service');
 const sheetsSyncService = require('./sheetsSync.service');
 const invitationService = require('./invitation.service');
 
@@ -40,6 +41,26 @@ async function runSerializableTransaction(fn) {
   }
 }
 
+// Freezes the registrant's organization at registration time. Mirrors why
+// fullName/email/school are already snapshotted onto EventRegistration: a
+// member's affiliation can change later, and a past event's report must keep
+// reporting who they were affiliated with THEN. organizationId supports
+// aggregation; organizationPath is the rendered label, so the history
+// survives even a rename, reparent, or deletion of the organization itself.
+async function organizationSnapshot(user) {
+  if (!user.organizationId) return { organizationId: null, organizationPath: null };
+  try {
+    return {
+      organizationId: user.organizationId,
+      organizationPath: await organizationService.getOrganizationPathLabel(user.organizationId),
+    };
+  } catch (err) {
+    // A missing organization must never block a registration — record the id
+    // and leave the label empty rather than failing the whole action.
+    return { organizationId: user.organizationId, organizationPath: null };
+  }
+}
+
 // A capacity slot is held by both a confirmed registration and one still
 // awaiting fee payment — otherwise a paid event could be oversold during the
 // window between "start payment" and "webhook confirms it". `client` defaults
@@ -62,6 +83,8 @@ async function registerForEvent(user, eventId, invitation = null) {
   const event = await prisma.event.findUnique({ where: { id: Number(eventId) } });
   if (!event) throw new AppError('Event not found', 404);
   if (!event.isPublished) throw new AppError('This event is not open for registration', 400);
+
+  const snapshot = await organizationSnapshot(user);
 
   // Serializable isolation closes the same "two concurrent registrants take
   // the last capacity slot" race that createCheckout/upsertPendingPaymentRegistration
@@ -100,6 +123,7 @@ async function registerForEvent(user, eventId, invitation = null) {
             email: user.email,
             phone: user.phone || null,
             school: user.school || null,
+            ...snapshot,
             invitationId: invitation ? invitation.id : undefined,
           },
         });
@@ -120,6 +144,7 @@ async function registerForEvent(user, eventId, invitation = null) {
           email: user.email,
           phone: user.phone || null,
           school: user.school || null,
+          ...snapshot,
           invitationId: invitation ? invitation.id : undefined,
         },
       });
@@ -153,6 +178,7 @@ async function registerForEvent(user, eventId, invitation = null) {
 // "create registration" and "create payment" could otherwise leave one
 // without the other.
 async function upsertPendingPaymentRegistration(client, user, event, invitation = null) {
+  const snapshot = await organizationSnapshot(user);
   const existing = await client.eventRegistration.findUnique({
     where: { userId_eventId: { userId: user.id, eventId: event.id } },
   });
@@ -178,6 +204,7 @@ async function upsertPendingPaymentRegistration(client, user, event, invitation 
         email: user.email,
         phone: user.phone || null,
         school: user.school || null,
+        ...snapshot,
         invitationId: invitation ? invitation.id : undefined,
       },
     });
@@ -197,6 +224,7 @@ async function upsertPendingPaymentRegistration(client, user, event, invitation 
       phone: user.phone || null,
       school: user.school || null,
       status: 'PENDING_PAYMENT',
+      ...snapshot,
       invitationId: invitation ? invitation.id : undefined,
     },
   });

@@ -110,7 +110,7 @@ function peso(centavos) {
           <% payments.forEach(p => { %>
             <tr data-payment-id="<%= p.id %>" class="admin-tr align-top">
               <td class="admin-td"><%= p.user.firstName %> <%= p.user.lastName %><br><span class="text-xs text-slate-400"><%= p.user.email %></span></td>
-              <td class="admin-td max-w-[140px] truncate"><%= (p.user.chapter && p.user.chapter.name) || '-' %></td>
+              <td class="admin-td max-w-[140px] truncate"><%= (p.user.organization && p.user.organization.name) || '-' %></td>
               <td class="admin-td max-w-[160px] truncate"><%= p.event ? p.event.title : 'Membership' %></td>
               <td class="admin-td"><%- peso(p.amount) %></td>
               <td class="admin-td text-slate-500"><%- p.status === 'PAID' ? '&minus;' + peso(p.gatewayFeeCentavos) : '-' %></td>
