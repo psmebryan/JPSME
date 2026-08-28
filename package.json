@@ -14,7 +14,9 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "db:seed": "node prisma/seed.js",
-    "test:paymongo": "node tests/paymongo.service.test.js"
+    "import:organizations": "node prisma/importOrganizations.js",
+    "test:paymongo": "node tests/paymongo.service.test.js",
+    "test:organizations": "node tests/organization.service.test.js"
   },
   "license": "UNLICENSED",
   "dependencies": {
