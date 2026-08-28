@@ -608,6 +608,39 @@ const adminDeleteOrganization = asyncHandler(async (req, res) => {
   res.redirect('/admin/organizations');
 });
 
+// The Excel import left ~180 rows needing a real parent assigned by hand
+// (see organization.service.js's importOrganizations note) — reassigning one
+// at a time through adminUpdateOrganization above is workable but slow at
+// that volume. This applies one target parent to every checked row from the
+// current filtered page in a single submit; each move still goes through
+// moveOrganization so a cycle attempt on any row is rejected individually
+// rather than aborting the whole batch.
+const adminBulkReassignOrganizations = asyncHandler(async (req, res) => {
+  const ids = [].concat(req.body.ids || []).map(Number).filter((n) => Number.isInteger(n) && n > 0);
+  const parentId = Number(req.body.bulkParentId);
+  const clearReview = req.body.clearReview === 'on';
+
+  if (ids.length && parentId) {
+    for (const id of ids) {
+      if (id === parentId) continue; // a stray click landing an org on itself — skip, don't abort the batch
+      // eslint-disable-next-line no-await-in-loop
+      await organizationService.moveOrganization(id, parentId);
+      if (clearReview) {
+        // eslint-disable-next-line no-await-in-loop
+        await organizationService.updateOrganization(id, { needsReview: false });
+      }
+    }
+  }
+
+  const qs = new URLSearchParams();
+  if (req.body.q) qs.set('q', req.body.q);
+  if (req.body.type) qs.set('type', req.body.type);
+  if (req.body.needsReview) qs.set('needsReview', '1');
+  if (req.body.page) qs.set('page', req.body.page);
+  const query = qs.toString();
+  res.redirect(`/admin/organizations${query ? `?${query}` : ''}`);
+});
+
 // Render the admin "Create Event" page (Add Event)
 const adminCreateEventPage = asyncHandler(async (req, res) => {
   renderAdmin(req, res, 'admin/event-new', { title: 'Create Event' });
@@ -763,4 +796,5 @@ module.exports = {
   adminEditOrganizationPage,
   adminUpdateOrganization,
   adminDeleteOrganization,
+  adminBulkReassignOrganizations,
 };

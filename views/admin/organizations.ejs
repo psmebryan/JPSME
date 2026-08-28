@@ -8,14 +8,16 @@ const type = locals.type || '';
 const needsReview = locals.needsReview || false;
 const reviewCount = locals.reviewCount || 0;
 const root = locals.root || null;
-const TYPES = ['NATIONAL', 'REGION', 'CLUSTER', 'CHAPTER', 'STUDENT_UNIT'];
+const TYPES = ['NATIONAL', 'MOTHER_ORG', 'REGION', 'ADMIN_REGION', 'PROVINCE', 'CITY', 'CLUSTER', 'CHAPTER', 'STUDENT_UNIT'];
 const TYPE_LABEL = {
-  NATIONAL: 'National', REGION: 'Region', CLUSTER: 'Cluster',
-  CHAPTER: 'Chapter', STUDENT_UNIT: 'Student Unit',
+  NATIONAL: 'National', MOTHER_ORG: 'Mother Org', REGION: 'Region',
+  ADMIN_REGION: 'Admin Region', PROVINCE: 'Province', CITY: 'City',
+  CLUSTER: 'Cluster', CHAPTER: 'Chapter', STUDENT_UNIT: 'Student Unit',
 };
 const TYPE_BADGE = {
-  NATIONAL: 'badge-purple', REGION: 'badge-blue', CLUSTER: 'badge-sky',
-  CHAPTER: 'badge-green', STUDENT_UNIT: 'badge-slate',
+  NATIONAL: 'badge-purple', MOTHER_ORG: 'badge-emerald', REGION: 'badge-blue',
+  ADMIN_REGION: 'badge-blue', PROVINCE: 'badge-sky', CITY: 'badge-sky',
+  CLUSTER: 'badge-sky', CHAPTER: 'badge-green', STUDENT_UNIT: 'badge-slate',
 };
 %>
 
@@ -58,53 +60,125 @@ const TYPE_BADGE = {
     <button type="submit" class="btn-primary">Apply</button>
   </form>
 
-  <div class="overflow-x-auto">
-    <table class="admin-table">
-      <thead class="admin-table-head">
-        <tr>
-          <th class="admin-th">Name</th>
-          <th class="admin-th">Type</th>
-          <th class="admin-th">Institution</th>
-          <th class="admin-th">Depth</th>
-          <th class="admin-th">Children</th>
-          <th class="admin-th">Members</th>
-          <th class="admin-th">Status</th>
-          <th class="admin-th text-right">Actions</th>
-        </tr>
-      </thead>
-      <tbody class="admin-tbody">
-        <% organizations.forEach(o => { %>
-          <tr class="admin-tr align-top">
-            <td class="admin-td font-medium"><%= o.name %></td>
-            <td class="admin-td"><span class="<%= TYPE_BADGE[o.type] || 'badge-slate' %>"><%= TYPE_LABEL[o.type] || o.type %></span></td>
-            <td class="admin-td max-w-[220px] truncate"><%= o.institution || '-' %></td>
-            <td class="admin-td"><%= o.depth %></td>
-            <td class="admin-td"><%= o._count ? o._count.children : 0 %></td>
-            <td class="admin-td"><%= o._count ? o._count.users : 0 %></td>
-            <td class="admin-td">
-              <% if (o.needsReview) { %><span class="badge-amber">Needs review</span>
-              <% } else if (!o.isActive) { %><span class="badge-slate">Inactive</span>
-              <% } else { %><span class="badge-green">OK</span><% } %>
-            </td>
-            <td class="admin-td text-right">
-              <a href="/admin/organizations/<%= o.id %>/edit" class="text-indigo-600 hover:underline text-sm font-medium">Edit</a>
-            </td>
-          </tr>
-        <% }) %>
-      </tbody>
-    </table>
-    <% if (!organizations.length) { %>
-      <p class="empty-state">No organizations match these filters.</p>
-    <% } %>
-  </div>
+  <form id="bulk-reassign-form" action="/admin/organizations/bulk-reassign" method="POST">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <input type="hidden" name="q" value="<%= q %>">
+    <input type="hidden" name="type" value="<%= type %>">
+    <input type="hidden" name="needsReview" value="<%= needsReview ? '1' : '' %>">
+    <input type="hidden" name="page" value="<%= page %>">
 
-  <%- include('../partials/pagination', {
-    currentPage: page,
-    totalPages: totalPages,
-    baseQuery: { q, type, needsReview: needsReview ? '1' : '' },
-    pageParam: 'page'
-  }) %>
+    <div class="overflow-x-auto">
+      <table class="admin-table">
+        <thead class="admin-table-head">
+          <tr>
+            <th class="admin-th w-8"><input type="checkbox" id="select-all-orgs" aria-label="Select all rows on this page"></th>
+            <th class="admin-th">Name</th>
+            <th class="admin-th">Type</th>
+            <th class="admin-th">Institution</th>
+            <th class="admin-th">Depth</th>
+            <th class="admin-th">Children</th>
+            <th class="admin-th">Members</th>
+            <th class="admin-th">Status</th>
+            <th class="admin-th text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="admin-tbody">
+          <% organizations.forEach(o => { %>
+            <tr class="admin-tr align-top">
+              <td class="admin-td"><input type="checkbox" name="ids" value="<%= o.id %>" class="org-row-check"></td>
+              <td class="admin-td font-medium"><%= o.name %></td>
+              <td class="admin-td"><span class="<%= TYPE_BADGE[o.type] || 'badge-slate' %>"><%= TYPE_LABEL[o.type] || o.type %></span></td>
+              <td class="admin-td max-w-[220px] truncate"><%= o.institution || '-' %></td>
+              <td class="admin-td"><%= o.depth %></td>
+              <td class="admin-td"><%= o._count ? o._count.children : 0 %></td>
+              <td class="admin-td"><%= o._count ? o._count.users : 0 %></td>
+              <td class="admin-td">
+                <% if (o.needsReview) { %><span class="badge-amber">Needs review</span>
+                <% } else if (!o.isActive) { %><span class="badge-slate">Inactive</span>
+                <% } else { %><span class="badge-green">OK</span><% } %>
+              </td>
+              <td class="admin-td text-right">
+                <a href="/admin/organizations/<%= o.id %>/edit" class="text-indigo-600 hover:underline text-sm font-medium">Edit</a>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+      <% if (!organizations.length) { %>
+        <p class="empty-state">No organizations match these filters.</p>
+      <% } %>
+    </div>
+
+    <% if (organizations.length) { %>
+      <div class="flex flex-wrap items-end gap-3 border-t border-slate-200 bg-slate-50 p-4">
+        <div>
+          <label class="form-label">Reassign checked rows to</label>
+          <select name="bulkParentId" class="form-input min-w-[260px]">
+            <option value="">Select a new parent&hellip;</option>
+            <% if (root) { %><option value="<%= root.id %>"><%= root.name %></option><% } %>
+            <% organizations.filter(o => !root || o.id !== root.id).forEach(o => { %>
+              <option value="<%= o.id %>"><%= o.name %> (<%= TYPE_LABEL[o.type] %>)</option>
+            <% }) %>
+          </select>
+          <p class="mt-1 text-xs text-slate-400">Only organizations on this page are listed — search above to bring the right parent into view first.</p>
+        </div>
+        <label class="flex items-center gap-2 text-sm text-slate-600 pb-2">
+          <input type="checkbox" name="clearReview" checked>
+          Clear "needs review" on these rows
+        </label>
+        <button type="submit" class="btn-primary" id="bulk-reassign-submit" disabled>Reassign checked rows</button>
+        <span class="text-xs text-slate-500 pb-2"><span id="bulk-selected-count">0</span> selected</span>
+      </div>
+    <% } %>
+
+    <%- include('../partials/pagination', {
+      currentPage: page,
+      totalPages: totalPages,
+      baseQuery: { q, type, needsReview: needsReview ? '1' : '' },
+      pageParam: 'page'
+    }) %>
+  </form>
 </section>
+
+<script>
+  (function () {
+    var selectAll = document.getElementById('select-all-orgs');
+    var rowChecks = Array.prototype.slice.call(document.querySelectorAll('.org-row-check'));
+    var submitBtn = document.getElementById('bulk-reassign-submit');
+    var countLabel = document.getElementById('bulk-selected-count');
+    var form = document.getElementById('bulk-reassign-form');
+    if (!form) return;
+
+    function refresh() {
+      var checked = rowChecks.filter(function (c) { return c.checked; });
+      countLabel.textContent = String(checked.length);
+      submitBtn.disabled = checked.length === 0;
+    }
+    if (selectAll) {
+      selectAll.addEventListener('change', function () {
+        rowChecks.forEach(function (c) { c.checked = selectAll.checked; });
+        refresh();
+      });
+    }
+    rowChecks.forEach(function (c) { c.addEventListener('change', refresh); });
+
+    form.addEventListener('submit', function (e) {
+      var parentSelect = form.querySelector('select[name="bulkParentId"]');
+      var checkedCount = rowChecks.filter(function (c) { return c.checked; }).length;
+      if (!checkedCount) { e.preventDefault(); return; }
+      if (!parentSelect.value) {
+        e.preventDefault();
+        alert('Pick the organization to reassign the checked rows under.');
+        return;
+      }
+      if (!confirm('Reassign ' + checkedCount + ' organization(s) to "' + parentSelect.options[parentSelect.selectedIndex].text + '"?')) {
+        e.preventDefault();
+      }
+    });
+
+    refresh();
+  }());
+</script>
 
 <section class="admin-card p-5">
   <h2 class="text-lg font-semibold text-slate-800 mb-1">Add an organization</h2>

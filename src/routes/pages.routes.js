@@ -76,6 +76,8 @@ router.get('/admin/users/:id/edit', ensureMainAdminOnly, pages.adminEditUserPage
 // /admin/chapter-members above, which chapter admins can also reach)
 router.get('/admin/organizations', ensureMainAdminOnly, pages.adminOrganizationsPage);
 router.post('/admin/organizations', ensureMainAdminOnly, pages.adminCreateOrganization);
+// Must precede the /:id routes below — otherwise "bulk-reassign" is parsed as an :id.
+router.post('/admin/organizations/bulk-reassign', ensureMainAdminOnly, pages.adminBulkReassignOrganizations);
 router.get('/admin/organizations/:id/edit', ensureMainAdminOnly, pages.adminEditOrganizationPage);
 router.post('/admin/organizations/:id', ensureMainAdminOnly, pages.adminUpdateOrganization);
 router.post('/admin/organizations/:id/delete', ensureMainAdminOnly, pages.adminDeleteOrganization);
