@@ -1,6 +1,14 @@
 <h1 class="admin-h1 mb-6"><%= title %></h1>
 
-<div id="users-module" data-view-mode="<%= viewMode %>" data-organizations='<%- JSON.stringify(organizations || []) %>' data-current-user='<%- JSON.stringify(currentUser || {}) %>' class="admin-card overflow-hidden">
+<%
+// JSON in an attribute must use EJS escaped output, never raw: with raw output
+// any apostrophe in the data terminates the attribute early and dumps the rest
+// of the JSON onto the page as visible text — which is exactly what an
+// organization importNote containing "chart's own" did here. Escaping emits
+// &#39; instead, and the browser decodes it back to valid JSON when admin.js
+// reads .dataset.
+%>
+<div id="users-module" data-view-mode="<%= viewMode %>" data-organizations="<%= JSON.stringify(organizations || []) %>" data-current-user="<%= JSON.stringify(currentUser || {}) %>" class="admin-card overflow-hidden">
   <% if (viewMode === 'list') { %>
     <form id="members-filter-form" class="flex flex-wrap items-end gap-3 border-b border-slate-200 p-4">
       <div>
@@ -61,7 +69,3 @@
   <% } %>
 </div>
 
-<script nonce="<%= cspNonce %>">
-  // organization data for the client-side assign UI
-  window.adminOrganizations = <%- JSON.stringify(organizations || []) %>;
-</script>

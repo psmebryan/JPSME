@@ -271,12 +271,15 @@ const adminUsersPage = asyncHandler(async (req, res) => {
     title = 'Manage Users';
   }
   // Organizations for the assignment dropdown — one page; the picker searches
-  // server-side for anything beyond this.
+  // server-side for anything beyond this. Narrowed to the two fields the client
+  // actually uses (see admin.js's option renderers and doAssign): shipping whole
+  // rows also embedded importNote/path/timestamps into the page for no reason.
   const orgSeed = await organizationService.searchOrganizations({ page: 1, pageSize: 50 });
+  const organizations = orgSeed.organizations.map((o) => ({ id: o.id, name: o.name }));
   const currentUser = req.session.user
     ? { role: req.session.user.role, organizationId: req.session.user.organizationId }
     : { role: null, organizationId: null };
-  renderAdmin(req, res, 'admin/users', { title, viewMode, organizations: orgSeed.organizations, currentUser });
+  renderAdmin(req, res, 'admin/users', { title, viewMode, organizations, currentUser });
 });
 
 const adminEventsPage = asyncHandler(async (req, res) => {
