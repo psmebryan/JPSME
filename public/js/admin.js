@@ -1576,12 +1576,10 @@ function initOrganizationTree() {
   if (!tree || !modal) return; // not on this page
 
   const TYPE_LABEL = {
-    NATIONAL: 'National', MOTHER_ORG: 'Mother Org',
-    CLUSTER: 'Cluster', CHAPTER: 'Chapter', STUDENT_UNIT: 'Student Unit',
+    NATIONAL: 'National', PROVINCE: 'Province', STUDENT_UNIT: 'Student Unit',
   };
   const TYPE_BADGE = {
-    NATIONAL: 'badge-purple', MOTHER_ORG: 'badge-emerald',
-    CLUSTER: 'badge-sky', CHAPTER: 'badge-green', STUDENT_UNIT: 'badge-slate',
+    NATIONAL: 'badge-purple', PROVINCE: 'badge-blue', STUDENT_UNIT: 'badge-slate',
   };
 
   function nodeHtml(c) {

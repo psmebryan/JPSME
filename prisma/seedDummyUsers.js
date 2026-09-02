@@ -16,14 +16,11 @@ const organizationService = require('../src/services/organization.service');
 const DUMMY_DOMAIN = '@dummy.test';
 const PASSWORD = 'Dummy123!';
 
-// Picked to cover the shapes that actually differ in behaviour: members
-// attached at every depth (a mother org, a cluster, a chapter, a student
-// unit), so subtree counts have something to roll up, plus a couple of
-// PENDING accounts so the approvals queue isn't empty.
+// Covers both levels a member can attach to — a province and a student unit —
+// so subtree counts have something to roll up, plus a couple of PENDING
+// accounts so the approvals queue is not empty.
 const PLAN = [
-  { type: 'MOTHER_ORG', count: 2, status: 'APPROVED' },
-  { type: 'CLUSTER', count: 2, status: 'APPROVED' },
-  { type: 'CHAPTER', count: 3, status: 'APPROVED' },
+  { type: 'PROVINCE', count: 3, status: 'APPROVED' },
   { type: 'STUDENT_UNIT', count: 5, status: 'APPROVED' },
   { type: 'STUDENT_UNIT', count: 2, status: 'PENDING' },
 ];
@@ -103,7 +100,7 @@ async function main() {
   // against: they should see their own organization's members and nothing
   // outside it. Chosen as the org with the most members beneath it, so the
   // scope is actually meaningful rather than empty.
-  const chapterCandidate = created.find((c) => c.type === 'CHAPTER' && c.status === 'APPROVED');
+  const provinceCandidate = created.find((c) => c.type === 'PROVINCE' && c.status === 'APPROVED');
   if (chapterCandidate) {
     await prisma.user.update({
       where: { id: chapterCandidate.user.id },

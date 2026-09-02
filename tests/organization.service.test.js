@@ -3,10 +3,9 @@
 // no test framework), creating a clearly-tagged fixture tree and removing it
 // afterward in a finally block so a failure mid-run still cleans up.
 //
-// Covers the variable-depth cases that motivated the redesign: a full
-// five-level branch, a branch with no cluster, a cluster with no chapter, and
-// a chapter with no student unit — all in one tree, since real PSME data mixes
-// them under the same root.
+// Covers the variable-depth cases that still matter: a unit under a province,
+// a unit with no province recorded, and a province with no units — all in one
+// tree, since real PSME data mixes them under the same root.
 
 const prisma = require('../src/config/prisma');
 const orgService = require('../src/services/organization.service');
@@ -58,15 +57,11 @@ async function run() {
   // ---- Fixture tree -------------------------------------------------------
   //
   //  National
-  //    ├── Region A
-  //    │     ├── Cluster A1
-  //    │     │     └── Chapter A1a
-  //    │     │           └── Unit A1a-1        (TEST 1: full 5 levels)
-  //    │     └── Chapter A2                    (TEST 2: no cluster)
-  //    │           └── Unit A2-1
-  //    └── Region B
-  //          ├── Cluster B1                    (TEST 3: cluster, no chapter)
-  //          └── Chapter B2                    (TEST 4: chapter, no unit)
+  //    ├── Province A
+  //    │     ├── Unit A-1      (TEST 1: National > Province > Unit)
+  //    │     └── Unit A-2
+  //    ├── Province B          (TEST 3: province with no units)
+  //    └── Unit Loose          (TEST 2: unit with no province recorded)
 
   // Only one root may exist. When the real hierarchy has already been
   // imported, hang the fixture off that root instead of creating a competing
@@ -75,47 +70,42 @@ async function run() {
   const existingRoot = await prisma.organization.findFirst({ where: { parentId: null } });
   const national = existingRoot
     || await orgService.createOrganization({ name: `${TAG} National`, type: 'NATIONAL', parentId: null });
-  const regionA = await orgService.createOrganization({ name: `${TAG} Mother Org A`, type: 'MOTHER_ORG', parentId: national.id });
-  const regionB = await orgService.createOrganization({ name: `${TAG} Mother Org B`, type: 'MOTHER_ORG', parentId: national.id });
-  const clusterA1 = await orgService.createOrganization({ name: `${TAG} Cluster A1`, type: 'CLUSTER', parentId: regionA.id });
-  const chapterA1a = await orgService.createOrganization({ name: `${TAG} Chapter A1a`, type: 'CHAPTER', parentId: clusterA1.id });
-  const unitA1a1 = await orgService.createOrganization({ name: `${TAG} Unit A1a-1`, type: 'STUDENT_UNIT', parentId: chapterA1a.id });
-  const chapterA2 = await orgService.createOrganization({ name: `${TAG} Chapter A2`, type: 'CHAPTER', parentId: regionA.id });
-  const unitA21 = await orgService.createOrganization({ name: `${TAG} Unit A2-1`, type: 'STUDENT_UNIT', parentId: chapterA2.id });
-  const clusterB1 = await orgService.createOrganization({ name: `${TAG} Cluster B1`, type: 'CLUSTER', parentId: regionB.id });
-  const chapterB2 = await orgService.createOrganization({ name: `${TAG} Chapter B2`, type: 'CHAPTER', parentId: regionB.id });
+  const provinceA = await orgService.createOrganization({ name: `${TAG} Province A`, type: 'PROVINCE', parentId: national.id });
+  const provinceB = await orgService.createOrganization({ name: `${TAG} Province B`, type: 'PROVINCE', parentId: national.id });
+  const unitA1 = await orgService.createOrganization({ name: `${TAG} Unit A-1`, type: 'STUDENT_UNIT', parentId: provinceA.id });
+  const unitA2 = await orgService.createOrganization({ name: `${TAG} Unit A-2`, type: 'STUDENT_UNIT', parentId: provinceA.id });
+  // A unit whose province was never recorded attaches straight to National —
+  // the level is absent, not padded with a placeholder.
+  const unitLoose = await orgService.createOrganization({ name: `${TAG} Unit Loose`, type: 'STUDENT_UNIT', parentId: national.id });
 
   // ---- TEST 1-4: the four required hierarchy shapes -----------------------
 
-  await test('TEST 1 — National > Region > Cluster > Chapter > Student Unit', async () => {
-    const chain = await orgService.getOrganizationPath(unitA1a1.id);
-    assertEqual(chain.length, 5, 'expected a 5-level chain');
-    assertEqual(chain.map((o) => o.type).join(','), 'NATIONAL,MOTHER_ORG,CLUSTER,CHAPTER,STUDENT_UNIT', 'type order');
+  await test('TEST 1 — National > Province > Student Unit', async () => {
+    const chain = await orgService.getOrganizationPath(unitA1.id);
+    assertEqual(chain.length, 3, 'expected a 3-level chain');
+    assertEqual(chain.map((o) => o.type).join(','), 'NATIONAL,PROVINCE,STUDENT_UNIT', 'type order');
     assertEqual(chain[0].id, national.id, 'root first');
-    assertEqual(chain[4].id, unitA1a1.id, 'self last');
+    assertEqual(chain[2].id, unitA1.id, 'self last');
   });
 
-  await test('TEST 2 — National > Region > Chapter > Student Unit (no cluster)', async () => {
-    const chain = await orgService.getOrganizationPath(unitA21.id);
-    assertEqual(chain.length, 4, 'expected a 4-level chain');
-    assertEqual(chain.map((o) => o.type).join(','), 'NATIONAL,MOTHER_ORG,CHAPTER,STUDENT_UNIT', 'cluster level absent, not blank');
-    assert(!chain.some((o) => o.type === 'CLUSTER'), 'no placeholder cluster invented');
+  await test('TEST 2 — National > Student Unit (no province recorded)', async () => {
+    const chain = await orgService.getOrganizationPath(unitLoose.id);
+    assertEqual(chain.length, 2, 'expected a 2-level chain');
+    assertEqual(chain.map((o) => o.type).join(','), 'NATIONAL,STUDENT_UNIT', 'province level absent, not blank');
+    assert(!chain.some((o) => o.type === 'PROVINCE'), 'no placeholder province invented');
   });
 
-  await test('TEST 3 — National > Region > Cluster (no chapter beneath)', async () => {
-    const chain = await orgService.getOrganizationPath(clusterB1.id);
-    assertEqual(chain.length, 3, 'expected a 3-level chain');
-    assertEqual(chain.map((o) => o.type).join(','), 'NATIONAL,MOTHER_ORG,CLUSTER', 'type order');
-    const kids = await orgService.getChildren(clusterB1.id);
-    assertEqual(kids.length, 0, 'cluster legitimately has no children');
+  await test('TEST 3 — National > Province (no units beneath)', async () => {
+    const chain = await orgService.getOrganizationPath(provinceB.id);
+    assertEqual(chain.length, 2, 'expected a 2-level chain');
+    assertEqual(chain.map((o) => o.type).join(','), 'NATIONAL,PROVINCE', 'type order');
+    const kids = await orgService.getChildren(provinceB.id);
+    assertEqual(kids.length, 0, 'province legitimately has no children');
   });
 
-  await test('TEST 4 — National > Region > Chapter (no student unit)', async () => {
-    const chain = await orgService.getOrganizationPath(chapterB2.id);
-    assertEqual(chain.length, 3, 'expected a 3-level chain');
-    assertEqual(chain.map((o) => o.type).join(','), 'NATIONAL,MOTHER_ORG,CHAPTER', 'type order');
-    const kids = await orgService.getChildren(chapterB2.id);
-    assertEqual(kids.length, 0, 'chapter legitimately has no children');
+  await test('TEST 4 — a province holds several units', async () => {
+    const kids = await orgService.getChildren(provinceA.id);
+    assertEqual(kids.length, 2, 'both units sit under province A');
   });
 
   // ---- TEST 5-7: users attach at whichever level is correct ---------------
@@ -130,96 +120,95 @@ async function run() {
     });
   }
 
-  await test('TEST 5 — user assigned directly to a Cluster', async () => {
-    const u = await makeUser('cluster', clusterB1.id);
+  await test('TEST 5 — user assigned directly to a Province', async () => {
+    const u = await makeUser('province', provinceB.id);
     const chain = await orgService.getOrganizationPath(u.organizationId);
-    assertEqual(chain[chain.length - 1].type, 'CLUSTER', 'affiliated at cluster level');
-    assertEqual(chain.length, 3, 'ancestors resolve');
+    assertEqual(chain[chain.length - 1].type, 'PROVINCE', 'affiliated at province level');
+    assertEqual(chain.length, 2, 'ancestors resolve');
   });
 
-  await test('TEST 6 — user assigned directly to a Chapter', async () => {
-    const u = await makeUser('chapter', chapterA2.id);
+  await test('TEST 6 — user assigned to a unit with no province', async () => {
+    const u = await makeUser('loose', unitLoose.id);
     const chain = await orgService.getOrganizationPath(u.organizationId);
-    assertEqual(chain[chain.length - 1].type, 'CHAPTER', 'affiliated at chapter level');
-    assertEqual(chain.length, 3, 'National > Region > Chapter');
+    assertEqual(chain[chain.length - 1].type, 'STUDENT_UNIT', 'affiliated at unit level');
+    assertEqual(chain.length, 2, 'National > Student Unit');
   });
 
   await test('TEST 7 — user assigned to a Student Unit', async () => {
-    const u = await makeUser('unit', unitA1a1.id);
+    const u = await makeUser('unit', unitA1.id);
     const label = await orgService.getOrganizationPathLabel(u.organizationId);
-    assert(label.includes('National') && label.includes('Unit A1a-1'), `path label should span root to unit, got: ${label}`);
-    assertEqual(label.split(' › ').length, 5, 'label has all five levels');
+    assert(label.includes('National') && label.includes('Unit A-1'), `path label should span root to unit, got: ${label}`);
+    assertEqual(label.split(' › ').length, 3, 'label spans National > Province > Unit');
   });
 
   // ---- TEST 8-10: hierarchy functions -------------------------------------
 
   await test('TEST 8 — getAncestors() is root-first and excludes self', async () => {
-    const ancestors = await orgService.getAncestors(unitA1a1.id);
-    assertEqual(ancestors.length, 4, 'four ancestors above the unit');
+    const ancestors = await orgService.getAncestors(unitA1.id);
+    assertEqual(ancestors.length, 2, 'National and the province sit above the unit');
     assertEqual(ancestors[0].id, national.id, 'root first');
-    assert(!ancestors.some((a) => a.id === unitA1a1.id), 'self excluded');
+    assert(!ancestors.some((a) => a.id === unitA1.id), 'self excluded');
   });
 
   await test('TEST 9 — getDescendants() returns the subtree without siblings', async () => {
-    const desc = await orgService.getDescendants(regionA.id);
+    const desc = await orgService.getDescendants(provinceA.id);
     const ids = desc.map((d) => d.id);
-    assert(ids.includes(clusterA1.id) && ids.includes(chapterA1a.id) && ids.includes(unitA1a1.id), 'includes deep descendants');
-    assert(ids.includes(chapterA2.id) && ids.includes(unitA21.id), 'includes the no-cluster branch');
-    assert(!ids.includes(regionB.id) && !ids.includes(clusterB1.id), 'excludes the sibling region subtree');
-    assert(!ids.includes(regionA.id), 'excludes self');
-    assertEqual(desc.length, 5, 'exactly the five descendants');
+    assert(ids.includes(unitA1.id) && ids.includes(unitA2.id), 'includes both units beneath it');
+    assert(!ids.includes(provinceB.id), 'excludes the sibling province subtree');
+    assert(!ids.includes(unitLoose.id), 'excludes a unit hanging off National directly');
+    assert(!ids.includes(provinceA.id), 'excludes self');
+    assertEqual(desc.length, 2, 'exactly the two descendants');
   });
 
   await test('TEST 10 — getOrganizationPath() returns only levels that exist', async () => {
-    const deep = await orgService.getOrganizationPath(unitA1a1.id);
-    const shallow = await orgService.getOrganizationPath(clusterB1.id);
-    assertEqual(deep.length, 5, 'deep branch has 5');
-    assertEqual(shallow.length, 3, 'shallow branch has 3 — no padding to match the deep one');
+    const deep = await orgService.getOrganizationPath(unitA1.id);
+    const shallow = await orgService.getOrganizationPath(provinceB.id);
+    assertEqual(deep.length, 3, 'branch with a province has 3');
+    assertEqual(shallow.length, 2, 'branch without one has 2 — no padding to match the deeper branch');
   });
 
   // ---- TEST 11 + 14: RBAC subtree scoping ---------------------------------
 
   await test('TEST 11 — org scope covers self plus all descendants', async () => {
-    const scope = await orgService.getDescendantIds(regionA.id);
-    assert(scope.includes(regionA.id), 'scope includes the admin\'s own org');
-    assert(scope.includes(unitA1a1.id), 'scope reaches the deepest descendant');
-    assertEqual(scope.length, 6, 'self + 5 descendants');
+    const scope = await orgService.getDescendantIds(provinceA.id);
+    assert(scope.includes(provinceA.id), 'scope includes the admin\'s own org');
+    assert(scope.includes(unitA1.id), 'scope reaches the deepest descendant');
+    assertEqual(scope.length, 3, 'self + 2 descendants');
   });
 
   await test('TEST 14 — scope excludes a sibling subtree (no cross-org access)', async () => {
-    const scopeA = await orgService.getDescendantIds(regionA.id);
-    assert(!scopeA.includes(regionB.id), 'Region A admin cannot see Region B');
-    assert(!scopeA.includes(clusterB1.id), 'nor its cluster');
-    assert(!scopeA.includes(chapterB2.id), 'nor its chapter');
-    // And a leaf chapter's scope is just itself.
-    const scopeLeaf = await orgService.getDescendantIds(chapterB2.id);
-    assertEqual(scopeLeaf.length, 1, 'a childless chapter scopes to exactly itself');
+    const scopeA = await orgService.getDescendantIds(provinceA.id);
+    assert(!scopeA.includes(provinceB.id), 'a Province A admin cannot see Province B');
+    assert(!scopeA.includes(unitLoose.id), 'nor a unit outside their subtree');
+    // A province with no units scopes to exactly itself.
+    const scopeLeaf = await orgService.getDescendantIds(provinceB.id);
+    assertEqual(scopeLeaf.length, 1, 'a childless province scopes to exactly itself');
   });
 
   // ---- TEST 13: historical registration snapshot --------------------------
 
   await test('TEST 13 — registration organization survives the member moving orgs', async () => {
-    const user = await makeUser('snapshot', chapterA2.id);
+    const user = await makeUser('snapshot', unitA2.id);
     const event = await prisma.event.create({
       data: { title: `${TAG} Snapshot Event`, startDate: new Date(Date.now() + 86400000) },
     });
-    const labelAtRegistration = await orgService.getOrganizationPathLabel(chapterA2.id);
+    const labelAtRegistration = await orgService.getOrganizationPathLabel(unitA2.id);
     const reg = await prisma.eventRegistration.create({
       data: {
         userId: user.id, eventId: event.id,
         fullName: `${TAG} Snapshot User`, email: user.email,
-        organizationId: chapterA2.id, organizationPath: labelAtRegistration,
+        organizationId: unitA2.id, organizationPath: labelAtRegistration,
       },
     });
 
     // The member later transfers to a completely different branch.
-    await prisma.user.update({ where: { id: user.id }, data: { organizationId: clusterB1.id } });
+    await prisma.user.update({ where: { id: user.id }, data: { organizationId: provinceB.id } });
 
     const after = await prisma.eventRegistration.findUnique({ where: { id: reg.id } });
-    assertEqual(after.organizationId, chapterA2.id, 'snapshot FK unchanged by the move');
+    assertEqual(after.organizationId, unitA2.id, 'snapshot FK unchanged by the move');
     assertEqual(after.organizationPath, labelAtRegistration, 'snapshot label unchanged');
     const current = await prisma.user.findUnique({ where: { id: user.id } });
-    assertEqual(current.organizationId, clusterB1.id, 'user did actually move');
+    assertEqual(current.organizationId, provinceB.id, 'user did actually move');
     assert(after.organizationId !== current.organizationId, 'history and current affiliation genuinely differ');
   });
 
@@ -228,20 +217,20 @@ async function run() {
   await test('TEST 15 — admin listing is paginated and filterable', async () => {
     // 9 tagged orgs below the root, plus a tagged root only when this run had
     // to create one (i.e. the real hierarchy hasn't been imported yet).
-    const expectedTotal = 9 + (existingRoot ? 0 : 1);
+    const expectedTotal = 5 + (existingRoot ? 0 : 1);
     const page1 = await orgService.listForAdmin({ q: TAG, page: 1, pageSize: 4 });
     assertEqual(page1.organizations.length, 4, 'page size respected');
     assertEqual(page1.total, expectedTotal, 'total counts the whole fixture tree');
     assertEqual(page1.totalPages, Math.ceil(expectedTotal / 4), 'pages computed');
-    const filtered = await orgService.listForAdmin({ q: TAG, type: 'CHAPTER' });
+    const filtered = await orgService.listForAdmin({ q: TAG, type: 'STUDENT_UNIT' });
     assertEqual(filtered.total, 3, 'type filter applied server-side');
   });
 
   await test('TEST 15b — search returns a resolved path label', async () => {
-    const res = await orgService.searchOrganizations({ q: `${TAG} Unit A1a-1` });
+    const res = await orgService.searchOrganizations({ q: `${TAG} Unit A-1` });
     assert(res.organizations.length >= 1, 'search finds the unit');
-    const hit = res.organizations.find((o) => o.id === unitA1a1.id);
-    assert(hit && hit.pathLabel.split(' › ').length === 5, `search result carries full path, got: ${hit && hit.pathLabel}`);
+    const hit = res.organizations.find((o) => o.id === unitA1.id);
+    assert(hit && hit.pathLabel.split(' › ').length === 3, `search result carries full path, got: ${hit && hit.pathLabel}`);
   });
 
   // ---- Cycle prevention + move ------------------------------------------
@@ -249,7 +238,7 @@ async function run() {
   await test('EXTRA — moving an org beneath its own descendant is rejected', async () => {
     let threw = false;
     try {
-      await orgService.moveOrganization(regionA.id, unitA1a1.id);
+      await orgService.moveOrganization(provinceA.id, unitA1.id);
     } catch (err) {
       threw = true;
       assert(/descendant/i.test(err.message), `expected a cycle error, got: ${err.message}`);
@@ -259,22 +248,20 @@ async function run() {
 
   await test('EXTRA — an org cannot be its own parent', async () => {
     let threw = false;
-    try { await orgService.moveOrganization(regionA.id, regionA.id); } catch (err) { threw = true; }
+    try { await orgService.moveOrganization(provinceA.id, provinceA.id); } catch (err) { threw = true; }
     assert(threw, 'self-parenting must be rejected');
   });
 
   await test('EXTRA — a legitimate move rewrites the whole subtree path', async () => {
-    // Move Chapter A1a (and its unit) from Cluster A1 over to Region B.
-    await orgService.moveOrganization(chapterA1a.id, regionB.id);
-    const movedChain = await orgService.getOrganizationPath(chapterA1a.id);
-    assertEqual(movedChain.map((o) => o.type).join(','), 'NATIONAL,MOTHER_ORG,CHAPTER', 'chapter now hangs off mother org B');
-    // The descendant must have moved with it.
-    const unitChain = await orgService.getOrganizationPath(unitA1a1.id);
-    assertEqual(unitChain.length, 4, 'unit depth updated with its parent');
-    assert(unitChain.some((o) => o.id === regionB.id), 'unit now under Region B');
-    assert(!unitChain.some((o) => o.id === clusterA1.id), 'unit no longer under the old cluster');
+    // Move Unit A-1 from Province A over to Province B.
+    await orgService.moveOrganization(unitA1.id, provinceB.id);
+    const movedChain = await orgService.getOrganizationPath(unitA1.id);
+    assertEqual(movedChain.map((o) => o.type).join(','), 'NATIONAL,PROVINCE,STUDENT_UNIT', 'unit now hangs off Province B');
+    assertEqual(movedChain.length, 3, 'depth updated with its new parent');
+    assert(movedChain.some((o) => o.id === provinceB.id), 'unit now under Province B');
+    assert(!movedChain.some((o) => o.id === provinceA.id), 'unit no longer under the old province');
     // Move it back so later assertions about the tree stay meaningful.
-    await orgService.moveOrganization(chapterA1a.id, clusterA1.id);
+    await orgService.moveOrganization(unitA1.id, provinceA.id);
   });
 
   await test('EXTRA — path integrity check finds no drift after moves', async () => {
@@ -285,7 +272,7 @@ async function run() {
 
   await test('EXTRA — deleting an org with children is refused', async () => {
     let threw = false;
-    try { await orgService.deleteOrganization(regionA.id); } catch (err) {
+    try { await orgService.deleteOrganization(provinceA.id); } catch (err) {
       threw = true;
       assert(/child/i.test(err.message), `expected a children error, got: ${err.message}`);
     }
@@ -293,12 +280,15 @@ async function run() {
   });
 
   await test('EXTRA — subtree member aggregation counts descendants', async () => {
-    // Region A subtree currently holds the 'chapter', 'unit' and 'snapshot'
-    // users... minus 'snapshot', which moved to Cluster B1 in TEST 13.
-    const countA = await orgService.countMembersInSubtree(regionA.id);
-    assertEqual(countA, 2, 'aggregates members across the whole Region A subtree');
-    const countLeaf = await orgService.countMembersInSubtree(chapterB2.id);
-    assertEqual(countLeaf, 0, 'a childless chapter with no members counts zero');
+    // Province A's subtree holds the 'unit' user, who sits on Unit A-1 — a
+    // level below the province, which is the point: the count has to reach
+    // members it does not hold directly. The 'snapshot' user started on
+    // Unit A-2 here but TEST 13 moved them to Province B.
+    const countA = await orgService.countMembersInSubtree(provinceA.id);
+    assertEqual(countA, 1, 'counts a member sitting a level below the province');
+    // Unit A-2 is empty by this point — TEST 13's member moved off it.
+    const countLeaf = await orgService.countMembersInSubtree(unitA2.id);
+    assertEqual(countLeaf, 0, 'a unit with no members counts zero');
   });
 
   await test('EXTRA — only one root organization is permitted', async () => {

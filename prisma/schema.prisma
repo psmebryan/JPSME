@@ -135,14 +135,13 @@ model User {
   password        String
   phone           String?
   school          String?
-  // Optional: members attached above student-unit level (a chapter or cluster
-  // officer, say) aren't studying a year at all, so this is never required.
+  // Optional: a member attached at province level (an officer, say) is not
+  // studying a year at all, so this is never required.
   yearLevel       YearLevel?
   profileImage    String?
-  // A member attaches to whichever organization is actually appropriate —
-  // a student unit, a chapter, a cluster, or a region — not exclusively to
-  // the deepest level as the old chapterId required. Ancestors are derived
-  // from Organization.path, never stored redundantly here.
+  // A member attaches to whichever organization is actually appropriate — a
+  // student unit, or a province directly where no unit applies. Ancestors are
+  // derived from Organization.path, never stored redundantly here.
   organizationId  Int?
   role            Role     @default(USER)
   status          UserStatus @default(PENDING)
@@ -343,15 +342,13 @@ model SiteSetting {
 // (MOTHER ORG / REGION / CLUSTER / CHAPTER / STUDENT UNIT) with NATIONAL as the
 // single root above them.
 //
-// Deliberately NOT used to enforce ordering — any type may parent any other.
-// That is what makes National → Region → Chapter (no cluster) and
-// National → Region → Cluster (no chapter) equally valid without inventing a
-// placeholder row to fill the "missing" level.
+// National → Province → Student Unit. The tree itself is still parent-driven
+// and variable-depth — nothing enforces this order, and a student unit may
+// attach straight to National where no province is recorded — but these are
+// the only levels PSME uses, so no other type exists to create.
 enum OrganizationType {
   NATIONAL
-  MOTHER_ORG
-  CLUSTER
-  CHAPTER
+  PROVINCE
   STUDENT_UNIT
 }
 

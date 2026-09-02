@@ -77,13 +77,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Organization cascade -------------------------------------------
-    // A guided drill-down, but NOT a fixed Region→Cluster→Chapter→Unit ladder.
-    // Each step is populated from the real children of the step above, so the
-    // member can only pick a branch that actually exists, and the cascade stops
-    // as soon as the selected organization has no children. A branch with no
-    // cluster therefore never renders a Cluster step, and the member is free to
-    // stop at whatever level they actually belong to — the selected value is
-    // simply the deepest step they've chosen.
+    // A guided drill-down through National → Province → Student Unit. Each
+    // step is populated from the real children of the step above, so the
+    // member can only pick a branch that actually exists, and the cascade
+    // stops as soon as the selected organization has no children — a province
+    // with no units recorded simply ends there. The member may stop at
+    // whichever level they belong to; the value kept is the deepest chosen.
     const orgCascade = document.getElementById('organization-cascade');
     const orgHidden = document.getElementById('organizationId');
     const orgSelected = document.getElementById('organization-selected');
@@ -92,17 +91,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const orgError = document.getElementById('chapter-error');
 
     const ORG_TYPE_LABEL = {
-      NATIONAL: 'National', MOTHER_ORG: 'Mother Organization',
-      CLUSTER: 'Cluster', CHAPTER: 'Chapter', STUDENT_UNIT: 'Student Unit',
+      NATIONAL: 'National', PROVINCE: 'Province', STUDENT_UNIT: 'Student Unit',
     };
 
     if (orgCascade && orgHidden) {
       // One entry per rendered step: { parentId, options, selectedId }.
       const levels = [];
 
-      // Name the step after what it actually contains. A level holding only
-      // chapters is labelled "Chapter"; a mixed level gets a neutral label
-      // rather than pretending to be a rung on a fixed ladder.
+      // Name the step after what it actually contains — a level holding only
+      // student units is labelled "Student Unit". A mixed level gets a neutral
+      // label rather than claiming to be one specific rung.
       function levelLabel(options) {
         const types = [...new Set(options.map((o) => o.type))];
         if (types.length === 1) return ORG_TYPE_LABEL[types[0]] || 'Organization';
@@ -132,20 +130,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Shallowest level first, so a step that mixes levels reads top-down the
       // way the hierarchy does rather than in arbitrary order.
-      const TYPE_ORDER = ['NATIONAL', 'MOTHER_ORG', 'CLUSTER', 'CHAPTER', 'STUDENT_UNIT'];
+      const TYPE_ORDER = ['NATIONAL', 'PROVINCE', 'STUDENT_UNIT'];
 
       function optionHtml(o, selectedId) {
         return `<option value="${o.id}" ${String(o.id) === String(selectedId) ? 'selected' : ''}>${escapeHtml(o.name)}</option>`;
       }
 
-      // A step lists whatever actually hangs off the chosen organization, which
-      // can be several levels at once — a mother org may hold clusters,
-      // chapters and student units side by side, since a unit with no chapter
-      // recorded attaches directly. Presenting that as one flat list of 70+
-      // entries is unreadable, so the levels are split into labelled groups.
-      // Grouping is used rather than forcing one level per step because the
-      // hierarchy is variable-depth: a Cluster step cannot be made mandatory
-      // when plenty of branches have no cluster at all.
+      // A step can still hold more than one level at once: a student unit with
+      // no province recorded attaches straight to National, so National lists
+      // provinces and units side by side. Grouping keeps that readable without
+      // forcing a Province step that some branches genuinely do not have.
       function optionsHtml(options, selectedId) {
         const groups = new Map();
         options.forEach((o) => {

@@ -8,14 +8,12 @@ const type = locals.type || '';
 const needsReview = locals.needsReview || false;
 const reviewCount = locals.reviewCount || 0;
 const root = locals.root || null;
-const TYPES = ['NATIONAL', 'MOTHER_ORG', 'CLUSTER', 'CHAPTER', 'STUDENT_UNIT'];
+const TYPES = ['NATIONAL', 'PROVINCE', 'STUDENT_UNIT'];
 const TYPE_LABEL = {
-  NATIONAL: 'National', MOTHER_ORG: 'Mother Org',
-  CLUSTER: 'Cluster', CHAPTER: 'Chapter', STUDENT_UNIT: 'Student Unit',
+  NATIONAL: 'National', PROVINCE: 'Province', STUDENT_UNIT: 'Student Unit',
 };
 const TYPE_BADGE = {
-  NATIONAL: 'badge-purple', MOTHER_ORG: 'badge-emerald',
-  CLUSTER: 'badge-sky', CHAPTER: 'badge-green', STUDENT_UNIT: 'badge-slate',
+  NATIONAL: 'badge-purple', PROVINCE: 'badge-blue', STUDENT_UNIT: 'badge-slate',
 };
 %>
 

@@ -59,7 +59,7 @@ function check(label, ok, detail) {
   await prisma.user.deleteMany({ where: { email: EMAIL } });
 
   const chosen = await prisma.organization.findFirst({
-    where: { type: 'CHAPTER', parent: { type: 'CLUSTER' } },
+    where: { type: 'STUDENT_UNIT', parent: { type: 'PROVINCE' } },
     select: { id: true, name: true },
   });
   const chosenPath = await organizationService.getOrganizationPathLabel(chosen.id);
