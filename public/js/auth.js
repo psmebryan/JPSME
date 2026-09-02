@@ -221,6 +221,108 @@ document.addEventListener('DOMContentLoaded', () => {
           orgCascade.innerHTML = '<p class="text-sm text-red-600">Could not load organizations. Please refresh the page.</p>';
         }
       }());
+
+      // --- Search shortcut ------------------------------------------------
+      const orgSearch = document.getElementById('organization-search');
+      const orgResults = document.getElementById('organization-results');
+
+      if (orgSearch && orgResults) {
+        let searchTimer = null;
+        let lastQuery = null;
+
+        function hideResults() {
+          orgResults.innerHTML = '';
+          orgResults.classList.add('hidden');
+        }
+
+        // Rebuilds the cascade so every step of the chosen organization's
+        // branch is present and already selected. Walks the ancestor chain and
+        // fetches each level's siblings, so the member can still see — and
+        // change — where they landed rather than being handed an opaque result.
+        async function fillCascadeFor(organizationId) {
+          const res = await apiFetch(`/api/organizations/${organizationId}/path`);
+          const chain = res.data.path || []; // root first, target last
+          if (chain.length < 2) return; // the root itself isn't selectable
+
+          // One request per level, all in flight together — the chain is only
+          // ever a few deep, so this stays a single round-trip's worth of wait.
+          const parents = chain.slice(0, -1);
+          const levelOptions = await Promise.all(
+            parents.map((p) => apiFetch(`/api/organizations/${p.id}/children`)
+              .then((r) => r.data.children || [])
+              .catch(() => []))
+          );
+
+          levels.length = 0;
+          levelOptions.forEach((options, i) => {
+            if (!options.length) return;
+            levels.push({ parentId: parents[i].id, options, selectedId: chain[i + 1].id });
+          });
+
+          // If the target itself has children, offer them as an optional next
+          // step — a member who searched for their chapter may still want to
+          // narrow to their student unit.
+          try {
+            const deeper = await apiFetch(`/api/organizations/${organizationId}/children`);
+            const kids = deeper.data.children || [];
+            if (kids.length) levels.push({ parentId: Number(organizationId), options: kids, selectedId: null });
+          } catch (err) { /* optional extra step only */ }
+
+          render();
+          refreshSummary();
+        }
+
+        function renderResults(organizations) {
+          if (!organizations.length) {
+            orgResults.innerHTML = '<p class="px-3 py-3 text-xs text-gray-500">No organization matches that search.</p>';
+            orgResults.classList.remove('hidden');
+            return;
+          }
+          orgResults.innerHTML = organizations.map((o) => `
+            <button type="button" data-org-id="${o.id}"
+                    class="block w-full text-left px-3 py-2 hover:bg-indigo-50 border-b border-gray-300 last:border-b-0">
+              <span class="block text-sm font-medium text-indigo-950">${escapeHtml(o.name)}</span>
+              <span class="block text-xs text-gray-500">${escapeHtml(o.pathLabel || '')}</span>
+            </button>`).join('');
+          orgResults.classList.remove('hidden');
+
+          orgResults.querySelectorAll('[data-org-id]').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+              const id = btn.getAttribute('data-org-id');
+              hideResults();
+              orgSearch.value = '';
+              try {
+                await fillCascadeFor(id);
+              } catch (err) {
+                showToast('Could not load that organization. Please choose it below instead.', 'error');
+              }
+            });
+          });
+        }
+
+        async function runSearch(term) {
+          if (term === lastQuery) return;
+          lastQuery = term;
+          try {
+            const res = await apiFetch(`/api/organizations/search?q=${encodeURIComponent(term)}`);
+            renderResults(res.data.organizations || []);
+          } catch (err) {
+            hideResults();
+          }
+        }
+
+        // Debounced so typing doesn't fire a request per keystroke.
+        orgSearch.addEventListener('input', () => {
+          clearTimeout(searchTimer);
+          const term = orgSearch.value.trim();
+          if (term.length < 2) { hideResults(); return; }
+          searchTimer = setTimeout(() => runSearch(term), 250);
+        });
+
+        document.addEventListener('click', (e) => {
+          if (!orgResults.contains(e.target) && e.target !== orgSearch) hideResults();
+        });
+      }
     }
 
     // Live confirm-password check

@@ -117,6 +117,26 @@
               <p class="font-mono text-xs tracking-[0.2em] uppercase text-gray-500 border-b border-gray-300 pb-2 mb-4">
                 02 &mdash; Organization Affiliation
               </p>
+              <!-- Search shortcut. Most members know their own organization by
+                   name and shouldn't have to guess which branch it sits under,
+                   so typing it jumps straight there: picking a result resolves
+                   its full ancestor chain and fills in every step of the cascade
+                   below, already selected. The cascade stays visible so they can
+                   still see and correct the branch they landed on. -->
+              <div class="relative mb-3">
+                <label class="block text-sm font-medium mb-1" for="organization-search">
+                  Search for your organization
+                </label>
+                <input id="organization-search" type="text" autocomplete="off"
+                  placeholder="Type your school, unit, chapter or cluster&hellip;"
+                  class="w-full border border-gray-300 rounded-md px-3 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <div id="organization-results"
+                     class="hidden absolute z-20 mt-1 w-full max-h-64 overflow-y-auto rounded-md border border-gray-300 bg-white shadow-lg"></div>
+                <p class="text-xs text-gray-500 mt-1">
+                  Or choose it step by step below.
+                </p>
+              </div>
+
               <!-- Guided cascade. Each level is populated from the actual
                    children of the level above, so a member can only ever pick a
                    branch that really exists. Levels are not fixed: the cascade
