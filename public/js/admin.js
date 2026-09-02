@@ -839,8 +839,8 @@ async function loadPendingUsers(table) {
           <td class="admin-td max-w-[220px] truncate" title="${escapeHtml(u.email)}">${escapeHtml(u.email)}</td>
           <td class="admin-td max-w-[160px] truncate">${escapeHtml(u.school || '-')}</td>
           <td class="admin-td max-w-[140px] truncate">${escapeHtml((u.organization && u.organization.name) || '-')}</td>
-          <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
-          <td class="admin-td">${membershipTierBadge(u)}</td>
+          <td class="admin-td">${accountStatusBadge(u)}</td>
+      <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
           <td class="admin-td">${membershipTierBadge(u)}</td>
       <td class="admin-td">${membershipPaymentBadge(u)}</td>
           <td class="admin-td text-right">
@@ -875,6 +875,7 @@ function memberRowHtml(u) {
       <td class="admin-td max-w-[220px] truncate" title="${escapeHtml(u.email)}">${escapeHtml(u.email)}</td>
       <td class="admin-td max-w-[160px] truncate">${escapeHtml(u.school || '-')}</td>
       <td class="admin-td max-w-[140px] truncate">${escapeHtml((u.organization && u.organization.name) || '-')}</td>
+      <td class="admin-td">${accountStatusBadge(u)}</td>
       <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
       <td class="admin-td">${membershipTierBadge(u)}</td>
       <td class="admin-td">${membershipPaymentBadge(u)}</td>
@@ -1015,6 +1016,12 @@ function initMembersFilterAndPagination(table) {
 // distinct from the raw payment-transaction badge beside it. A Non-Member is
 // anyone with an account who has not paid or has lapsed; Guest never appears
 // here because a guest has no account and so no row in this table.
+function accountStatusBadge(u) {
+  const styles = { APPROVED: 'badge-green', PENDING: 'badge-amber', REJECTED: 'badge-red' };
+  const label = { APPROVED: 'Approved', PENDING: 'Pending', REJECTED: 'Rejected' };
+  return '<span class="' + (styles[u.status] || 'badge-slate') + '">' + escapeHtml(label[u.status] || u.status || '-') + '</span>';
+}
+
 function membershipTierBadge(u) {
   if (u.membershipTier === 'MEMBER') {
     const until = u.membershipExpiresAt ? new Date(u.membershipExpiresAt).toLocaleDateString() : '';
