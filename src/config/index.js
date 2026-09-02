@@ -30,8 +30,9 @@ function oneOf(name, allowed, fallback) {
   return value;
 }
 
-// Both the .env.example placeholder and this project's own dev-only value
-// (the .env checked out for local XAMPP work) are checked by name — a
+// The old .env.example placeholder (that file is gone, but the value may
+// still be sitting in someone's .env) and this project's own dev-only value
+// are both checked by name — a
 // generic "too short" fallback below also catches any other weak secret
 // nobody bothered to replace. Only enforced in production so local dev never
 // has to think about it.

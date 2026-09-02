@@ -19,7 +19,33 @@ Two sides: public/user pages and an admin panel (logo/content management, user a
 ## Setup
 
 1. Start XAMPP's MySQL service.
-2. Copy `.env.example` to `.env` and adjust `DATABASE_URL` / `SESSION_SECRET` if needed.
+2. Create a `.env` in the project root (it is gitignored — never commit it):
+
+   ```
+   DATABASE_URL="mysql://root:@localhost:3306/jpsme2_new"
+   SESSION_SECRET=<a long random string>
+   PORT=3000
+   NODE_ENV=development
+   APP_URL=http://localhost:3000
+   ```
+
+   - `DATABASE_URL` must point at a **dedicated** database, separate from the
+     legacy `jpsme2` used by the PHP app at `C:\xampp\htdocs\jpsme`. In
+     production append `?connection_limit=...`, kept comfortably under MySQL's
+     `max_connections` — see "Scaling & going live".
+   - `SESSION_SECRET` signs session cookies. Generate one per environment:
+     `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
+     Startup refuses in production if it is missing, under 32 characters, or a
+     known placeholder.
+   - Optional: `CLUSTER_WORKERS` (worker processes `npm start` forks, default 1)
+     and `TRUST_PROXY=true` — set the latter **only** when actually behind a
+     reverse proxy, since trusting `X-Forwarded-*` without one allows IP
+     spoofing and breaks rate limiting.
+   - Integrations are optional and stay disabled when unset: `PAYMONGO_SECRET_KEY`
+     and `PAYMONGO_WEBHOOK_SECRET` (payments), `BREVO_API_KEY` (email),
+     `GOOGLE_SHEETS_ID` with `GOOGLE_SERVICE_ACCOUNT_EMAIL` /
+     `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (report sync).
+
 3. Create the database (phpMyAdmin or CLI): `CREATE DATABASE jpsme2_new;`
 4. Install dependencies: `npm install`
 5. Apply the schema: `npm run prisma:migrate`
