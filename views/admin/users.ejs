@@ -30,8 +30,11 @@
           <option value="">All</option>
           <option value="MEMBER">Member</option>
           <option value="NON_MEMBER">Non-Member</option>
-          <option value="LAPSED">&nbsp;&nbsp;&mdash; lapsed</option>
-          <option value="NEVER">&nbsp;&nbsp;&mdash; never paid</option>
+          <%# Worded in membership terms only. "never paid" here read as a
+              payment status and collided with the Payment filter beside it,
+              which is a different question: a lapsed member has paid. %>
+          <option value="LAPSED">&nbsp;&nbsp;&mdash; expired</option>
+          <option value="NEVER">&nbsp;&nbsp;&mdash; never a member</option>
         </select>
       </div>
       <div>
