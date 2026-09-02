@@ -92,7 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const orgError = document.getElementById('chapter-error');
 
     const ORG_TYPE_LABEL = {
-      NATIONAL: 'National', MOTHER_ORG: 'Mother Organization', REGION: 'Region',
+      NATIONAL: 'National', MOTHER_ORG: 'Mother Organization',
       CLUSTER: 'Cluster', CHAPTER: 'Chapter', STUDENT_UNIT: 'Student Unit',
     };
 

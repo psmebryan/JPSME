@@ -75,8 +75,8 @@ async function run() {
   const existingRoot = await prisma.organization.findFirst({ where: { parentId: null } });
   const national = existingRoot
     || await orgService.createOrganization({ name: `${TAG} National`, type: 'NATIONAL', parentId: null });
-  const regionA = await orgService.createOrganization({ name: `${TAG} Region A`, type: 'REGION', parentId: national.id });
-  const regionB = await orgService.createOrganization({ name: `${TAG} Region B`, type: 'REGION', parentId: national.id });
+  const regionA = await orgService.createOrganization({ name: `${TAG} Mother Org A`, type: 'MOTHER_ORG', parentId: national.id });
+  const regionB = await orgService.createOrganization({ name: `${TAG} Mother Org B`, type: 'MOTHER_ORG', parentId: national.id });
   const clusterA1 = await orgService.createOrganization({ name: `${TAG} Cluster A1`, type: 'CLUSTER', parentId: regionA.id });
   const chapterA1a = await orgService.createOrganization({ name: `${TAG} Chapter A1a`, type: 'CHAPTER', parentId: clusterA1.id });
   const unitA1a1 = await orgService.createOrganization({ name: `${TAG} Unit A1a-1`, type: 'STUDENT_UNIT', parentId: chapterA1a.id });
@@ -90,7 +90,7 @@ async function run() {
   await test('TEST 1 — National > Region > Cluster > Chapter > Student Unit', async () => {
     const chain = await orgService.getOrganizationPath(unitA1a1.id);
     assertEqual(chain.length, 5, 'expected a 5-level chain');
-    assertEqual(chain.map((o) => o.type).join(','), 'NATIONAL,REGION,CLUSTER,CHAPTER,STUDENT_UNIT', 'type order');
+    assertEqual(chain.map((o) => o.type).join(','), 'NATIONAL,MOTHER_ORG,CLUSTER,CHAPTER,STUDENT_UNIT', 'type order');
     assertEqual(chain[0].id, national.id, 'root first');
     assertEqual(chain[4].id, unitA1a1.id, 'self last');
   });
@@ -98,14 +98,14 @@ async function run() {
   await test('TEST 2 — National > Region > Chapter > Student Unit (no cluster)', async () => {
     const chain = await orgService.getOrganizationPath(unitA21.id);
     assertEqual(chain.length, 4, 'expected a 4-level chain');
-    assertEqual(chain.map((o) => o.type).join(','), 'NATIONAL,REGION,CHAPTER,STUDENT_UNIT', 'cluster level absent, not blank');
+    assertEqual(chain.map((o) => o.type).join(','), 'NATIONAL,MOTHER_ORG,CHAPTER,STUDENT_UNIT', 'cluster level absent, not blank');
     assert(!chain.some((o) => o.type === 'CLUSTER'), 'no placeholder cluster invented');
   });
 
   await test('TEST 3 — National > Region > Cluster (no chapter beneath)', async () => {
     const chain = await orgService.getOrganizationPath(clusterB1.id);
     assertEqual(chain.length, 3, 'expected a 3-level chain');
-    assertEqual(chain.map((o) => o.type).join(','), 'NATIONAL,REGION,CLUSTER', 'type order');
+    assertEqual(chain.map((o) => o.type).join(','), 'NATIONAL,MOTHER_ORG,CLUSTER', 'type order');
     const kids = await orgService.getChildren(clusterB1.id);
     assertEqual(kids.length, 0, 'cluster legitimately has no children');
   });
@@ -113,7 +113,7 @@ async function run() {
   await test('TEST 4 — National > Region > Chapter (no student unit)', async () => {
     const chain = await orgService.getOrganizationPath(chapterB2.id);
     assertEqual(chain.length, 3, 'expected a 3-level chain');
-    assertEqual(chain.map((o) => o.type).join(','), 'NATIONAL,REGION,CHAPTER', 'type order');
+    assertEqual(chain.map((o) => o.type).join(','), 'NATIONAL,MOTHER_ORG,CHAPTER', 'type order');
     const kids = await orgService.getChildren(chapterB2.id);
     assertEqual(kids.length, 0, 'chapter legitimately has no children');
   });
@@ -267,7 +267,7 @@ async function run() {
     // Move Chapter A1a (and its unit) from Cluster A1 over to Region B.
     await orgService.moveOrganization(chapterA1a.id, regionB.id);
     const movedChain = await orgService.getOrganizationPath(chapterA1a.id);
-    assertEqual(movedChain.map((o) => o.type).join(','), 'NATIONAL,REGION,CHAPTER', 'chapter now hangs off region B');
+    assertEqual(movedChain.map((o) => o.type).join(','), 'NATIONAL,MOTHER_ORG,CHAPTER', 'chapter now hangs off mother org B');
     // The descendant must have moved with it.
     const unitChain = await orgService.getOrganizationPath(unitA1a1.id);
     assertEqual(unitChain.length, 4, 'unit depth updated with its parent');

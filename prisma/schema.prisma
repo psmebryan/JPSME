@@ -337,7 +337,6 @@ model SiteSetting {
 enum OrganizationType {
   NATIONAL
   MOTHER_ORG
-  REGION
   CLUSTER
   CHAPTER
   STUDENT_UNIT

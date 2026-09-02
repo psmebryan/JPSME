@@ -72,12 +72,12 @@ async function getMainAdminDashboard() {
     prisma.payment.aggregate({ where: { status: 'PAID' }, _sum: { amount: true } }),
     prisma.user.findMany({ where: { role: 'USER', createdAt: { gte: windowStart } }, select: { createdAt: true } }),
     prisma.payment.findMany({ where: { status: 'PAID', paidAt: { gte: windowStart } }, select: { paidAt: true, amount: true } }),
-    // Regions are the useful top-level breakdown now that the hierarchy is
-    // variable-depth — counting only direct members of each organization
-    // would badly under-report a region whose members all sit in student
-    // units beneath it, so this aggregates each region's whole subtree below.
+    // The mother orgs are the useful top-level breakdown now that the
+    // hierarchy is variable-depth — counting only direct members of each
+    // organization would badly under-report one whose members all sit in
+    // student units beneath it, so this aggregates the whole subtree below.
     prisma.organization.findMany({
-      where: { isActive: true, type: 'REGION' },
+      where: { isActive: true, type: 'MOTHER_ORG' },
       select: { id: true, name: true, path: true },
     }),
     auditService.listAuditLogs({ page: 1 }),
@@ -90,9 +90,9 @@ async function getMainAdminDashboard() {
   ]);
 
   // Subtree aggregation in one pass: fetch every approved member's
-  // organization path once, then attribute each to whichever region's path is
-  // a prefix of theirs. Avoids a per-region count query while still counting
-  // members who sit several levels below the region.
+  // organization path once, then attribute each to whichever mother org's
+  // path is a prefix of theirs. Avoids a per-organization count query while
+  // still counting members who sit several levels below it.
   const memberOrgs = await prisma.user.findMany({
     where: { role: 'USER', status: 'APPROVED', organizationId: { not: null } },
     select: { organization: { select: { path: true } } },

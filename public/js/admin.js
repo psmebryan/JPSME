@@ -1546,11 +1546,11 @@ function initOrganizationTree() {
   if (!tree || !modal) return; // not on this page
 
   const TYPE_LABEL = {
-    NATIONAL: 'National', MOTHER_ORG: 'Mother Org', REGION: 'Region',
+    NATIONAL: 'National', MOTHER_ORG: 'Mother Org',
     CLUSTER: 'Cluster', CHAPTER: 'Chapter', STUDENT_UNIT: 'Student Unit',
   };
   const TYPE_BADGE = {
-    NATIONAL: 'badge-purple', MOTHER_ORG: 'badge-emerald', REGION: 'badge-blue',
+    NATIONAL: 'badge-purple', MOTHER_ORG: 'badge-emerald',
     CLUSTER: 'badge-sky', CHAPTER: 'badge-green', STUDENT_UNIT: 'badge-slate',
   };
 
