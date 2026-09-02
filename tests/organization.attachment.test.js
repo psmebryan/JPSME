@@ -2,8 +2,8 @@
 // actually persisted on their account, readable back everywhere it matters,
 // and frozen onto an event registration. Run against a live dev server.
 const http = require('http');
-const prisma = require('./src/config/prisma');
-const organizationService = require('./src/services/organization.service');
+const prisma = require('../src/config/prisma');
+const organizationService = require('../src/services/organization.service');
 
 const EMAIL = 'attachcheck@dummy.test';
 let cookies = {};
@@ -116,7 +116,7 @@ function check(label, ok, detail) {
   const event = await prisma.event.create({
     data: { title: 'ATTACHCHECK Event', startDate: new Date(Date.now() + 864e5), isPublished: true },
   });
-  const registrationService = require('./src/services/registration.service');
+  const registrationService = require('../src/services/registration.service');
   const fresh = await prisma.user.findUnique({ where: { id: stored.id } });
   const evReg = await registrationService.registerForEvent(fresh, event.id);
   check('registration captured organizationId', evReg.organizationId === chosen.id);

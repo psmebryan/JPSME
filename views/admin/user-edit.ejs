@@ -30,7 +30,20 @@
           <p class="mt-1 text-sm text-slate-600"><%= user.organization ? user.organization.name : '(none)' %></p>
           <p class="text-xs text-slate-400 mt-0.5">Contact the main admin to reassign a member's organization.</p>
         </div>
-      <% } else { %>
+      <% } %>
+
+      <div>
+          <label class="form-label">Year level</label>
+          <select name="yearLevel" id="yearLevel" class="form-input">
+            <option value="">Not applicable</option>
+            <option value="FIRST" <%= (user.yearLevel || '') === 'FIRST' ? 'selected' : '' %>>1st Year</option>
+            <option value="SECOND" <%= (user.yearLevel || '') === 'SECOND' ? 'selected' : '' %>>2nd Year</option>
+            <option value="THIRD" <%= (user.yearLevel || '') === 'THIRD' ? 'selected' : '' %>>3rd Year</option>
+            <option value="FOURTH" <%= (user.yearLevel || '') === 'FOURTH' ? 'selected' : '' %>>4th Year</option>
+          </select>
+      </div>
+
+      <% if (!restricted) { %>
         <div>
           <label class="form-label">Role</label>
           <select name="role" class="form-input">

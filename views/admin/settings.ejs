@@ -63,6 +63,22 @@
   </form>
 </div>
 
+<div id="membership-required-module" class="admin-card p-6 max-w-md mt-6">
+  <h2 class="font-semibold mb-1">Membership payment</h2>
+  <p class="mb-4 text-xs text-slate-500">
+    When optional, anyone can register and use the site straight away and may settle the
+    fee later &mdash; their account and details are kept either way. When required, a new
+    member is held on the payment page until their payment clears. Admin approval is
+    unaffected by this setting.
+  </p>
+  <label class="flex items-center gap-3 cursor-pointer">
+    <input id="membership-required-checkbox" type="checkbox" <%= membershipPaymentRequired ? 'checked' : '' %> class="h-5 w-5 rounded border-slate-300">
+    <span id="membership-required-label" class="text-sm font-medium <%= membershipPaymentRequired ? 'text-amber-700' : 'text-green-700' %>">
+      <%= membershipPaymentRequired ? 'Payment required to use the site' : 'Membership payment is optional' %>
+    </span>
+  </label>
+</div>
+
 <div id="payments-enabled-module" class="admin-card p-6 max-w-md mt-6" data-enabled="<%= paymentsEnabled ? '1' : '0' %>">
   <h2 class="font-semibold mb-1">Payments</h2>
   <p class="mb-4 text-xs text-slate-500">Kill switch for new payment checkouts (membership and event fees). Disabling this does not affect payments already in progress — their webhook confirmation still works normally.</p>

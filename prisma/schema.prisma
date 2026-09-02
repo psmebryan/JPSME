@@ -16,6 +16,16 @@ enum Role {
   CHAPTER_ADMIN
 }
 
+// Stored as named levels rather than a number so the value can't drift into
+// something meaningless (year 0, year 7) and reads correctly wherever it's
+// displayed. Deliberately stops at fourth year.
+enum YearLevel {
+  FIRST
+  SECOND
+  THIRD
+  FOURTH
+}
+
 enum UserStatus {
   PENDING
   APPROVED
@@ -125,6 +135,9 @@ model User {
   password        String
   phone           String?
   school          String?
+  // Optional: members attached above student-unit level (a chapter or cluster
+  // officer, say) aren't studying a year at all, so this is never required.
+  yearLevel       YearLevel?
   profileImage    String?
   // A member attaches to whichever organization is actually appropriate —
   // a student unit, a chapter, a cluster, or a region — not exclusively to

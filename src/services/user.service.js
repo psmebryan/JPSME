@@ -166,6 +166,11 @@ async function updateUser(userId, data) {
   if (Object.prototype.hasOwnProperty.call(data, 'school')) {
     allowed.school = data.school && String(data.school).trim() ? String(data.school).trim() : null;
   }
+  if (Object.prototype.hasOwnProperty.call(data, 'yearLevel')) {
+    // Empty clears it — members above student-unit level have no year.
+    const yl = data.yearLevel;
+    allowed.yearLevel = ['FIRST', 'SECOND', 'THIRD', 'FOURTH'].includes(yl) ? yl : null;
+  }
   if (Object.prototype.hasOwnProperty.call(data, 'role')) {
     // Only allow role changes to CHAPTER_ADMIN or USER here; ADMIN is blocked above.
     const roleVal = data.role;

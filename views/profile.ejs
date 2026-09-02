@@ -94,6 +94,17 @@
             <input id="school" name="school" value="<%= profileData.school || '' %>" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
 
+          <div>
+          <label class="block text-sm font-medium mb-1">Year level</label>
+          <select name="yearLevel" id="yearLevel" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="">Not applicable</option>
+            <option value="FIRST" <%= (profileData.yearLevel || '') === 'FIRST' ? 'selected' : '' %>>1st Year</option>
+            <option value="SECOND" <%= (profileData.yearLevel || '') === 'SECOND' ? 'selected' : '' %>>2nd Year</option>
+            <option value="THIRD" <%= (profileData.yearLevel || '') === 'THIRD' ? 'selected' : '' %>>3rd Year</option>
+            <option value="FOURTH" <%= (profileData.yearLevel || '') === 'FOURTH' ? 'selected' : '' %>>4th Year</option>
+          </select>
+          </div>
+
           <div class="md:col-span-2">
             <label for="phone" class="block text-sm font-medium mb-1">Phone Number</label>
             <input id="phone" name="phone" value="<%= profileData.phone || '' %>" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
@@ -160,6 +171,7 @@
         const payload = {
           middleInitial: formData.get('middleInitial')?.toString().trim() || null,
           school: formData.get('school')?.toString().trim() || null,
+          yearLevel: formData.get('yearLevel') || null,
           phone: formData.get('phone')?.toString().trim() || null,
           organizationId: formData.get('organizationId') || null,
         };

@@ -94,7 +94,7 @@ const updateUser = asyncHandler(async (req, res) => {
 
     // Scoped admins may only touch these fields on their own members —
     // never email, role, or organizationId, even if sent directly to the API.
-    const allowedFields = ['firstName', 'middleInitial', 'lastName', 'phone', 'school'];
+    const allowedFields = ['firstName', 'middleInitial', 'lastName', 'phone', 'school', 'yearLevel'];
     payload = Object.fromEntries(
       Object.entries(payload).filter(([key]) => allowedFields.includes(key))
     );
@@ -170,6 +170,20 @@ const updatePaymentsEnabled = asyncHandler(async (req, res) => {
   const enabled = req.body.enabled === true || req.body.enabled === 'true';
   await settingsService.setPaymentsEnabled(enabled);
   return success(res, { enabled }, enabled ? 'Payments enabled' : 'Payments disabled');
+});
+
+const getMembershipPaymentRequired = asyncHandler(async (req, res) => {
+  const required = await settingsService.getMembershipPaymentRequired();
+  return success(res, { required });
+});
+
+// Off means a new member may register and use the site without paying, and
+// settle the fee later if they choose. It changes only what a PENDING member
+// is allowed to reach — never whether their account or data is kept.
+const updateMembershipPaymentRequired = asyncHandler(async (req, res) => {
+  const required = req.body.required === true || req.body.required === 'true';
+  await settingsService.setMembershipPaymentRequired(required);
+  return success(res, { required }, required ? 'Membership payment is now required' : 'Membership payment is now optional');
 });
 
 const listSponsors = asyncHandler(async (req, res) => {
@@ -278,4 +292,4 @@ const setOrganizationActiveApi = asyncHandler(async (req, res) => {
   return success(res, result, isActive ? 'Organization reactivated' : 'Organization deactivated');
 });
 
-module.exports = { listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin, getOrganizationTreeLevel, createChildOrganization, deleteOrganizationApi, setOrganizationActiveApi };
+module.exports = { listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, getMembershipPaymentRequired, updateMembershipPaymentRequired, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin, getOrganizationTreeLevel, createChildOrganization, deleteOrganizationApi, setOrganizationActiveApi };

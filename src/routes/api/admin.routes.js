@@ -116,6 +116,13 @@ router.put(
   body('enabled').isBoolean().withMessage('enabled must be true or false'),
   adminApi.updatePaymentsEnabled
 );
+router.get('/settings/membership-payment-required', adminApi.getMembershipPaymentRequired);
+router.put(
+  '/settings/membership-payment-required',
+  verifyCsrfToken,
+  body('required').isBoolean().withMessage('required must be true or false'),
+  adminApi.updateMembershipPaymentRequired
+);
 router.get('/sponsors', adminApi.listSponsors);
 router.post('/sponsors', verifyCsrfToken, uploadSponsorLogo.single('logo'), verifyImageSignature, adminApi.createSponsor);
 router.delete('/sponsors/:id', verifyCsrfToken, param('id').isInt(), adminApi.deleteSponsor);

@@ -45,6 +45,7 @@ async function registerUser({
   password,
   phone,
   school,
+  yearLevel,
   organizationId,
   next,
 }) {
@@ -76,6 +77,7 @@ async function registerUser({
       password: hashedPassword,
       phone: phone || null,
       school: school || null,
+      yearLevel: yearLevel || null,
       organizationId: Number(organizationId),
       status: "PENDING",
       role: "USER",
@@ -159,7 +161,7 @@ async function getById(id) {
   return toPublicUser(user);
 }
 
-async function updateProfile(userId, { middleInitial, phone, school, organizationId }) {
+async function updateProfile(userId, { middleInitial, phone, school, yearLevel, organizationId }) {
   const value = organizationId === '' || organizationId === undefined || organizationId === null ? null : Number(organizationId);
   if (organizationId !== '' && organizationId !== undefined && organizationId !== null && organizationId !== 'null' && Number.isNaN(value)) {
     throw new AppError('Invalid organization selection', 400);
@@ -171,6 +173,7 @@ async function updateProfile(userId, { middleInitial, phone, school, organizatio
       middleInitial: middleInitial && middleInitial.trim() ? normalizeName(middleInitial) : null,
       phone: phone && phone.trim() ? phone.trim() : null,
       school: school && school.trim() ? school.trim() : null,
+      yearLevel: yearLevel || null,
       organizationId: value,
     },
     include: userInclude,

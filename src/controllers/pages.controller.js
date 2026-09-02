@@ -207,14 +207,17 @@ const profilePage = asyncHandler(async (req, res) => {
 });
 
 const membershipPaymentPage = asyncHandler(async (req, res) => {
-  const [payment, feeCentavos] = await Promise.all([
+  const [payment, feeCentavos, membershipPaymentRequired] = await Promise.all([
     paymentService.getLatestMembershipPayment(req.session.user.id),
     settingsService.getMembershipFeeCentavos(),
+    settingsService.getMembershipPaymentRequired(),
   ]);
   // Shown before they click "Continue to Payment" so the total on PayMongo's
   // own checkout page (fee + this same surcharge, itemized) isn't a surprise.
   const surchargeCentavos = await paymentService.calculateGatewaySurcharge(feeCentavos);
-  res.render('membership-payment', { title: 'Membership Payment', payment, feeCentavos, surchargeCentavos });
+  res.render('membership-payment', {
+    title: 'Membership Payment', payment, feeCentavos, surchargeCentavos, membershipPaymentRequired,
+  });
 });
 
 const membershipPaymentReturnPage = asyncHandler(async (req, res) => {
@@ -309,13 +312,14 @@ const adminEventsPage = asyncHandler(async (req, res) => {
 });
 
 const adminSettingsPage = asyncHandler(async (req, res) => {
-  const [logoUrl, membershipFeeCentavos, paymentsEnabled, gatewaySurchargePercent] = await Promise.all([
+  const [logoUrl, membershipFeeCentavos, paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired] = await Promise.all([
     settingsService.getLogoUrl(),
     settingsService.getMembershipFeeCentavos(),
     settingsService.getPaymentsEnabled(),
     settingsService.getGatewaySurchargePercent(),
+    settingsService.getMembershipPaymentRequired(),
   ]);
-  renderAdmin(req, res, 'admin/settings', { title: 'Site Settings', logoUrl, membershipFeeCentavos, paymentsEnabled, gatewaySurchargePercent });
+  renderAdmin(req, res, 'admin/settings', { title: 'Site Settings', logoUrl, membershipFeeCentavos, paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired });
 });
 
 const adminSponsorsPage = asyncHandler(async (req, res) => {

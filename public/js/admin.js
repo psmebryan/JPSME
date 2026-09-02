@@ -4,6 +4,7 @@ function initAdminPage() {
   initMembershipFeeForm();
   initGatewaySurchargeForm();
   initPaymentsEnabledToggle();
+  initMembershipRequiredToggle();
   initEventsTable();
   initArticlesTable();
   initInvitationsModule();
@@ -1057,6 +1058,35 @@ function initGatewaySurchargeForm() {
       showToast('Payment processing surcharge updated');
     } catch (err) {
       showToast(err.errors?.[0]?.msg || err.message, 'error');
+    }
+  });
+}
+
+// --- Membership payment required toggle (admin/settings page) ---
+function initMembershipRequiredToggle() {
+  const module = document.getElementById('membership-required-module');
+  if (!module) return;
+
+  const checkbox = document.getElementById('membership-required-checkbox');
+  const label = document.getElementById('membership-required-label');
+
+  checkbox?.addEventListener('change', async () => {
+    const required = checkbox.checked;
+    checkbox.disabled = true;
+    try {
+      await apiFetch('/api/admin/settings/membership-payment-required', {
+        method: 'PUT',
+        body: JSON.stringify({ required }),
+      });
+      label.textContent = required ? 'Payment required to use the site' : 'Membership payment is optional';
+      label.classList.toggle('text-amber-700', required);
+      label.classList.toggle('text-green-700', !required);
+      showToast(required ? 'Membership payment is now required' : 'Membership payment is now optional');
+    } catch (err) {
+      checkbox.checked = !required;
+      showToast(err.errors?.[0]?.msg || err.message, 'error');
+    } finally {
+      checkbox.disabled = false;
     }
   });
 }

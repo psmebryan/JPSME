@@ -197,13 +197,36 @@ app.use(async (req, res, next) => {
 // membership payment, since the admin's approval decision is informed by
 // seeing that payment status. Everywhere else, confine them to the payment
 // flow until an admin approves the account.
+// A PENDING member is verified but not yet approved. What they may do while
+// waiting depends on whether membership payment is required (Admin →
+// Settings, off by default).
+//
+// Optional membership (the default): they are not confined at all. They can
+// browse, keep their profile up to date, and settle the fee whenever they
+// like — the account and everything on it is retained either way, and an
+// admin still decides approval. Member-only actions remain gated by the
+// normal ensureAuth/approved checks further in, so "not confined" does not
+// mean "treated as approved".
+//
+// Required membership: the original behaviour — held on /membership-payment
+// until the payment clears (which auto-approves them, see payment.service.js)
+// or an admin approves them by hand.
 const PENDING_USER_ALLOWED_PREFIXES = ['/membership-payment', '/logout', '/api/payments', '/api/auth/logout', '/api/csrf-token'];
-app.use((req, res, next) => {
+app.use(async (req, res, next) => {
   const user = req.session.user;
   if (!user || user.role !== 'USER' || user.status !== 'PENDING') return next();
 
   const allowed = PENDING_USER_ALLOWED_PREFIXES.some((prefix) => req.path === prefix || req.path.startsWith(`${prefix}/`));
   if (allowed) return next();
+
+  try {
+    if (!(await settingsService.getMembershipPaymentRequired())) return next();
+  } catch (err) {
+    // A settings lookup failure must not lock every pending member out of the
+    // site; fall through to the permissive default this setting ships with.
+    (req.log || logger).error('pending-user gate: settings lookup failed', { err });
+    return next();
+  }
 
   if (req.path.startsWith('/api/')) {
     return res.status(403).json({ success: false, message: 'Please complete your membership payment first' });

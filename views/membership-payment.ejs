@@ -16,6 +16,22 @@ const canPay = !payment || payment.status === 'PENDING' || payButtonStatuses.inc
     </div>
 
     <div class="p-6 md:p-8 space-y-6">
+      <% if (!locals.membershipPaymentRequired && !(payment && payment.status === 'PAID')) { %>
+        <!-- Membership payment is optional by default (Admin → Settings). Say so
+             plainly here, since arriving on a page headed "Membership Payment"
+             otherwise reads as a demand. -->
+        <div class="rounded-md border border-indigo-200 bg-indigo-50 p-4">
+          <p class="text-sm font-semibold text-indigo-900">Paying is optional</p>
+          <p class="text-xs text-indigo-800 mt-1">
+            You can use your account without paying &mdash; your registration and details are
+            saved either way. Settle the fee here whenever you're ready.
+          </p>
+          <a href="/profile" class="mt-2 inline-block text-xs font-semibold text-indigo-700 hover:underline">
+            Skip for now &rarr;
+          </a>
+        </div>
+      <% } %>
+
       <% if (payment && payment.status === 'PAID') { %>
         <div class="text-center py-4">
           <div class="text-4xl mb-3">&#10003;</div>
