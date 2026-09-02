@@ -181,10 +181,11 @@ const articleDetailPage = asyncHandler(async (req, res) => {
 });
 
 const profilePage = asyncHandler(async (req, res) => {
-  const [userProfile, registrations, orgSeed] = await Promise.all([
+  const [userProfile, registrations, orgSeed, membership] = await Promise.all([
     authService.getById(req.session.user.id),
     registrationService.getUserRegistrations(req.session.user.id),
     organizationService.searchOrganizations({ page: 1, pageSize: 50 }),
+    paymentService.getMembershipStatus(req.session.user.id),
   ]);
 
   const organizationPath = userProfile.organizationId
@@ -200,6 +201,7 @@ const profilePage = asyncHandler(async (req, res) => {
     title: 'My Profile',
     userProfile,
     registrations,
+    membership,
     organizations: orgSeed.organizations,
     organizationPath,
     certifiedEventIds,
@@ -207,16 +209,17 @@ const profilePage = asyncHandler(async (req, res) => {
 });
 
 const membershipPaymentPage = asyncHandler(async (req, res) => {
-  const [payment, feeCentavos, membershipPaymentRequired] = await Promise.all([
+  const [payment, feeCentavos, membershipPaymentRequired, membership] = await Promise.all([
     paymentService.getLatestMembershipPayment(req.session.user.id),
     settingsService.getMembershipFeeCentavos(),
     settingsService.getMembershipPaymentRequired(),
+    paymentService.getMembershipStatus(req.session.user.id),
   ]);
   // Shown before they click "Continue to Payment" so the total on PayMongo's
   // own checkout page (fee + this same surcharge, itemized) isn't a surprise.
   const surchargeCentavos = await paymentService.calculateGatewaySurcharge(feeCentavos);
   res.render('membership-payment', {
-    title: 'Membership Payment', payment, feeCentavos, surchargeCentavos, membershipPaymentRequired,
+    title: 'Membership Payment', payment, feeCentavos, surchargeCentavos, membershipPaymentRequired, membership,
   });
 });
 

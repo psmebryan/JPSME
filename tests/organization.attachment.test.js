@@ -58,10 +58,20 @@ function check(label, ok, detail) {
   await prisma.eventRegistration.deleteMany({ where: { user: { email: EMAIL } } });
   await prisma.user.deleteMany({ where: { email: EMAIL } });
 
+  // Prefer a unit nested under a province so the path has something to
+  // resolve, but fall back to any organization at all — the point of this test
+  // is that the chosen organization sticks, not how deep it sits.
   const chosen = await prisma.organization.findFirst({
     where: { type: 'STUDENT_UNIT', parent: { type: 'PROVINCE' } },
     select: { id: true, name: true },
-  });
+  }) || await prisma.organization.findFirst({ select: { id: true, name: true } });
+
+  if (!chosen) {
+    console.log('No organizations exist — nothing to attach a member to. Skipping.');
+    console.log('Create at least one organization (Admin → Organizations → Structure) and re-run.');
+    await prisma.$disconnect();
+    process.exit(0);
+  }
   const chosenPath = await organizationService.getOrganizationPathLabel(chosen.id);
   console.log(`Member will choose: ${chosen.name} (id ${chosen.id})`);
   console.log(`Full path:          ${chosenPath}\n`);
@@ -123,7 +133,23 @@ function check(label, ok, detail) {
   check('registration captured the path label', evReg.organizationPath === chosenPath, evReg.organizationPath);
 
   console.log('\n6. SURVIVES THE MEMBER MOVING ELSEWHERE');
-  const other = await prisma.organization.findFirst({ where: { type: 'STUDENT_UNIT' }, select: { id: true, name: true } });
+  // Any organization other than the one they registered with — the assertion
+  // is that moving breaks the link to the *original*, so which one they move
+  // to does not matter.
+  const other = await prisma.organization.findFirst({
+    where: { id: { not: chosen.id } },
+    select: { id: true, name: true },
+  });
+  if (!other) {
+    console.log('  SKIP  only one organization exists, nothing to move the member to');
+    await prisma.eventRegistration.deleteMany({ where: { eventId: event.id } });
+    await prisma.job.deleteMany({ where: { type: 'SEND_EVENT_REGISTRATION_EMAIL' } });
+    await prisma.event.delete({ where: { id: event.id } });
+    await prisma.user.deleteMany({ where: { email: EMAIL } });
+    console.log(`\n${pass.length} passed, ${fail.length} failed`);
+    await prisma.$disconnect();
+    process.exit(fail.length ? 1 : 0);
+  }
   await prisma.user.update({ where: { id: stored.id }, data: { organizationId: other.id } });
   const after = await prisma.eventRegistration.findUnique({ where: { id: evReg.id } });
   const nowUser = await prisma.user.findUnique({ where: { id: stored.id } });

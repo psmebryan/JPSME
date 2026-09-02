@@ -58,6 +58,58 @@ function appUrl() {
 
 // --- Reads ---
 
+// A paid membership is good for one year from the moment it is confirmed.
+const MEMBERSHIP_VALIDITY_DAYS = 365;
+
+function addDays(date, days) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+// Renewing extends from whichever is later — the existing expiry, or today.
+// Paying early therefore never forfeits the remainder of the current year,
+// while renewing after a lapse starts a fresh year rather than back-dating one
+// that has already run out.
+function nextMembershipExpiry(currentExpiry, from = new Date()) {
+  const base = currentExpiry && new Date(currentExpiry) > from ? new Date(currentExpiry) : from;
+  return addDays(base, MEMBERSHIP_VALIDITY_DAYS);
+}
+
+// The three states worth distinguishing. NONE is not a failure — membership
+// payment is optional, so most accounts sit there legitimately; only EXPIRED
+// means something lapsed and can be renewed.
+async function getMembershipStatus(userId) {
+  const user = await prisma.user.findUnique({
+    where: { id: Number(userId) },
+    select: { membershipExpiresAt: true },
+  });
+  if (!user) throw new AppError('User not found', 404);
+
+  let expiresAt = user.membershipExpiresAt;
+
+  // Backfill for anyone who paid before expiry was tracked: derive the date
+  // from their payment rather than showing them as never having paid.
+  if (!expiresAt) {
+    const paid = await prisma.payment.findFirst({
+      where: { userId: Number(userId), purpose: 'MEMBERSHIP_REGISTRATION', status: 'PAID' },
+      orderBy: { paidAt: 'desc' },
+      select: { paidAt: true },
+    });
+    if (paid && paid.paidAt) expiresAt = addDays(paid.paidAt, MEMBERSHIP_VALIDITY_DAYS);
+  }
+
+  if (!expiresAt) return { state: 'NONE', expiresAt: null, daysRemaining: null };
+
+  const now = new Date();
+  const msLeft = new Date(expiresAt).getTime() - now.getTime();
+  return {
+    state: msLeft > 0 ? 'ACTIVE' : 'EXPIRED',
+    expiresAt,
+    daysRemaining: Math.ceil(msLeft / 86400000),
+  };
+}
+
 async function getLatestMembershipPayment(userId) {
   return prisma.payment.findFirst({
     where: { userId: Number(userId), purpose: 'MEMBERSHIP_REGISTRATION' },
@@ -220,7 +272,7 @@ async function createNextPaymentAttempt(paymentId) {
 // PayMongo call happens after this transaction commits, further below) —
 // holding a DB transaction open across a third-party network call would pin
 // row locks for an unbounded time.
-async function createCheckout({ userId, purpose, eventId, amount, description, referencePrefix, successUrl, cancelUrl, alreadyPaidMessage, withinTransaction }) {
+async function createCheckout({ userId, purpose, eventId, amount, description, referencePrefix, successUrl, cancelUrl, alreadyPaidMessage, allowRenewal = false, withinTransaction }) {
   if (!(await settingsService.getPaymentsEnabled())) {
     throw new AppError('Payments are temporarily unavailable. Please try again later.', 503);
   }
@@ -228,11 +280,17 @@ async function createCheckout({ userId, purpose, eventId, amount, description, r
   const user = await prisma.user.findUnique({ where: { id: Number(userId) } });
   if (!user) throw new AppError('User not found', 404);
 
-  const alreadyPaid = await prisma.payment.findFirst({
-    where: { userId: user.id, purpose, eventId: eventId || null, status: 'PAID' },
-  });
-  if (alreadyPaid) {
-    throw new AppError(alreadyPaidMessage, 409);
+  // Membership is renewable, so a past PAID payment must not block a new one —
+  // the caller (createMembershipCheckout) has already refused the case that
+  // actually matters, an membership still inside its validity year. For an
+  // event fee there is nothing to renew, so any prior payment still blocks.
+  if (!allowRenewal) {
+    const alreadyPaid = await prisma.payment.findFirst({
+      where: { userId: user.id, purpose, eventId: eventId || null, status: 'PAID' },
+    });
+    if (alreadyPaid) {
+      throw new AppError(alreadyPaidMessage, 409);
+    }
   }
 
   // `amount` is always the fee JPSME actually wants to net — the payer covers
@@ -340,6 +398,15 @@ async function createMembershipCheckout(userId) {
     throw new AppError('Membership fee is not configured yet. Please contact an administrator.', 503);
   }
 
+  // Renewal is allowed once the year has run out, or early while still active
+  // is not — paying twice inside one validity period is almost always a
+  // double-click or a misunderstanding, not an intent to buy two years.
+  const membership = await getMembershipStatus(userId);
+  if (membership.state === 'ACTIVE') {
+    const until = new Date(membership.expiresAt).toLocaleDateString();
+    throw new AppError(`Your membership is already active until ${until}.`, 409);
+  }
+
   return createCheckout({
     userId,
     purpose: 'MEMBERSHIP_REGISTRATION',
@@ -350,6 +417,7 @@ async function createMembershipCheckout(userId) {
     successUrl: `${appUrl()}/membership-payment/return`,
     cancelUrl: `${appUrl()}/membership-payment/return`,
     alreadyPaidMessage: 'You have already paid your membership fee.',
+    allowRenewal: true,
   });
 }
 
@@ -559,6 +627,17 @@ async function applyPaymentPaid(localPayment, { gatewayPaymentId, gatewayFeeCent
   if (localPayment.purpose === 'MEMBERSHIP_REGISTRATION') {
     try {
       const user = await prisma.user.findUnique({ where: { id: localPayment.userId } });
+
+      // Start (or extend) the one-year validity. Done before the approval
+      // below so that even if setStatus fails, the member still gets the year
+      // they paid for — the two are independent facts.
+      if (user) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { membershipExpiresAt: nextMembershipExpiry(user.membershipExpiresAt) },
+        });
+      }
+
       if (user && user.status === 'PENDING') {
         await userService.setStatus(localPayment.userId, 'APPROVED', {
           reason: 'MEMBERSHIP_PAYMENT_CONFIRMED',
@@ -944,6 +1023,9 @@ async function requestRefund({ paymentId, adminUserId, reason, notes }) {
 }
 
 module.exports = {
+  getMembershipStatus,
+  nextMembershipExpiry,
+  MEMBERSHIP_VALIDITY_DAYS,
   getLatestMembershipPayment,
   getLatestEventPayment,
   getLatestMembershipStatusForUsers,

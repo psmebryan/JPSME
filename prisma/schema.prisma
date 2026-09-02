@@ -146,6 +146,13 @@ model User {
   role            Role     @default(USER)
   status          UserStatus @default(PENDING)
   emailVerifiedAt DateTime?
+  // When the current paid membership lapses — set to one year from the moment
+  // a membership payment is confirmed (payment.service.js's applyPaymentPaid).
+  // Null means no membership has ever been paid for, which is a normal state
+  // now that payment is optional; it is NOT the same as expired. Renewing
+  // extends from whichever is later, the existing expiry or today, so paying
+  // early never costs the member the remainder of their current year.
+  membershipExpiresAt DateTime?
   // Where to send them on their first login after finally clearing payment +
   // admin approval — e.g. the event they originally clicked "Create an
   // account" from. Set at registration, read + cleared (one-time) by
@@ -174,6 +181,7 @@ model User {
 
   @@index([status])
   @@index([organizationId])
+  @@index([membershipExpiresAt])
 }
 
 // Single active token per user; a new verification request replaces the previous one.
