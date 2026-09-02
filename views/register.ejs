@@ -127,13 +127,18 @@
 
               <input type="hidden" id="organizationId" name="organizationId" required>
 
+              <!-- Contrast matters here: this panel is the only confirmation the
+                   member gets that they picked the right branch, and the path can
+                   run several levels deep. Full-strength indigo-800/900 on
+                   indigo-50, no opacity modifiers — a /70 tint on this ground
+                   falls below the WCAG AA minimum at these small sizes. -->
               <div id="organization-selected" class="hidden mt-3 rounded-md border border-indigo-200 bg-indigo-50 p-3">
-                <p class="text-[11px] uppercase tracking-wider text-indigo-700/70 mb-1">Your organization</p>
-                <p class="text-sm font-semibold text-indigo-900" id="organization-selected-name"></p>
-                <p class="text-xs text-indigo-700 mt-0.5" id="organization-selected-path"></p>
+                <p class="text-[11px] font-semibold uppercase tracking-wider text-indigo-800 mb-1">Your organization</p>
+                <p class="text-sm font-semibold text-indigo-950" id="organization-selected-name"></p>
+                <p class="text-xs text-indigo-800 mt-0.5" id="organization-selected-path"></p>
               </div>
 
-              <p class="text-xs text-slate-500 mt-2">
+              <p class="text-xs text-slate-600 mt-2">
                 Choose as far down as your own organization goes. If your branch has no
                 cluster or chapter, that step simply won't appear &mdash; stop at whichever
                 organization you actually belong to.
