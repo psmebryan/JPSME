@@ -1055,8 +1055,13 @@ function membershipPaymentBadge(u) {
     REFUNDED: 'Refunded',
   };
   const cls = badges[payment.status] || 'badge-slate';
-  const label = labels[payment.status] || payment.status;
-  const date = payment.status === 'PAID' && payment.paidAt ? ` &middot; ${new Date(payment.paidAt).toLocaleDateString()}` : '';
+  // The fallback interpolates the raw status. PaymentStatus is a database enum
+  // today, so it can only be one of the values above and the fallback is
+  // unreachable — but this is the only field in this table rendered without
+  // escaping, and it would become a live injection the moment that column ever
+  // held free text. Escaped so that can't happen quietly.
+  const label = labels[payment.status] || escapeHtml(payment.status);
+  const date = payment.status === 'PAID' && payment.paidAt ? ` &middot; ${escapeHtml(new Date(payment.paidAt).toLocaleDateString())}` : '';
   return `<span class="${cls}">${label}${date}</span>`;
 }
 

@@ -1,3 +1,17 @@
+// SUPERSEDED — this script no longer runs, and is kept only for reference.
+//
+// It builds a five-level tree (National / Region / Cluster / Chapter / Student
+// Unit). The hierarchy has since been collapsed to National → Province →
+// Student Unit, so REGION, CLUSTER and CHAPTER are no longer values
+// OrganizationType accepts and every create below would be rejected by the
+// database. The guard at the bottom of this comment block stops it with an
+// explanation rather than letting it fail partway through on a raw enum error,
+// which would leave a half-imported tree behind.
+//
+// Reviving it means deciding what a province is in terms of the workbook's own
+// columns — the workbook has no province column, which is the same gap that
+// made cluster/chapter parentage underivable (see below).
+//
 // Imports the official "2026 DATABASE OF JPSME ORGANIZATIONS.xlsx" into the
 // organizations table.
 //
@@ -118,7 +132,24 @@ function mapType(rawType) {
   return { type: 'STUDENT_UNIT', provisional: true };
 }
 
+// Refuses up front rather than failing partway through. Without this the first
+// REGION create throws a raw Prisma enum error after the national root has
+// already been written, leaving a partial tree to clean up by hand.
+function assertSchemaStillSupported() {
+  const supported = require('@prisma/client').OrganizationType || {};
+  const needed = ['REGION', 'CLUSTER', 'CHAPTER'];
+  const missing = needed.filter((t) => !(t in supported));
+  if (missing.length) {
+    console.error('This importer is superseded and cannot run.\n');
+    console.error(`It creates ${missing.join(', ')} organizations, and OrganizationType no longer`);
+    console.error(`accepts those — the hierarchy is now ${Object.keys(supported).join(' / ')}.`);
+    console.error('\nNothing has been written. See the note at the top of this file.');
+    process.exit(1);
+  }
+}
+
 async function main() {
+  assertSchemaStillSupported();
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
   const fileIx = args.indexOf('--file');

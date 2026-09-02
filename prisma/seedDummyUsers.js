@@ -39,7 +39,18 @@ async function clean() {
     return;
   }
   // Clear dependent rows first; a member may have been made an org admin below.
-  await prisma.organizationAdminAudit.deleteMany({ where: { userId: { in: ids } } });
+  // OrganizationAdminAudit references a user through three separate columns —
+  // there is no `userId` — and changedBy is a non-nullable FK, so a row naming
+  // a dummy account in any of them has to go before the account can be deleted.
+  await prisma.organizationAdminAudit.deleteMany({
+    where: {
+      OR: [
+        { oldUserId: { in: ids } },
+        { newUserId: { in: ids } },
+        { changedBy: { in: ids } },
+      ],
+    },
+  });
   await prisma.organizationAdmin.deleteMany({ where: { userId: { in: ids } } });
   await prisma.eventRegistration.deleteMany({ where: { userId: { in: ids } } });
   const removed = await prisma.user.deleteMany({ where: { email: { endsWith: DUMMY_DOMAIN } } });
@@ -101,20 +112,20 @@ async function main() {
   // outside it. Chosen as the org with the most members beneath it, so the
   // scope is actually meaningful rather than empty.
   const provinceCandidate = created.find((c) => c.type === 'PROVINCE' && c.status === 'APPROVED');
-  if (chapterCandidate) {
+  if (provinceCandidate) {
     await prisma.user.update({
-      where: { id: chapterCandidate.user.id },
+      where: { id: provinceCandidate.user.id },
       data: { role: 'CHAPTER_ADMIN' },
     });
     await prisma.organizationAdmin.create({
-      data: { organizationId: chapterCandidate.org.id, userId: chapterCandidate.user.id },
+      data: { organizationId: provinceCandidate.org.id, userId: provinceCandidate.user.id },
     });
   }
 
   console.log(`Created ${created.length} dummy account(s). Password for all: ${PASSWORD}\n`);
   for (const c of created) {
     const path = await organizationService.getOrganizationPathLabel(c.org.id);
-    const role = c.user.id === (chapterCandidate && chapterCandidate.user.id) ? 'CHAPTER_ADMIN' : 'USER';
+    const role = c.user.id === (provinceCandidate && provinceCandidate.user.id) ? 'CHAPTER_ADMIN' : 'USER';
     console.log(`  ${c.user.email.padEnd(22)} ${role.padEnd(14)} ${c.status.padEnd(9)} ${path}`);
   }
   console.log('\nRun with --clean to remove them.');

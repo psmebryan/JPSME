@@ -250,8 +250,18 @@ app.use((req, res) => {
 // for those, no matter what raw error text it carries.
 app.use((err, req, res, next) => {
   const isKnownError = err instanceof AppError;
-  const statusCode = isKnownError ? err.statusCode : 500;
-  const safeMessage = isKnownError ? err.message : 'Something went wrong. Please try again.';
+
+  // A body that isn't valid JSON is the caller's mistake, not ours. express.json()
+  // raises a SyntaxError with a 400 status already attached; without this it fell
+  // through to the 500 branch, which both told the client the server had broken
+  // and wrote a server-error log line for what is really malformed input — noise
+  // that would trip 5xx alerting on nothing more than a bad request body.
+  const isBodyParseError = err instanceof SyntaxError && err.status === 400 && 'body' in err;
+
+  const statusCode = isKnownError ? err.statusCode : (isBodyParseError ? 400 : 500);
+  const safeMessage = isKnownError
+    ? err.message
+    : (isBodyParseError ? 'Invalid JSON in request body' : 'Something went wrong. Please try again.');
   if (statusCode >= 500) {
     (req.log || logger).error('unhandled request error', { err, method: req.method, path: req.originalUrl });
   }
