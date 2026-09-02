@@ -231,7 +231,7 @@ async function syncMembership() {
 
     const users = await prisma.user.findMany({
       where: { role: { not: 'ADMIN' } },
-      include: { chapter: true },
+      include: { organization: true },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -258,14 +258,14 @@ async function syncMembership() {
       `Last updated: ${timestamp()}`,
     ].join('   |   ');
 
-    const header = ['ID', 'Name', 'Email', 'Chapter', 'Status', 'Payment Status', 'Registered At'];
+    const header = ['ID', 'Name', 'Email', 'Organization', 'Status', 'Payment Status', 'Registered At'];
     const rows = users.map((u) => {
       const payment = latestPaymentByUser.get(u.id);
       return [
         u.id,
         `${u.firstName} ${u.lastName}`,
         u.email,
-        (u.chapter && u.chapter.name) || '-',
+        (u.organization && u.organization.name) || '-',
         u.status,
         payment ? payment.status : 'N/A',
         new Date(u.createdAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' }),
@@ -436,7 +436,11 @@ async function syncEventRegistrations(eventId) {
     // between two people registering). "Fee Deducted"/"Net Received" mirror
     // the admin Payments report, sourced from PayMongo's own reported fee
     // once each payment actually settles (0/blank before then).
-    const header = ['Name', 'Email', 'Phone', 'School', 'Status', 'Payment Status', 'Amount Paid', 'Fee Deducted', 'Net Received', 'Registered At'];
+    // Organization comes from the registration's own frozen snapshot, never a
+    // live lookup through the user — that is the whole reason the column
+    // exists. A member who transfers to another chapter after this event must
+    // still appear here under the organization they actually attended under.
+    const header = ['Name', 'Email', 'Phone', 'School', 'Organization', 'Status', 'Payment Status', 'Amount Paid', 'Fee Deducted', 'Net Received', 'Registered At'];
     const rows = registrations.map((r) => {
       const p = latestPaymentByUser.get(r.userId);
       const isPaid = p && p.status === 'PAID';
@@ -445,6 +449,7 @@ async function syncEventRegistrations(eventId) {
         r.email,
         r.phone || '-',
         r.school || '-',
+        r.organizationPath || '-',
         r.status,
         hasFee ? (p ? p.status : 'N/A') : 'FREE',
         hasFee && p ? `PHP ${(p.amount / 100).toFixed(2)}` : (hasFee ? '-' : 'FREE'),

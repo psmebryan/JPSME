@@ -62,7 +62,13 @@ async function sendMemberApprovedEmail(user) {
       lastName: user.lastName,
       fullName: fullName(user),
       email: user.email,
-      chapterName: user.chapter ? user.chapter.name : 'JPSME National',
+      // Alias kept alongside the current name so approval templates written
+      // before the organization migration keep substituting. Unlike the
+      // certificate path this never threw — user.chapter was simply undefined,
+      // so every approval email silently said "JPSME National" regardless of
+      // the member's actual organization.
+      organizationName: user.organization ? user.organization.name : 'JPSME National',
+      chapterName: user.organization ? user.organization.name : 'JPSME National',
     };
 
     const attachments = [];

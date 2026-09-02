@@ -141,7 +141,7 @@ async function setEventTemplateBackground(eventId, publicPath) {
 // --- Membership certificate (generated on demand, never stored) ---
 
 async function renderMembershipCertificateForUser(userId) {
-  const user = await prisma.user.findUnique({ where: { id: Number(userId) }, include: { chapter: true } });
+  const user = await prisma.user.findUnique({ where: { id: Number(userId) }, include: { organization: true } });
   if (!user) throw new AppError('User not found', 404);
   if (user.status !== 'APPROVED') {
     throw new AppError('Only approved members can download a membership certificate', 403);
@@ -153,7 +153,11 @@ async function renderMembershipCertificateForUser(userId) {
     lastName: user.lastName,
     middleInitial: user.middleInitial || '',
     fullName: fullName(user),
-    chapterName: user.chapter ? user.chapter.name : 'JPSME National',
+    // {{organizationName}} is the current name; {{chapterName}} is kept as an
+    // alias so certificate templates saved before the organization migration
+    // keep substituting instead of silently rendering a literal token.
+    organizationName: user.organization ? user.organization.name : 'JPSME National',
+    chapterName: user.organization ? user.organization.name : 'JPSME National',
     issuedDate: formatDate(new Date()),
   };
 
@@ -168,7 +172,8 @@ async function renderPreviewCertificate(template, overrides = {}) {
     lastName: 'Dela Cruz',
     middleInitial: 'A',
     fullName: 'Juan A. Dela Cruz',
-    chapterName: 'Sample Chapter',
+    organizationName: 'Sample Organization',
+    chapterName: 'Sample Organization',
     eventTitle: 'Sample Event',
     eventDate: formatDate(new Date()),
     issuedDate: formatDate(new Date()),
@@ -192,7 +197,7 @@ async function generateEventCertificatesBulk({ eventId, userIds, adminUserId, fo
 
   const registrations = await prisma.eventRegistration.findMany({
     where: registrationWhere,
-    include: { user: { include: { chapter: true } } },
+    include: { user: { include: { organization: true } } },
   });
 
   const existing = await prisma.eventCertificate.findMany({
@@ -215,7 +220,8 @@ async function generateEventCertificatesBulk({ eventId, userIds, adminUserId, fo
       lastName: reg.user.lastName,
       middleInitial: reg.user.middleInitial || '',
       fullName: fullName(reg.user),
-      chapterName: reg.user.chapter ? reg.user.chapter.name : '',
+      organizationName: reg.user.organization ? reg.user.organization.name : '',
+      chapterName: reg.user.organization ? reg.user.organization.name : '',
       eventTitle: event.title,
       eventDate: formatDate(event.startDate),
     };
