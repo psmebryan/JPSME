@@ -130,13 +130,50 @@ document.addEventListener('DOMContentLoaded', () => {
         orgError?.classList.add('hidden');
       }
 
+      // Shallowest level first, so a step that mixes levels reads top-down the
+      // way the hierarchy does rather than in arbitrary order.
+      const TYPE_ORDER = ['NATIONAL', 'MOTHER_ORG', 'CLUSTER', 'CHAPTER', 'STUDENT_UNIT'];
+
+      function optionHtml(o, selectedId) {
+        return `<option value="${o.id}" ${String(o.id) === String(selectedId) ? 'selected' : ''}>${escapeHtml(o.name)}</option>`;
+      }
+
+      // A step lists whatever actually hangs off the chosen organization, which
+      // can be several levels at once — a mother org may hold clusters,
+      // chapters and student units side by side, since a unit with no chapter
+      // recorded attaches directly. Presenting that as one flat list of 70+
+      // entries is unreadable, so the levels are split into labelled groups.
+      // Grouping is used rather than forcing one level per step because the
+      // hierarchy is variable-depth: a Cluster step cannot be made mandatory
+      // when plenty of branches have no cluster at all.
+      function optionsHtml(options, selectedId) {
+        const groups = new Map();
+        options.forEach((o) => {
+          if (!groups.has(o.type)) groups.set(o.type, []);
+          groups.get(o.type).push(o);
+        });
+        const types = [...groups.keys()].sort((a, b) => TYPE_ORDER.indexOf(a) - TYPE_ORDER.indexOf(b));
+
+        // One level present: the step's own label already names it, so a single
+        // group heading would just repeat that.
+        if (types.length === 1) {
+          return groups.get(types[0])
+            .slice().sort((a, b) => a.name.localeCompare(b.name))
+            .map((o) => optionHtml(o, selectedId)).join('');
+        }
+        return types.map((t) => {
+          const items = groups.get(t).slice().sort((a, b) => a.name.localeCompare(b.name));
+          const heading = (ORG_TYPE_LABEL[t] || t) + (items.length > 1 ? 's' : '');
+          return `<optgroup label="${escapeHtml(heading)} (${items.length})">`
+            + items.map((o) => optionHtml(o, selectedId)).join('')
+            + '</optgroup>';
+        }).join('');
+      }
+
       function render() {
         orgCascade.innerHTML = levels.map((level, i) => {
           const label = levelLabel(level.options);
-          const opts = level.options.map((o) => `
-            <option value="${o.id}" ${String(o.id) === String(level.selectedId) ? 'selected' : ''}>
-              ${escapeHtml(o.name)}
-            </option>`).join('');
+          const opts = optionsHtml(level.options, level.selectedId);
           return `
             <div>
               <label class="block text-sm font-medium mb-1" for="org-level-${i}">${escapeHtml(label)}</label>
