@@ -1547,12 +1547,10 @@ function initOrganizationTree() {
 
   const TYPE_LABEL = {
     NATIONAL: 'National', MOTHER_ORG: 'Mother Org', REGION: 'Region',
-    ADMIN_REGION: 'Admin Region', PROVINCE: 'Province', CITY: 'City',
     CLUSTER: 'Cluster', CHAPTER: 'Chapter', STUDENT_UNIT: 'Student Unit',
   };
   const TYPE_BADGE = {
     NATIONAL: 'badge-purple', MOTHER_ORG: 'badge-emerald', REGION: 'badge-blue',
-    ADMIN_REGION: 'badge-blue', PROVINCE: 'badge-sky', CITY: 'badge-sky',
     CLUSTER: 'badge-sky', CHAPTER: 'badge-green', STUDENT_UNIT: 'badge-slate',
   };
 

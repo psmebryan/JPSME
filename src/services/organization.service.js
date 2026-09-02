@@ -236,9 +236,6 @@ const CONTAINER_RANK = {
   NATIONAL: 0,
   MOTHER_ORG: 1,
   REGION: 2,
-  ADMIN_REGION: 2,
-  PROVINCE: 3,
-  CITY: 3,
   CLUSTER: 4,
   CHAPTER: 5,
   STUDENT_UNIT: 6,
@@ -263,7 +260,6 @@ function validateParentChild(childType, parentType) {
 
 const LABELS = {
   NATIONAL: 'National', MOTHER_ORG: 'Mother Org', REGION: 'Region',
-  ADMIN_REGION: 'Admin Region', PROVINCE: 'Province', CITY: 'City',
   CLUSTER: 'Cluster', CHAPTER: 'Chapter', STUDENT_UNIT: 'Student Unit',
 };
 

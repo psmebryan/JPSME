@@ -11,7 +11,7 @@ router.get(
   '/search',
   query('page').optional({ checkFalsy: true }).isInt({ min: 1 }).withMessage('Invalid page'),
   query('type').optional({ checkFalsy: true })
-    .isIn(['NATIONAL', 'MOTHER_ORG', 'REGION', 'ADMIN_REGION', 'PROVINCE', 'CITY', 'CLUSTER', 'CHAPTER', 'STUDENT_UNIT'])
+    .isIn(['NATIONAL', 'MOTHER_ORG', 'REGION', 'CLUSTER', 'CHAPTER', 'STUDENT_UNIT'])
     .withMessage('Invalid type'),
   organizationApi.searchOrganizations
 );

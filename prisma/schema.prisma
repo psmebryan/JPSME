@@ -330,12 +330,6 @@ model SiteSetting {
 // (MOTHER ORG / REGION / CLUSTER / CHAPTER / STUDENT UNIT) with NATIONAL as the
 // single root above them.
 //
-// ADMIN_REGION / PROVINCE / CITY exist so the tree can also express
-// location-style levels (e.g. Visayas → Region VI → Aklan → Toledo) where an
-// organization is actually organized that way. They are vocabulary, not
-// structure: nothing requires them, and a branch that doesn't use them simply
-// doesn't have them.
-//
 // Deliberately NOT used to enforce ordering — any type may parent any other.
 // That is what makes National → Region → Chapter (no cluster) and
 // National → Region → Cluster (no chapter) equally valid without inventing a
@@ -344,9 +338,6 @@ enum OrganizationType {
   NATIONAL
   MOTHER_ORG
   REGION
-  ADMIN_REGION
-  PROVINCE
-  CITY
   CLUSTER
   CHAPTER
   STUDENT_UNIT

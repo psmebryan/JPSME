@@ -93,7 +93,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const ORG_TYPE_LABEL = {
       NATIONAL: 'National', MOTHER_ORG: 'Mother Organization', REGION: 'Region',
-      ADMIN_REGION: 'Administrative Region', PROVINCE: 'Province', CITY: 'City',
       CLUSTER: 'Cluster', CHAPTER: 'Chapter', STUDENT_UNIT: 'Student Unit',
     };
 
