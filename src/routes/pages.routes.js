@@ -74,6 +74,7 @@ router.get('/admin/users/:id/edit', ensureMainAdminOnly, pages.adminEditUserPage
 
 // Main admin only — chapter/region/area CRUD (not to be confused with
 // /admin/chapter-members above, which chapter admins can also reach)
+router.get('/admin/organizations/tree', ensureMainAdminOnly, pages.adminOrganizationTreePage);
 router.get('/admin/organizations', ensureMainAdminOnly, pages.adminOrganizationsPage);
 router.post('/admin/organizations', ensureMainAdminOnly, pages.adminCreateOrganization);
 // Must precede the /:id routes below — otherwise "bulk-reassign" is parsed as an :id.

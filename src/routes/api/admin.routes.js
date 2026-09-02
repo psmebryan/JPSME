@@ -71,6 +71,10 @@ const paymentListValidators = [
 ];
 
 // Chapter admin assignment endpoints (ADMIN only)
+// Organization tree: read one level at a time, and create directly under a node.
+router.get('/organization-tree', apiAdmin, adminApi.getOrganizationTreeLevel);
+router.post('/organizations/child', apiAdmin, verifyCsrfToken, adminApi.createChildOrganization);
+
 router.get('/organization-admins', apiAdmin, adminApi.listOrganizationAdmins);
 router.post('/organization-admins/assign', apiAdmin, verifyCsrfToken, adminApi.assignOrganizationAdmin);
 router.post('/organization-admins/remove', apiAdmin, verifyCsrfToken, adminApi.removeOrganizationAdmin);

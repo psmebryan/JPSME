@@ -10,6 +10,7 @@ function initAdminPage() {
   initInvitationsReportTable({ moduleId: 'all-invitations-module', tableId: 'all-invitations-table', formId: 'all-invitations-filter-form', emptyStateId: 'all-inv-empty', paginationId: 'all-inv-pagination', includeEventColumn: true });
   initInvitationsReportTable({ moduleId: 'event-invitations-module', tableId: 'invitations-table', formId: 'event-invitations-filter-form', emptyStateId: 'event-inv-empty', paginationId: 'event-inv-pagination', includeEventColumn: false });
   initOrganizationAdmins();
+  initOrganizationTree();
   initSponsors();
   initCertificates();
   initPaymentsModule();
@@ -1512,6 +1513,150 @@ function initInvitationsReportTable({ moduleId, tableId, formId, emptyStateId, p
   // refresh this table's current page after a resend instead of leaving a
   // stale row in place.
   table.__reloadInvitations = () => loadInvitations(Number(paginationEl?.dataset.page) || 1);
+}
+
+// --- Organization tree (admin/organizations/tree page) ---
+// Expands one level at a time rather than shipping the whole hierarchy: the
+// tree stays cheap to open no matter how many organizations exist, and a level
+// is only fetched the first time it's opened.
+function initOrganizationTree() {
+  const tree = document.getElementById('org-tree');
+  const modal = document.getElementById('add-child-modal');
+  if (!tree || !modal) return; // not on this page
+
+  const TYPE_LABEL = {
+    NATIONAL: 'National', MOTHER_ORG: 'Mother Org', REGION: 'Region',
+    ADMIN_REGION: 'Admin Region', PROVINCE: 'Province', CITY: 'City',
+    CLUSTER: 'Cluster', CHAPTER: 'Chapter', STUDENT_UNIT: 'Student Unit',
+  };
+  const TYPE_BADGE = {
+    NATIONAL: 'badge-purple', MOTHER_ORG: 'badge-emerald', REGION: 'badge-blue',
+    ADMIN_REGION: 'badge-blue', PROVINCE: 'badge-sky', CITY: 'badge-sky',
+    CLUSTER: 'badge-sky', CHAPTER: 'badge-green', STUDENT_UNIT: 'badge-slate',
+  };
+
+  function nodeHtml(c) {
+    const badge = TYPE_BADGE[c.type] || 'badge-slate';
+    const label = TYPE_LABEL[c.type] || c.type;
+    return `
+      <li class="org-node" data-node-id="${c.id}">
+        <div class="flex items-center gap-2 py-1.5 border-b border-slate-100">
+          <button type="button" class="org-toggle w-5 h-5 shrink-0 text-slate-400 hover:text-slate-700 ${c.childCount ? '' : 'invisible'}"
+                  data-node-toggle="${c.id}" aria-expanded="false" aria-label="Expand">&#9656;</button>
+          <span class="${badge}">${escapeHtml(label)}</span>
+          <span class="font-medium text-slate-800 truncate flex-1">${escapeHtml(c.name)}</span>
+          ${c.needsReview ? '<span class="badge-amber shrink-0">Needs review</span>' : ''}
+          ${c.isActive ? '' : '<span class="badge-slate shrink-0">Inactive</span>'}
+          <span class="text-xs text-slate-400 shrink-0 tabular-nums">
+            ${c.childCount} child${c.childCount === 1 ? '' : 'ren'} &middot; ${c.memberCount} member${c.memberCount === 1 ? '' : 's'}
+          </span>
+          <span class="shrink-0 flex items-center gap-2">
+            <button type="button" class="text-indigo-600 hover:underline text-xs font-medium"
+                    data-add-child="${c.id}" data-parent-name="${escapeHtml(c.name)}">+ Child</button>
+            <a href="/admin/organizations/${c.id}/edit" data-admin-link class="text-slate-500 hover:underline text-xs">Edit</a>
+          </span>
+        </div>
+        <ul class="org-children hidden pl-6 border-l border-slate-200 ml-2.5"></ul>
+      </li>`;
+  }
+
+  async function toggleNode(btn) {
+    const li = btn.closest('.org-node');
+    const childList = li.querySelector('.org-children');
+    const expanded = btn.getAttribute('aria-expanded') === 'true';
+
+    if (expanded) {
+      childList.classList.add('hidden');
+      btn.setAttribute('aria-expanded', 'false');
+      btn.innerHTML = '&#9656;';
+      return;
+    }
+
+    // Fetch only on first open; afterwards just re-show what's already there.
+    if (!childList.dataset.loaded) {
+      btn.innerHTML = '&hellip;';
+      try {
+        const res = await apiFetch(`/api/admin/organization-tree?id=${li.dataset.nodeId}`);
+        childList.innerHTML = res.data.children.map(nodeHtml).join('');
+        childList.dataset.loaded = '1';
+      } catch (err) {
+        showToast(err.message, 'error');
+        btn.innerHTML = '&#9656;';
+        return;
+      }
+    }
+    childList.classList.remove('hidden');
+    btn.setAttribute('aria-expanded', 'true');
+    btn.innerHTML = '&#9662;';
+  }
+
+  function openAddChild(parentId, parentName) {
+    document.getElementById('add-child-parent-id').value = parentId;
+    document.getElementById('add-child-parent-name').textContent = parentName;
+    document.getElementById('add-child-name').value = '';
+    document.getElementById('add-child-code').value = '';
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    document.getElementById('add-child-name').focus();
+  }
+
+  function closeAddChild() {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+
+  document.addEventListener('click', (e) => {
+    const toggle = e.target.closest('[data-node-toggle]');
+    if (toggle && tree.contains(toggle)) { toggleNode(toggle); return; }
+
+    const add = e.target.closest('[data-add-child]');
+    if (add) {
+      openAddChild(add.getAttribute('data-add-child'), add.getAttribute('data-parent-name'));
+    }
+  });
+
+  document.getElementById('add-child-cancel')?.addEventListener('click', closeAddChild);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeAddChild(); });
+
+  document.getElementById('add-child-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const parentId = document.getElementById('add-child-parent-id').value;
+    const payload = {
+      parentId,
+      name: document.getElementById('add-child-name').value.trim(),
+      type: document.getElementById('add-child-type').value,
+      code: document.getElementById('add-child-code').value.trim() || null,
+    };
+    if (!payload.name) return showToast('Please enter a name', 'error');
+
+    try {
+      const res = await apiFetch('/api/admin/organizations/child', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      showToast('Created: ' + res.data.pathLabel);
+      closeAddChild();
+
+      // Drop the cached children for that parent so the next expand re-fetches
+      // and shows the new node, instead of silently serving a stale level.
+      const parentLi = tree.querySelector(`.org-node[data-node-id="${parentId}"]`);
+      if (parentLi) {
+        const list = parentLi.querySelector('.org-children');
+        delete list.dataset.loaded;
+        list.innerHTML = '';
+        list.classList.add('hidden');
+        const t = parentLi.querySelector('[data-node-toggle]');
+        t.classList.remove('invisible');
+        t.setAttribute('aria-expanded', 'false');
+        t.innerHTML = '&#9656;';
+        toggleNode(t);
+      } else {
+        window.location.reload(); // added under the root itself
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
 }
 
 // --- Organization Admins (admin/organization-admins page) ---

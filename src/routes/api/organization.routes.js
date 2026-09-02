@@ -10,9 +10,13 @@ const router = Router();
 router.get(
   '/search',
   query('page').optional({ checkFalsy: true }).isInt({ min: 1 }).withMessage('Invalid page'),
-  query('type').optional({ checkFalsy: true }).isIn(['NATIONAL', 'REGION', 'CLUSTER', 'CHAPTER', 'STUDENT_UNIT']).withMessage('Invalid type'),
+  query('type').optional({ checkFalsy: true })
+    .isIn(['NATIONAL', 'MOTHER_ORG', 'REGION', 'ADMIN_REGION', 'PROVINCE', 'CITY', 'CLUSTER', 'CHAPTER', 'STUDENT_UNIT'])
+    .withMessage('Invalid type'),
   organizationApi.searchOrganizations
 );
+// Must precede /:id/* so "top-level" is not parsed as an id.
+router.get('/top-level', organizationApi.getTopLevel);
 router.get('/:id/path', param('id').isInt(), organizationApi.getOrganizationPath);
 router.get('/:id/children', param('id').isInt(), organizationApi.getChildren);
 

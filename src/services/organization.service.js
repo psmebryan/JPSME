@@ -199,6 +199,74 @@ async function countMembersInSubtree(id, { status = 'APPROVED' } = {}) {
   });
 }
 
+// The single root. Every other organization hangs off it, so the admin tree
+// and the registration cascade both start here.
+async function getRoot() {
+  return prisma.organization.findFirst({ where: { parentId: null } });
+}
+
+// One level of the tree, with just enough counts to render a node without
+// loading its subtree. Deliberately lazy: the admin tree expands a level at a
+// time rather than serialising the whole hierarchy, so it stays flat-cost as
+// the organization count grows.
+async function getChildrenForTree(parentId) {
+  const children = await prisma.organization.findMany({
+    where: { parentId: parentId === null ? null : Number(parentId) },
+    orderBy: [{ type: 'asc' }, { name: 'asc' }],
+    include: { _count: { select: { children: true, users: true } } },
+  });
+  return children.map((c) => ({
+    id: c.id,
+    name: c.name,
+    type: c.type,
+    isActive: c.isActive,
+    needsReview: c.needsReview,
+    childCount: c._count.children,
+    memberCount: c._count.users,
+  }));
+}
+
+// Structural sanity only — NOT a fixed ladder. The hierarchy is variable-depth
+// by design: a Chapter may sit directly under a Region when no Cluster exists,
+// a Cluster may have no Chapter beneath it, and a Student Unit may attach to a
+// Chapter, a Cluster, or a Region. So this rejects only relationships that are
+// nonsensical in any arrangement — a Region inside a Student Unit, say — and
+// stays silent about merely-skipped levels, which are legitimate.
+const CONTAINER_RANK = {
+  NATIONAL: 0,
+  MOTHER_ORG: 1,
+  REGION: 2,
+  ADMIN_REGION: 2,
+  PROVINCE: 3,
+  CITY: 3,
+  CLUSTER: 4,
+  CHAPTER: 5,
+  STUDENT_UNIT: 6,
+};
+
+function validateParentChild(childType, parentType) {
+  if (!childType || !parentType) return;
+  const childRank = CONTAINER_RANK[childType];
+  const parentRank = CONTAINER_RANK[parentType];
+  if (childRank === undefined || parentRank === undefined) return;
+
+  // A parent must be a broader kind of body than its child. Skipping levels is
+  // fine (Region → Chapter); inverting them is not (Student Unit → Chapter).
+  if (parentRank >= childRank) {
+    throw new AppError(
+      `A ${LABELS[parentType] || parentType} cannot contain a ${LABELS[childType] || childType}. `
+      + 'Levels may be skipped, but a parent must sit above its child in the structure.',
+      400
+    );
+  }
+}
+
+const LABELS = {
+  NATIONAL: 'National', MOTHER_ORG: 'Mother Org', REGION: 'Region',
+  ADMIN_REGION: 'Admin Region', PROVINCE: 'Province', CITY: 'City',
+  CLUSTER: 'Cluster', CHAPTER: 'Chapter', STUDENT_UNIT: 'Student Unit',
+};
+
 // --- Writes ---
 
 async function createOrganization({
@@ -213,6 +281,7 @@ async function createOrganization({
   if (parentId !== null && parentId !== undefined) {
     parent = await client.organization.findUnique({ where: { id: Number(parentId) } });
     if (!parent) throw new AppError('Parent organization not found', 404);
+    validateParentChild(type, parent.type);
   } else {
     // Exactly one root. Everything else must hang off something.
     const existingRoot = await client.organization.findFirst({ where: { parentId: null } });
@@ -273,12 +342,21 @@ async function moveOrganization(id, newParentId) {
   const newParent = await prisma.organization.findUnique({ where: { id: Number(newParentId) } });
   if (!newParent) throw new AppError('Parent organization not found', 404);
 
-  // The cycle check, made cheap by the materialized path: if the proposed
+  // The cycle check runs BEFORE the type rule, and the order matters. A cycle
+  // corrupts the tree itself — it would orphan a whole subtree and make paths
+  // unresolvable — whereas a type mismatch is only a business rule. The two
+  // usually overlap (moving a node under its own descendant is normally also
+  // an inversion), but not always: rows imported before validateParentChild
+  // existed may already sit in inverted arrangements, and there a real cycle
+  // could otherwise slip past while a type message hid the true problem.
+  // The cycle test is cheap thanks to the materialized path: if the proposed
   // parent sits inside this organization's own subtree, its path starts with
   // this organization's path. Blocks A → B → C → A.
   if (newParent.path.startsWith(org.path)) {
     throw new AppError('Cannot move an organization beneath one of its own descendants', 400);
   }
+
+  validateParentChild(org.type, newParent.type);
 
   return prisma.$transaction(async (tx) => {
     const oldPath = org.path;
@@ -353,7 +431,11 @@ async function verifyPathIntegrity() {
 module.exports = {
   getOrganization,
   getOrganizationOrThrow,
+  getRoot,
   getChildren,
+  getChildrenForTree,
+  validateParentChild,
+  TYPE_LABELS: LABELS,
   getAncestors,
   getDescendants,
   getDescendantIds,

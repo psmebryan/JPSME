@@ -7,6 +7,7 @@ const sponsorService = require('../../services/sponsor.service');
 const paymentService = require('../../services/payment.service');
 const storageService = require('../../services/storage.service');
 const organizationAdminService = require('../../services/organizationAdmin.service');
+const organizationService = require('../../services/organization.service');
 
 // Enriches each user with their latest membership-payment status so the admin
 // can see who's paid before approving — one batched query, not N.
@@ -218,4 +219,35 @@ const removeOrganizationAdmin = asyncHandler(async (req, res) => {
   return success(res, { result }, 'Organization admin removed');
 });
 
-module.exports = { listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin };
+// One level of the organization tree for the admin's expandable view. Lazy by
+// level rather than serialising the whole hierarchy, so cost stays flat as the
+// organization count grows. `id` omitted means the root's own level.
+const getOrganizationTreeLevel = asyncHandler(async (req, res) => {
+  const { id } = req.query;
+  if (id) {
+    const children = await organizationService.getChildrenForTree(Number(id));
+    return success(res, { children });
+  }
+  const root = await organizationService.getRoot();
+  if (!root) return success(res, { root: null, children: [] });
+  const children = await organizationService.getChildrenForTree(root.id);
+  const counts = await organizationService.getChildrenForTree(null);
+  return success(res, { root: counts[0] || { id: root.id, name: root.name, type: root.type }, children });
+});
+
+// Creates directly beneath a chosen node — the "Add Child" action, where the
+// parent is already known so the admin never has to hunt for it in a list.
+const createChildOrganization = asyncHandler(async (req, res) => {
+  const { parentId, name, type, code } = req.body;
+  if (!parentId) return error(res, 'A parent organization is required', 400);
+  const created = await organizationService.createOrganization({
+    parentId: Number(parentId),
+    name,
+    type,
+    code: code || null,
+  });
+  const pathLabel = await organizationService.getOrganizationPathLabel(created.id);
+  return success(res, { organization: { id: created.id, name: created.name, type: created.type }, pathLabel }, 'Organization created');
+});
+
+module.exports = { listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin, getOrganizationTreeLevel, createChildOrganization };

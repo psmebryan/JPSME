@@ -471,6 +471,26 @@ const adminOrganizationsPage = asyncHandler(async (req, res) => {
   });
 });
 
+// The hierarchy as a tree rather than a flat page of rows — the shape is the
+// point, and a paginated table can't show that a chapter sits directly under a
+// region with no cluster between them. Only the first level is rendered here;
+// deeper levels load on expand via /api/admin/organization-tree.
+const adminOrganizationTreePage = asyncHandler(async (req, res) => {
+  const root = await organizationService.getRoot();
+  const [children, reviewCount] = await Promise.all([
+    root ? organizationService.getChildrenForTree(root.id) : [],
+    prisma.organization.count({ where: { needsReview: true } }),
+  ]);
+  renderAdmin(req, res, 'admin/organization-tree', {
+    title: 'Organization Structure',
+    root,
+    children,
+    reviewCount,
+    typeLabels: organizationService.TYPE_LABELS,
+    csrfToken: req.session.csrfToken,
+  });
+});
+
 // Members of an organization AND its descendants — a cluster admin sees the
 // members of the chapters and units beneath them, which the old exact-chapter
 // lookup could not express.
@@ -791,6 +811,7 @@ module.exports = {
   organizationsPage,
   organizationDetailPage,
   adminOrganizationsPage,
+  adminOrganizationTreePage,
   adminOrganizationMembersPage,
   adminOrganizationAdminsPage,
   adminEditUserPage,

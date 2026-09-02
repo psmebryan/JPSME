@@ -42,6 +42,20 @@ const getOrganizationPath = asyncHandler(async (req, res) => {
   });
 });
 
+// The first rung of the registration cascade: whatever sits directly under the
+// national root. Returned as-is rather than filtered to a fixed type, because
+// the level below National is not uniform — it holds mother orgs, and also
+// clusters and chapters whose real parent is still being resolved.
+const getTopLevel = asyncHandler(async (req, res) => {
+  const root = await organizationService.getRoot();
+  if (!root) return success(res, { root: null, children: [] });
+  const children = await organizationService.getChildren(root.id, { activeOnly: true });
+  return success(res, {
+    root: { id: root.id, name: root.name, type: root.type },
+    children: children.map((c) => ({ id: c.id, name: c.name, type: c.type })),
+  });
+});
+
 const getChildren = asyncHandler(async (req, res) => {
   const organization = await organizationService.getOrganization(req.params.id);
   if (!organization || !organization.isActive) return error(res, 'Organization not found', 404);
@@ -51,4 +65,4 @@ const getChildren = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { searchOrganizations, getOrganizationPath, getChildren };
+module.exports = { searchOrganizations, getOrganizationPath, getChildren, getTopLevel };
