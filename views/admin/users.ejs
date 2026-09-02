@@ -58,6 +58,10 @@
         </select>
       </div>
       <button type="submit" class="btn-primary">Apply</button>
+      <button type="button" id="members-clear-filters" class="btn-secondary hidden">Clear</button>
+      <!-- Without this, a filter that legitimately matches nothing is
+           indistinguishable from a filter that silently failed. -->
+      <p id="members-result-summary" class="w-full text-xs text-slate-500 mt-1"></p>
     </form>
   <% } %>
 

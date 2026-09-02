@@ -913,27 +913,68 @@ function renderMembersPagination(pagination, page, totalPages) {
 // Server-side search/filter/pagination for the "Manage Users" (list) view —
 // the full member roster, the one admin table most likely to actually reach
 // thousands of rows, unlike the naturally-small pending-approvals queue.
+const MEMBER_FILTER_KEYS = ['search', 'organizationId', 'status', 'membership', 'paymentStatus'];
+
 function initMembersFilterAndPagination(table) {
   const tbody = table.querySelector('tbody');
   const filterForm = document.getElementById('members-filter-form');
   const pagination = document.getElementById('members-pagination');
+  const summary = document.getElementById('members-result-summary');
+  const clearBtn = document.getElementById('members-clear-filters');
 
-  async function loadMembers(page) {
+  // Filters live in the URL as well as the form. Reloading, sharing or
+  // going back therefore keeps the view you were looking at, and — the
+  // reason this matters — the address bar makes it visible that a filter
+  // is applied, so a filter that legitimately matches nothing can't be
+  // mistaken for one that silently did nothing.
+  function readFiltersFromUrl() {
+    if (!filterForm) return;
+    const url = new URLSearchParams(window.location.search);
+    MEMBER_FILTER_KEYS.forEach((key) => {
+      const field = filterForm.elements[key];
+      if (field && url.has(key)) field.value = url.get(key);
+    });
+  }
+
+  function activeFilters(formData) {
+    return MEMBER_FILTER_KEYS.filter((k) => formData.get(k));
+  }
+
+  async function loadMembers(page, { pushUrl = true } = {}) {
     const formData = filterForm ? new FormData(filterForm) : new FormData();
     const params = new URLSearchParams();
-    ['search', 'organizationId', 'status', 'membership', 'paymentStatus'].forEach((key) => {
+    MEMBER_FILTER_KEYS.forEach((key) => {
       const value = formData.get(key);
       if (value) params.set(key, value);
     });
+    const applied = activeFilters(formData);
     params.set('page', page);
+
+    if (pushUrl && window.history && window.history.replaceState) {
+      window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+    }
+    if (clearBtn) clearBtn.classList.toggle('hidden', applied.length === 0);
 
     try {
       const res = await apiFetch(`/api/admin/members?${params.toString()}`);
-      const { users, totalPages, page: currentPage } = res.data;
+      const { users, total, totalPages, page: currentPage } = res.data;
       tbody.innerHTML = users.map(memberRowHtml).join('');
       maybeShowEmptyState(table);
       renderMembersPagination(pagination, currentPage, totalPages);
+
+      if (summary) {
+        if (!total && applied.length) {
+          summary.textContent = `No users match the ${applied.length} filter${applied.length === 1 ? '' : 's'} applied. Clear them to see everyone.`;
+        } else if (applied.length) {
+          summary.textContent = `${total} user${total === 1 ? '' : 's'} match ${applied.length} filter${applied.length === 1 ? '' : 's'}.`;
+        } else {
+          summary.textContent = `${total} user${total === 1 ? '' : 's'}.`;
+        }
+      }
     } catch (err) {
+      // A rejected filter value used to look identical to "no results" —
+      // say so instead.
+      if (summary) summary.textContent = `Could not apply those filters: ${err.message}`;
       showToast(err.message, 'error');
     }
   }
@@ -942,6 +983,16 @@ function initMembersFilterAndPagination(table) {
     e.preventDefault();
     loadMembers(1);
   });
+
+  clearBtn?.addEventListener('click', () => {
+    MEMBER_FILTER_KEYS.forEach((key) => {
+      const field = filterForm.elements[key];
+      if (field) field.value = '';
+    });
+    loadMembers(1);
+  });
+
+  readFiltersFromUrl();
 
   pagination?.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-members-page]');
