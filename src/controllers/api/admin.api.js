@@ -1,6 +1,21 @@
 const path = require('path');
+const { validationResult } = require('express-validator');
 const asyncHandler = require('../../utils/asyncHandler');
 const { success, error } = require('../../utils/apiResponse');
+
+// Matches adminPayment.api.js. Without this the query validators declared on
+// this router's routes never actually reject anything — an unrecognised filter
+// value was silently ignored and the endpoint returned the full unfiltered
+// list, which reads to an admin as "the filter found everyone" rather than
+// "the filter was invalid".
+function checkValidation(req, res) {
+  const result = validationResult(req);
+  if (!result.isEmpty()) {
+    error(res, 'Validation failed', 422, result.array());
+    return false;
+  }
+  return true;
+}
 const userService = require('../../services/user.service');
 const settingsService = require('../../services/settings.service');
 const sponsorService = require('../../services/sponsor.service');
@@ -39,11 +54,15 @@ const listUsers = asyncHandler(async (req, res) => {
 // (listUsers above stays unbounded for the approvals queue, which is
 // naturally small regardless of total membership size).
 const listMembers = asyncHandler(async (req, res) => {
-  const { status, organizationId, search, page } = req.query;
+  if (!checkValidation(req, res)) return;
+
+  const { status, organizationId, search, membership, paymentStatus, page } = req.query;
   const result = await userService.listMembersForAdmin({
     status: status || undefined,
     organizationId: organizationId || undefined,
     search: search || undefined,
+    membership: membership || undefined,
+    paymentStatus: paymentStatus || undefined,
     page: Math.max(1, Number(page) || 1),
   });
   const users = await withMembershipPaymentStatus(result.users);

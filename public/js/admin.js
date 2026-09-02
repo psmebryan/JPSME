@@ -921,7 +921,7 @@ function initMembersFilterAndPagination(table) {
   async function loadMembers(page) {
     const formData = filterForm ? new FormData(filterForm) : new FormData();
     const params = new URLSearchParams();
-    ['search', 'organizationId', 'status'].forEach((key) => {
+    ['search', 'organizationId', 'status', 'membership', 'paymentStatus'].forEach((key) => {
       const value = formData.get(key);
       if (value) params.set(key, value);
     });

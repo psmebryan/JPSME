@@ -90,6 +90,8 @@ router.get(
   query('page').optional({ checkFalsy: true }).isInt({ min: 1 }).withMessage('Invalid page'),
   query('organizationId').optional({ checkFalsy: true }).isInt().withMessage('Invalid organizationId filter'),
   query('status').optional({ checkFalsy: true }).isIn(['PENDING', 'APPROVED', 'REJECTED']).withMessage('Invalid status filter'),
+  query('membership').optional({ checkFalsy: true }).isIn(['MEMBER', 'NON_MEMBER', 'LAPSED', 'NEVER']).withMessage('Invalid membership filter'),
+  query('paymentStatus').optional({ checkFalsy: true }).isIn(['UNPAID', 'PAID', 'PENDING', 'PROCESSING', 'FAILED', 'EXPIRED', 'CANCELLED', 'REFUNDED']).withMessage('Invalid payment filter'),
   adminApi.listMembers
 );
 router.post('/users/:id/approve', verifyCsrfToken, param('id').isInt(), adminApi.approveUser);

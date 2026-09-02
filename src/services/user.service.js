@@ -27,9 +27,39 @@ async function listByStatus(status) {
 // single id — a scoped admin sees their own organization AND everything
 // beneath it. `organizationId` alone filters to exactly one organization,
 // which is what the admin's filter dropdown passes.
-async function listMembersForAdmin({ status, organizationId, organizationIds, search, page = 1, pageSize = 25 } = {}) {
+async function listMembersForAdmin({
+  status, organizationId, organizationIds, search, membership, paymentStatus, page = 1, pageSize = 25,
+} = {}) {
   const where = { role: { not: 'ADMIN' } };
   if (status) where.status = status;
+
+  // Membership is derived from membershipExpiresAt rather than stored, so the
+  // filter has to express the same comparison the badge does: inside its year
+  // is a Member, everything else — never paid or lapsed — is not. LAPSED and
+  // NEVER split the Non-Member case, since "used to be a member" and "never
+  // joined" call for very different follow-up.
+  const now = new Date();
+  if (membership === 'MEMBER') where.membershipExpiresAt = { gt: now };
+  else if (membership === 'NON_MEMBER') {
+    // Pushed onto AND rather than assigned to where.OR: the name/email search
+    // below also uses OR, and assigning here would let whichever ran last
+    // silently discard the other's filter.
+    where.AND = [
+      ...(where.AND || []),
+      { OR: [{ membershipExpiresAt: null }, { membershipExpiresAt: { lte: now } }] },
+    ];
+  } else if (membership === 'LAPSED') where.membershipExpiresAt = { lte: now };
+  else if (membership === 'NEVER') where.membershipExpiresAt = null;
+
+  // Payment filters on the membership fee specifically, not event fees.
+  // UNPAID means no successful membership payment has ever landed, which is
+  // not the same as being a Non-Member: a member whose year lapsed still has
+  // a PAID payment on file.
+  if (paymentStatus === 'UNPAID') {
+    where.payments = { none: { purpose: 'MEMBERSHIP_REGISTRATION', status: 'PAID' } };
+  } else if (paymentStatus) {
+    where.payments = { some: { purpose: 'MEMBERSHIP_REGISTRATION', status: paymentStatus } };
+  }
   if (Array.isArray(organizationIds)) where.organizationId = { in: organizationIds };
   else if (organizationId) where.organizationId = Number(organizationId);
   const term = (search || '').trim();
