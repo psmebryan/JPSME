@@ -76,9 +76,52 @@ function nextMembershipExpiry(currentExpiry, from = new Date()) {
   return addDays(base, MEMBERSHIP_VALIDITY_DAYS);
 }
 
-// The three states worth distinguishing. NONE is not a failure — membership
-// payment is optional, so most accounts sit there legitimately; only EXPIRED
-// means something lapsed and can be renewed.
+// How the app classifies people, and how the three categories relate:
+//
+//   MEMBER      — has an account and a membership inside its validity year
+//   NON_MEMBER  — has an account but has never paid, or has lapsed
+//   GUEST       — has no account at all; exists only as an EventInvitation
+//                 row with a null userId, created for one specific event
+//
+// GUEST is deliberately absent from this function: it is not a state a User
+// can be in. Someone with no account has no User row to classify, so guests
+// are identified where they actually live — by an invitation without a userId.
+//
+// MEMBER/NON_MEMBER are derived from payment state on every read rather than
+// stored, because a stored copy would silently go stale the moment a
+// membership lapsed with nothing running to update it.
+const MEMBERSHIP_TIERS = { MEMBER: 'MEMBER', NON_MEMBER: 'NON_MEMBER', GUEST: 'GUEST' };
+
+// Pure, and takes the payment as an argument, so a list view can classify a
+// page of members from data it has already batched instead of issuing a query
+// per row. `latestMembershipPayment` may be null/undefined.
+function classifyMembership(user, latestMembershipPayment) {
+  let expiresAt = user && user.membershipExpiresAt;
+
+  // Backfill for anyone who paid before expiry was tracked: derive the date
+  // from their payment rather than showing them as never having paid.
+  if (!expiresAt && latestMembershipPayment
+      && latestMembershipPayment.status === 'PAID' && latestMembershipPayment.paidAt) {
+    expiresAt = addDays(latestMembershipPayment.paidAt, MEMBERSHIP_VALIDITY_DAYS);
+  }
+
+  if (!expiresAt) {
+    return { tier: MEMBERSHIP_TIERS.NON_MEMBER, state: 'NONE', expiresAt: null, daysRemaining: null };
+  }
+
+  const msLeft = new Date(expiresAt).getTime() - Date.now();
+  const active = msLeft > 0;
+  return {
+    tier: active ? MEMBERSHIP_TIERS.MEMBER : MEMBERSHIP_TIERS.NON_MEMBER,
+    state: active ? 'ACTIVE' : 'EXPIRED',
+    expiresAt,
+    daysRemaining: Math.ceil(msLeft / 86400000),
+  };
+}
+
+// Single-user convenience over classifyMembership, for the member's own pages.
+// NONE and EXPIRED both classify as NON_MEMBER but stay distinguishable here,
+// since only EXPIRED is something to renew.
 async function getMembershipStatus(userId) {
   const user = await prisma.user.findUnique({
     where: { id: Number(userId) },
@@ -86,28 +129,13 @@ async function getMembershipStatus(userId) {
   });
   if (!user) throw new AppError('User not found', 404);
 
-  let expiresAt = user.membershipExpiresAt;
+  const latest = user.membershipExpiresAt ? null : await prisma.payment.findFirst({
+    where: { userId: Number(userId), purpose: 'MEMBERSHIP_REGISTRATION', status: 'PAID' },
+    orderBy: { paidAt: 'desc' },
+    select: { status: true, paidAt: true },
+  });
 
-  // Backfill for anyone who paid before expiry was tracked: derive the date
-  // from their payment rather than showing them as never having paid.
-  if (!expiresAt) {
-    const paid = await prisma.payment.findFirst({
-      where: { userId: Number(userId), purpose: 'MEMBERSHIP_REGISTRATION', status: 'PAID' },
-      orderBy: { paidAt: 'desc' },
-      select: { paidAt: true },
-    });
-    if (paid && paid.paidAt) expiresAt = addDays(paid.paidAt, MEMBERSHIP_VALIDITY_DAYS);
-  }
-
-  if (!expiresAt) return { state: 'NONE', expiresAt: null, daysRemaining: null };
-
-  const now = new Date();
-  const msLeft = new Date(expiresAt).getTime() - now.getTime();
-  return {
-    state: msLeft > 0 ? 'ACTIVE' : 'EXPIRED',
-    expiresAt,
-    daysRemaining: Math.ceil(msLeft / 86400000),
-  };
+  return classifyMembership(user, latest);
 }
 
 async function getLatestMembershipPayment(userId) {
@@ -1024,6 +1052,8 @@ async function requestRefund({ paymentId, adminUserId, reason, notes }) {
 
 module.exports = {
   getMembershipStatus,
+  classifyMembership,
+  MEMBERSHIP_TIERS,
   nextMembershipExpiry,
   MEMBERSHIP_VALIDITY_DAYS,
   getLatestMembershipPayment,

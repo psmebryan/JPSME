@@ -840,7 +840,9 @@ async function loadPendingUsers(table) {
           <td class="admin-td max-w-[160px] truncate">${escapeHtml(u.school || '-')}</td>
           <td class="admin-td max-w-[140px] truncate">${escapeHtml((u.organization && u.organization.name) || '-')}</td>
           <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
-          <td class="admin-td">${membershipPaymentBadge(u)}</td>
+          <td class="admin-td">${membershipTierBadge(u)}</td>
+          <td class="admin-td">${membershipTierBadge(u)}</td>
+      <td class="admin-td">${membershipPaymentBadge(u)}</td>
           <td class="admin-td text-right">
             <div class="flex flex-wrap justify-end items-center gap-2">
               <button data-approve="${u.id}" class="text-green-600 hover:underline text-sm font-medium">Approve</button>
@@ -874,6 +876,7 @@ function memberRowHtml(u) {
       <td class="admin-td max-w-[160px] truncate">${escapeHtml(u.school || '-')}</td>
       <td class="admin-td max-w-[140px] truncate">${escapeHtml((u.organization && u.organization.name) || '-')}</td>
       <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
+      <td class="admin-td">${membershipTierBadge(u)}</td>
       <td class="admin-td">${membershipPaymentBadge(u)}</td>
       <td class="admin-td text-right">
         <div class="flex flex-wrap justify-end items-center gap-2">
@@ -957,6 +960,19 @@ function initMembersFilterAndPagination(table) {
 // Renders each user's latest membership-payment status as a small badge for
 // the admin Users table — "did they pay, or not" at a glance, including a
 // failed/bounced payment so the admin isn't just guessing from silence.
+// Member vs Non-Member — the classification the org actually cares about,
+// distinct from the raw payment-transaction badge beside it. A Non-Member is
+// anyone with an account who has not paid or has lapsed; Guest never appears
+// here because a guest has no account and so no row in this table.
+function membershipTierBadge(u) {
+  if (u.membershipTier === 'MEMBER') {
+    const until = u.membershipExpiresAt ? new Date(u.membershipExpiresAt).toLocaleDateString() : '';
+    return '<span class="badge-green" title="Valid until ' + escapeHtml(until) + '">Member</span>';
+  }
+  const lapsed = u.membershipState === 'EXPIRED';
+  return '<span class="badge-slate">Non-Member' + (lapsed ? ' (lapsed)' : '') + '</span>';
+}
+
 function membershipPaymentBadge(u) {
   const payment = u.membershipPayment;
   if (!payment) {
@@ -1409,8 +1425,17 @@ function invStatusBadgeHtml(status) {
   const styles = { PENDING: 'badge-slate', SENT: 'badge-blue', DELIVERED: 'badge-green', BOUNCED: 'badge-red', FAILED: 'badge-red' };
   return `<span class="${styles[status] || 'badge-slate'}">${status}</span>`;
 }
-function memberOrGuestBadgeHtml(userId) {
-  return userId ? '<span class="badge-blue">Member</span>' : '<span class="badge-slate">Guest</span>';
+// Three-way, matching how the org classifies people:
+//   Guest      — no account; invited to this one event only
+//   Member     — has an account and a membership inside its validity year
+//   Non-Member — has an account but never paid, or has lapsed
+function memberOrGuestBadgeHtml(inv) {
+  if (!inv.userId) return '<span class="badge-slate">Guest</span>';
+  const expiry = inv.user && inv.user.membershipExpiresAt;
+  const active = expiry && new Date(expiry).getTime() > Date.now();
+  return active
+    ? '<span class="badge-green">Member</span>'
+    : '<span class="badge-amber">Non-Member</span>';
 }
 function sourceBadgeHtml(source) {
   return source === 'SELF_REQUESTED' ? '<span class="badge-green">Requested</span>' : '<span class="badge-slate">Admin-Sent</span>';
@@ -1442,7 +1467,7 @@ function invitationRowHtml(inv, includeEventColumn) {
       <td class="admin-td">${escapeHtml(inv.chapter) || '-'}</td>
       <td class="admin-td">${escapeHtml(inv.school) || '-'}</td>
       <td class="admin-td">${escapeHtml(inv.company) || '-'}</td>
-      <td class="admin-td">${memberOrGuestBadgeHtml(inv.userId)}</td>
+      <td class="admin-td">${memberOrGuestBadgeHtml(inv)}</td>
       <td class="admin-td">${sourceBadgeHtml(inv.source)}</td>
       <td class="admin-td">${rsvpBadgeHtml(inv)}</td>
       <td class="admin-td invitation-status-cell">${invStatusBadgeHtml(inv.status)}</td>

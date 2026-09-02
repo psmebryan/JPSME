@@ -150,7 +150,13 @@ async function listInvitationsForAdmin({ eventId, chapter, school, type, status,
     prisma.eventInvitation.findMany({
       where,
       orderBy,
-      include: eventId ? undefined : { event: { select: { id: true, title: true } } },
+      // membershipExpiresAt only — enough to tell a Member from a Non-Member
+      // in the report without pulling whole user rows into a paginated list.
+      // A null user is a Guest: invited to this one event, no account at all.
+      include: {
+        user: { select: { membershipExpiresAt: true } },
+        ...(eventId ? {} : { event: { select: { id: true, title: true } } }),
+      },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),

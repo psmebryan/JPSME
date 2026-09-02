@@ -15,9 +15,16 @@ async function withMembershipPaymentStatus(users) {
   const statusByUser = await paymentService.getLatestMembershipStatusForUsers(users.map((u) => u.id));
   return users.map((u) => {
     const payment = statusByUser.get(u.id);
+    // Member vs Non-Member is computed from the row and the payment already
+    // fetched above — no extra query per user, and never stored, so it cannot
+    // go stale when a membership lapses.
+    const membership = paymentService.classifyMembership(u, payment);
     return {
       ...u,
       membershipPayment: payment ? { status: payment.status, paidAt: payment.paidAt } : null,
+      membershipTier: membership.tier,
+      membershipState: membership.state,
+      membershipExpiresAt: membership.expiresAt,
     };
   });
 }

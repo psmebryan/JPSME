@@ -19,8 +19,17 @@ const invitedEmails = new Map(invitedStatusRows.map((inv) => [inv.email.toLowerC
 const distinctChapters = [...new Set(members.map((m) => (m.organization && m.organization.name) || '').filter(Boolean))].sort();
 const distinctSchools = [...new Set(members.map((m) => m.school || '').filter(Boolean))].sort();
 const opts = typeof filterOptions !== 'undefined' ? filterOptions : { chapters: [], schools: [], events: [] };
-function memberOrGuestBadge(userId) {
-  return userId ? '<span class="badge-blue">Member</span>' : '<span class="badge-slate">Guest</span>';
+function memberOrGuestBadge(inv) {
+  // Three-way, matching how the org classifies people:
+  //   Guest      — no account; invited to this one event only
+  //   Member     — has an account and a membership inside its validity year
+  //   Non-Member — has an account but never paid, or has lapsed
+  if (!inv.userId) return '<span class="badge-slate">Guest</span>';
+  const expiry = inv.user && inv.user.membershipExpiresAt;
+  const active = expiry && new Date(expiry).getTime() > Date.now();
+  return active
+    ? '<span class="badge-green">Member</span>'
+    : '<span class="badge-amber">Non-Member</span>';
 }
 // Answers "who requested an invitation themselves?" — SELF_REQUESTED rows
 // came from the public form on the event page; everything else was sent by
@@ -64,7 +73,7 @@ function invitationRowHtml(inv, includeEventColumn) {
       <td class="admin-td">${esc(inv.chapter) || '-'}</td>
       <td class="admin-td">${esc(inv.school) || '-'}</td>
       <td class="admin-td">${esc(inv.company) || '-'}</td>
-      <td class="admin-td">${memberOrGuestBadge(inv.userId)}</td>
+      <td class="admin-td">${memberOrGuestBadge(inv)}</td>
       <td class="admin-td">${sourceBadge(inv.source)}</td>
       <td class="admin-td">${rsvpBadge(inv)}</td>
       <td class="admin-td invitation-status-cell">${invStatusBadge(inv.status)}</td>
