@@ -16,7 +16,8 @@
     "db:seed": "node prisma/seed.js",
     "import:organizations": "node prisma/importOrganizations.js",
     "test:paymongo": "node tests/paymongo.service.test.js",
-    "test:organizations": "node tests/organization.service.test.js"
+    "test:organizations": "node tests/organization.service.test.js",
+    "seed:dummy": "node prisma/seedDummyUsers.js"
   },
   "license": "UNLICENSED",
   "dependencies": {
