@@ -38,8 +38,10 @@
         <label class="form-label">Payment</label>
         <select name="paymentStatus" class="form-input">
           <option value="">All</option>
+          <%# Labels match the Payment column's badges exactly — an admin
+              should be able to read a value off a row and find it here. %>
+          <option value="UNPAID">Unpaid</option>
           <option value="PAID">Paid</option>
-          <option value="UNPAID">Never paid</option>
           <option value="PENDING">Pending</option>
           <option value="PROCESSING">Processing</option>
           <option value="FAILED">Failed</option>

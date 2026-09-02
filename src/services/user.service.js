@@ -52,11 +52,17 @@ async function listMembersForAdmin({
   else if (membership === 'NEVER') where.membershipExpiresAt = null;
 
   // Payment filters on the membership fee specifically, not event fees.
-  // UNPAID means no successful membership payment has ever landed, which is
-  // not the same as being a Non-Member: a member whose year lapsed still has
-  // a PAID payment on file.
+  //
+  // UNPAID means "no membership payment on file at all", which is exactly what
+  // the Unpaid badge in the table means. It deliberately does NOT mean "no
+  // successful payment": someone whose payment failed shows a Failed badge, so
+  // sweeping them into Unpaid would make the filter disagree with the column
+  // it is filtering. Use the FAILED option to find those.
+  //
+  // Note this is a different question from membership=NEVER — a member whose
+  // year lapsed still has a PAID payment on file.
   if (paymentStatus === 'UNPAID') {
-    where.payments = { none: { purpose: 'MEMBERSHIP_REGISTRATION', status: 'PAID' } };
+    where.payments = { none: { purpose: 'MEMBERSHIP_REGISTRATION' } };
   } else if (paymentStatus) {
     where.payments = { some: { purpose: 'MEMBERSHIP_REGISTRATION', status: paymentStatus } };
   }
