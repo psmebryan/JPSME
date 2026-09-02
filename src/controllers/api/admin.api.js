@@ -239,9 +239,21 @@ const getOrganizationTreeLevel = asyncHandler(async (req, res) => {
 // parent is already known so the admin never has to hunt for it in a list.
 const createChildOrganization = asyncHandler(async (req, res) => {
   const { parentId, name, type, code } = req.body;
-  if (!parentId) return error(res, 'A parent organization is required', 400);
+
+  // Omitting parentId is only legitimate for the very first organization —
+  // the root every other node hangs off. Without this, a fresh install has no
+  // way in: the tree has no node to click "+ Child" on, and every create form
+  // demands a parent that cannot exist yet. createOrganization still enforces
+  // the single-root rule, so a second attempt is refused there.
+  if (!parentId) {
+    const existingRoot = await organizationService.getRoot();
+    if (existingRoot) {
+      return error(res, `A parent organization is required. "${existingRoot.name}" is already the root — add beneath it instead.`, 400);
+    }
+  }
+
   const created = await organizationService.createOrganization({
-    parentId: Number(parentId),
+    parentId: parentId ? Number(parentId) : null,
     name,
     type,
     code: code || null,

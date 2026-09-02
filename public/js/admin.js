@@ -1520,6 +1520,27 @@ function initInvitationsReportTable({ moduleId, tableId, formId, emptyStateId, p
 // tree stays cheap to open no matter how many organizations exist, and a level
 // is only fetched the first time it's opened.
 function initOrganizationTree() {
+  // Bootstrap form, shown only while no root exists. Handled before the
+  // early return below, since the tree itself isn't rendered in that state.
+  const rootForm = document.getElementById('create-root-form');
+  if (rootForm) {
+    rootForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('root-name').value.trim();
+      if (!name) return showToast('Please enter a name', 'error');
+      try {
+        await apiFetch('/api/admin/organizations/child', {
+          method: 'POST',
+          body: JSON.stringify({ name, type: 'NATIONAL' }), // no parentId: this is the root
+        });
+        showToast('National organization created');
+        window.location.reload();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+  }
+
   const tree = document.getElementById('org-tree');
   const modal = document.getElementById('add-child-modal');
   if (!tree || !modal) return; // not on this page

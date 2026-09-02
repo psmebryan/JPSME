@@ -35,7 +35,23 @@ const CREATABLE = ['MOTHER_ORG', 'REGION', 'ADMIN_REGION', 'PROVINCE', 'CITY', '
 
 <section class="admin-card p-5 mt-4">
   <% if (!root) { %>
-    <p class="empty-state">No organizations yet.</p>
+    <!-- Bootstrap. Nothing can be created until one root exists, since every
+         other organization is defined by its parent — so this is the one form
+         that takes no parent, and it disappears once the root is in place. -->
+    <div class="max-w-md mx-auto py-6 text-center">
+      <h2 class="text-lg font-semibold text-slate-900 mb-1">Start your organization structure</h2>
+      <p class="admin-subtitle mb-5">
+        Create the national organization first. Everything else &mdash; regions, clusters,
+        chapters, student units &mdash; is then added beneath it using <strong>+ Child</strong>.
+      </p>
+      <form id="create-root-form" class="space-y-3 text-left">
+        <div>
+          <label class="form-label" for="root-name">National organization name</label>
+          <input id="root-name" class="form-input" required placeholder="e.g. JPSME National" value="JPSME National">
+        </div>
+        <button type="submit" class="btn-primary w-full">Create national organization</button>
+      </form>
+    </div>
   <% } else { %>
     <div class="flex items-center justify-between gap-3 pb-3 mb-2 border-b border-slate-200">
       <div class="flex items-center gap-2 min-w-0">
