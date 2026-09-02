@@ -395,8 +395,45 @@ async function deleteOrganization(id) {
   if (memberCount > 0) {
     throw new AppError(`This organization has ${memberCount} member(s). Reassign them first.`, 409);
   }
+  // EventRegistration.organizationId is onDelete: SetNull, so deleting an
+  // organization would quietly unlink it from every past registration made
+  // under it. The frozen organizationPath label would survive, but the id
+  // that reports aggregate on would not — so past events would stop rolling
+  // up to this organization. Deactivating keeps the history intact, which is
+  // why it's offered as the alternative rather than making this destructive.
+  const registrationCount = await prisma.eventRegistration.count({ where: { organizationId: org.id } });
+  if (registrationCount > 0) {
+    throw new AppError(
+      `This organization is recorded on ${registrationCount} past event registration(s). `
+      + 'Deleting it would detach that history from your reports. Deactivate it instead — '
+      + 'it stops appearing to new members while past records stay intact.',
+      409
+    );
+  }
   await prisma.organization.delete({ where: { id: org.id } });
   return { deleted: true };
+}
+
+// The safe counterpart to deletion, and the right action for an organization
+// that has any history. An inactive organization disappears from the
+// registration cascade and public browsing but keeps every existing member,
+// registration and path reference exactly as they are. Reversible.
+async function setOrganizationActive(id, isActive) {
+  const org = await getOrganizationOrThrow(id);
+  if (!isActive) {
+    // Deactivating a node whose children are still active would leave those
+    // children reachable through a parent that is meant to be retired, so the
+    // subtree is taken out of service together.
+    const descendants = await getDescendants(org.id, { activeOnly: true });
+    const ids = [org.id, ...descendants.map((d) => d.id)];
+    await prisma.organization.updateMany({ where: { id: { in: ids } }, data: { isActive: false } });
+    return { isActive: false, affected: ids.length };
+  }
+  // Reactivating only restores the node itself — its descendants may have
+  // been deactivated deliberately and individually, so they are not swept
+  // back in without the admin saying so.
+  await prisma.organization.update({ where: { id: org.id }, data: { isActive: true } });
+  return { isActive: true, affected: 1 };
 }
 
 // --- Integrity ---
@@ -448,6 +485,7 @@ module.exports = {
   updateOrganization,
   moveOrganization,
   deleteOrganization,
+  setOrganizationActive,
   verifyPathIntegrity,
   parsePathIds,
   slugify,

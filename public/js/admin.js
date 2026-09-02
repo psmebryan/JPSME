@@ -1554,6 +1554,11 @@ function initOrganizationTree() {
             <button type="button" class="text-indigo-600 hover:underline text-xs font-medium"
                     data-add-child="${c.id}" data-parent-name="${escapeHtml(c.name)}">+ Child</button>
             <a href="/admin/organizations/${c.id}/edit" data-admin-link class="text-slate-500 hover:underline text-xs">Edit</a>
+            <button type="button" class="text-amber-600 hover:underline text-xs"
+                    data-toggle-active="${c.id}" data-active="${c.isActive ? '1' : '0'}"
+                    data-org-name="${escapeHtml(c.name)}">${c.isActive ? 'Deactivate' : 'Reactivate'}</button>
+            <button type="button" class="text-red-600 hover:underline text-xs"
+                    data-delete-org="${c.id}" data-org-name="${escapeHtml(c.name)}">Delete</button>
           </span>
         </div>
         <ul class="org-children hidden pl-6 border-l border-slate-200 ml-2.5"></ul>
@@ -1605,13 +1610,68 @@ function initOrganizationTree() {
     modal.classList.remove('flex');
   }
 
-  document.addEventListener('click', (e) => {
+  // Re-fetches the level a node lives in, so a change to that node is
+  // reflected without discarding the rest of the admin's expanded tree.
+  async function refreshParentLevel(li) {
+    const parentList = li.parentElement;
+    const parentLi = parentList.closest('.org-node');
+    if (!parentLi) { window.location.reload(); return; } // top level
+    const toggle = parentLi.querySelector('[data-node-toggle]');
+    delete parentList.dataset.loaded;
+    parentList.innerHTML = '';
+    toggle.setAttribute('aria-expanded', 'false');
+    await toggleNode(toggle);
+  }
+
+  document.addEventListener('click', async (e) => {
     const toggle = e.target.closest('[data-node-toggle]');
     if (toggle && tree.contains(toggle)) { toggleNode(toggle); return; }
 
     const add = e.target.closest('[data-add-child]');
     if (add) {
       openAddChild(add.getAttribute('data-add-child'), add.getAttribute('data-parent-name'));
+      return;
+    }
+
+    // Deactivate / reactivate — the reversible action, and the one to use for
+    // anything with history. Deactivating takes the whole subtree out of
+    // service, so the count is spelled out before confirming.
+    const act = e.target.closest('[data-toggle-active]');
+    if (act && tree.contains(act)) {
+      const id = act.getAttribute('data-toggle-active');
+      const name = act.getAttribute('data-org-name');
+      const currentlyActive = act.getAttribute('data-active') === '1';
+      const msg = currentlyActive
+        ? `Deactivate "${name}"?\n\nIt and everything beneath it will stop appearing to new members. Existing members and past registrations are kept, and you can reactivate it later.`
+        : `Reactivate "${name}"?`;
+      if (!confirm(msg)) return;
+      try {
+        const res = await apiFetch(`/api/admin/organizations/${id}/active`, {
+          method: 'POST',
+          body: JSON.stringify({ isActive: !currentlyActive }),
+        });
+        showToast(res.message + (res.data.affected > 1 ? ` (${res.data.affected} organizations)` : ''));
+        await refreshParentLevel(act.closest('.org-node'));
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+      return;
+    }
+
+    // Permanent delete. The server refuses when anything is attached and says
+    // what — this only warns; it does not pre-judge.
+    const del = e.target.closest('[data-delete-org]');
+    if (del && tree.contains(del)) {
+      const id = del.getAttribute('data-delete-org');
+      const name = del.getAttribute('data-org-name');
+      if (!confirm(`Permanently delete "${name}"?\n\nThis cannot be undone. It is only possible if the organization has no child organizations, no members, and no past event registrations — otherwise deactivate it instead.`)) return;
+      try {
+        await apiFetch(`/api/admin/organizations/${id}`, { method: 'DELETE' });
+        showToast('Organization deleted');
+        await refreshParentLevel(del.closest('.org-node'));
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
     }
   });
 

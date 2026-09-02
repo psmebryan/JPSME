@@ -74,6 +74,8 @@ const paymentListValidators = [
 // Organization tree: read one level at a time, and create directly under a node.
 router.get('/organization-tree', apiAdmin, adminApi.getOrganizationTreeLevel);
 router.post('/organizations/child', apiAdmin, verifyCsrfToken, adminApi.createChildOrganization);
+router.post('/organizations/:id/active', apiAdmin, verifyCsrfToken, adminApi.setOrganizationActiveApi);
+router.delete('/organizations/:id', apiAdmin, verifyCsrfToken, adminApi.deleteOrganizationApi);
 
 router.get('/organization-admins', apiAdmin, adminApi.listOrganizationAdmins);
 router.post('/organization-admins/assign', apiAdmin, verifyCsrfToken, adminApi.assignOrganizationAdmin);

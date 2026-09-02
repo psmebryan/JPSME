@@ -250,4 +250,20 @@ const createChildOrganization = asyncHandler(async (req, res) => {
   return success(res, { organization: { id: created.id, name: created.name, type: created.type }, pathLabel }, 'Organization created');
 });
 
-module.exports = { listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin, getOrganizationTreeLevel, createChildOrganization };
+// Permanent removal, and only ever for an organization with nothing attached —
+// the service refuses if it has children, members, or past registrations, and
+// points the admin at deactivation instead.
+const deleteOrganizationApi = asyncHandler(async (req, res) => {
+  await organizationService.deleteOrganization(Number(req.params.id));
+  return success(res, { deleted: true }, 'Organization deleted');
+});
+
+// Retire or restore. The reversible option, and the correct one for anything
+// that already has history behind it.
+const setOrganizationActiveApi = asyncHandler(async (req, res) => {
+  const isActive = req.body.isActive === true || req.body.isActive === 'true';
+  const result = await organizationService.setOrganizationActive(Number(req.params.id), isActive);
+  return success(res, result, isActive ? 'Organization reactivated' : 'Organization deactivated');
+});
+
+module.exports = { listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin, getOrganizationTreeLevel, createChildOrganization, deleteOrganizationApi, setOrganizationActiveApi };

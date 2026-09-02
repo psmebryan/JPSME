@@ -63,6 +63,11 @@ const CREATABLE = ['MOTHER_ORG', 'REGION', 'ADMIN_REGION', 'PROVINCE', 'CITY', '
               <button type="button" class="text-indigo-600 hover:underline text-xs font-medium"
                       data-add-child="<%= c.id %>" data-parent-name="<%= c.name %>">+ Child</button>
               <a href="/admin/organizations/<%= c.id %>/edit" data-admin-link class="text-slate-500 hover:underline text-xs">Edit</a>
+              <button type="button" class="text-amber-600 hover:underline text-xs"
+                      data-toggle-active="<%= c.id %>" data-active="<%= c.isActive ? '1' : '0' %>"
+                      data-org-name="<%= c.name %>"><%= c.isActive ? 'Deactivate' : 'Reactivate' %></button>
+              <button type="button" class="text-red-600 hover:underline text-xs"
+                      data-delete-org="<%= c.id %>" data-org-name="<%= c.name %>">Delete</button>
             </span>
           </div>
           <ul class="org-children hidden pl-6 border-l border-slate-200 ml-2.5"></ul>
