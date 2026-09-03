@@ -3,9 +3,10 @@
 Node.js/Express + Prisma (MySQL) backend, server-rendered EJS + Tailwind (CDN) + vanilla AJAX frontend.
 Two sides: public/user pages and an admin panel (logo/content management, user approval, event management).
 
-> **Database note:** this project uses its own database, `jpsme2_new`. The legacy PHP app at
-> `C:\xampp\htdocs\jpsme` uses a *different* database, `jpsme2` — never point this project's
-> `DATABASE_URL` at `jpsme2`.
+> **Database note:** this project must have its **own** database. An older PHP app may be
+> installed alongside it on the same server using a *separate, similarly named* one — pointing
+> this project's `DATABASE_URL` at that database will run migrations against live legacy data.
+> Confirm which database is which before configuring `DATABASE_URL`.
 
 ## Stack
 
@@ -22,15 +23,16 @@ Two sides: public/user pages and an admin panel (logo/content management, user a
 2. Create a `.env` in the project root (it is gitignored — never commit it):
 
    ```
-   DATABASE_URL="mysql://root:@localhost:3306/jpsme2_new"
-   SESSION_SECRET=<a long random string>
+   DATABASE_URL="mysql://<user>:<password>@<host>:<port>/<database>"
+   SESSION_SECRET=<generate one — see below>
    PORT=3000
    NODE_ENV=development
    APP_URL=http://localhost:3000
    ```
 
    - `DATABASE_URL` must point at a **dedicated** database, separate from the
-     legacy `jpsme2` used by the PHP app at `C:\xampp\htdocs\jpsme`. In
+     legacy one used by the older PHP app on the same machine. Never commit a
+     real connection string — `.env` is gitignored for exactly this reason. In
      production append `?connection_limit=...`, kept comfortably under MySQL's
      `max_connections` — see "Scaling & going live".
    - `SESSION_SECRET` signs session cookies. Generate one per environment:
@@ -49,7 +51,7 @@ Two sides: public/user pages and an admin panel (logo/content management, user a
 3. Create the database (phpMyAdmin or CLI): `CREATE DATABASE jpsme2_new;`
 4. Install dependencies: `npm install`
 5. Apply the schema: `npm run prisma:migrate`
-6. Seed the initial admin account: `npm run db:seed` (creates `admin@jpsme.local` / prints a generated password — change it after first login, or set `SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD` env vars before seeding)
+6. Seed the initial admin account: `npm run db:seed`. It prints a randomly generated password **once** — save it, as it is not recoverable from the database. Set `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` beforehand to choose your own. Re-running against an existing account leaves its password untouched unless `SEED_ADMIN_PASSWORD` is set.
 7. Start the app: `npm run dev` (auto-restart) or `npm start`
 8. Visit `http://localhost:3000` (public site) and `http://localhost:3000/admin/login` (admin panel)
 
