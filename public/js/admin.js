@@ -5,6 +5,7 @@ function initAdminPage() {
   initGatewaySurchargeForm();
   initPaymentsEnabledToggle();
   initMembershipRequiredToggle();
+  initDataTransfer();
   initEventsTable();
   initArticlesTable();
   initInvitationsModule();
@@ -1138,6 +1139,83 @@ function initGatewaySurchargeForm() {
     } catch (err) {
       showToast(err.errors?.[0]?.msg || err.message, 'error');
     }
+  });
+}
+
+// --- Data export / import (admin/settings page) ---
+// Preview always runs before apply. An import that edits the organization tree
+// and member records is not something to trigger blind from a file picker.
+function initDataTransfer() {
+  const module = document.getElementById('data-transfer-module');
+  if (!module) return;
+
+  const fileInput = document.getElementById('import-file');
+  const previewBtn = document.getElementById('import-preview-btn');
+  const applyBtn = document.getElementById('import-apply-btn');
+  const report = document.getElementById('import-report');
+
+  function reset() {
+    applyBtn.classList.add('hidden');
+    report.classList.add('hidden');
+    report.innerHTML = '';
+  }
+
+  fileInput?.addEventListener('change', () => {
+    previewBtn.disabled = !fileInput.files.length;
+    reset();
+  });
+
+  function renderReport(data, applied) {
+    const s = data.summary;
+    const rows = [];
+    if (s.errors) {
+      rows.push('<p class="font-semibold text-red-700 mb-2">' + s.errors + ' problem(s) — nothing will be changed until these are fixed.</p>');
+      rows.push('<ul class="list-disc pl-5 space-y-1 text-red-700">' + data.errors.map(function (e) { return '<li>' + escapeHtml(e) + '</li>'; }).join('') + '</ul>');
+    } else {
+      rows.push('<p class="font-semibold text-slate-800 mb-2">' + (applied ? 'Imported.' : 'Ready to import.') + '</p>');
+      rows.push('<ul class="list-disc pl-5 space-y-1 text-slate-700">'
+        + '<li>' + s.orgsToCreate + ' organization(s) to create</li>'
+        + '<li>' + s.orgsToUpdate + ' organization(s) to update</li>'
+        + '<li>' + s.membersToUpdate + ' member(s) to update</li>'
+        + (s.membersSkipped ? '<li>' + s.membersSkipped + ' member row(s) skipped — no account with that email</li>' : '')
+        + '</ul>');
+      const detail = data.organizations.concat(data.members).slice(0, 40);
+      if (detail.length) {
+        rows.push('<p class="mt-3 mb-1 text-xs uppercase tracking-wide text-slate-500">Details</p>');
+        rows.push('<ul class="space-y-0.5 text-xs text-slate-600">' + detail.map(function (d) {
+          return '<li>row ' + d.row + ' — ' + escapeHtml((d.name || d.email || '') + ': ' + (d.changes || []).join('; ')) + '</li>';
+        }).join('') + '</ul>');
+      }
+    }
+    report.innerHTML = rows.join('');
+    report.classList.remove('hidden');
+    applyBtn.classList.toggle('hidden', !!s.errors || !!applied);
+  }
+
+  async function send(url, applied) {
+    const body = new FormData();
+    body.append('workbook', fileInput.files[0]);
+    previewBtn.disabled = true;
+    applyBtn.disabled = true;
+    try {
+      // FormData, so no JSON content-type — apiFetch adds the CSRF header.
+      const res = await apiFetch(url, { method: 'POST', body });
+      renderReport(res.data, applied);
+      if (applied) showToast(res.message);
+    } catch (err) {
+      report.innerHTML = '<p class="text-red-700">' + escapeHtml(err.message) + '</p>';
+      report.classList.remove('hidden');
+      showToast(err.message, 'error');
+    } finally {
+      previewBtn.disabled = !fileInput.files.length;
+      applyBtn.disabled = false;
+    }
+  }
+
+  previewBtn?.addEventListener('click', () => send('/api/admin/data/import/preview', false));
+  applyBtn?.addEventListener('click', () => {
+    if (!confirm('Apply this import? Organizations will be created or moved and member records updated. Nothing is deleted.')) return;
+    send('/api/admin/data/import', true);
   });
 }
 

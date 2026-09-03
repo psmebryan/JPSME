@@ -31,6 +31,17 @@ const uploadArticleImage = makeUpload(ALLOWED_MIME_TYPES, 'Only PNG, JPEG, WEBP,
 const uploadCertificateBackground = makeUpload(CERTIFICATE_MIME_TYPES, 'Only PNG or JPEG images are allowed for certificate backgrounds', 3 * 1024 * 1024);
 const uploadEmailAttachment = makeUpload(ALLOWED_MIME_TYPES, 'Only PNG, JPEG, WEBP, or SVG images are allowed', 3 * 1024 * 1024);
 
+// Data import workbook. Browsers are inconsistent about the MIME type they
+// attach to an .xlsx — some send the modern spreadsheetml type, others fall
+// back to a generic binary one — so all the plausible values are accepted and
+// the real check is ExcelJS refusing to parse anything that is not a workbook.
+const SPREADSHEET_MIME_TYPES = new Set([
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  'application/octet-stream',
+]);
+const uploadDataWorkbook = makeUpload(SPREADSHEET_MIME_TYPES, 'Upload an .xlsx workbook', 10 * 1024 * 1024);
+
 module.exports = {
   uploadLogo,
   uploadProfileImage,
@@ -39,4 +50,5 @@ module.exports = {
   uploadCertificateBackground,
   uploadEmailAttachment,
   uploadArticleImage,
+  uploadDataWorkbook,
 };

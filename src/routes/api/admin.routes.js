@@ -7,10 +7,11 @@ const adminPaymentApi = require('../../controllers/api/adminPayment.api');
 const adminEmailApi = require('../../controllers/api/adminEmail.api');
 const adminBroadcastApi = require('../../controllers/api/adminBroadcast.api');
 const invitationApi = require('../../controllers/api/invitation.api');
+const dataTransferApi = require('../../controllers/api/dataTransfer.api');
 const jobApi = require('../../controllers/api/job.api');
 const { apiAdmin, apiAdminOrChapterAdmin } = require('../../middleware/auth.middleware');
 const { verifyCsrfToken } = require('../../middleware/csrf.middleware');
-const { uploadLogo, uploadSponsorLogo, uploadCertificateBackground, uploadEmailAttachment } = require('../../middleware/upload.middleware');
+const { uploadLogo, uploadSponsorLogo, uploadCertificateBackground, uploadEmailAttachment, uploadDataWorkbook } = require('../../middleware/upload.middleware');
 const verifyImageSignature = require('../../middleware/verifyImageSignature');
 
 const certificateTemplateValidators = [
@@ -125,6 +126,13 @@ router.put(
   body('required').isBoolean().withMessage('required must be true or false'),
   adminApi.updateMembershipPaymentRequired
 );
+// Data export / import. MAIN_ADMIN only: the workbook carries every member's
+// contact details and the whole payment ledger, and the import writes to the
+// organization tree and member records.
+router.get('/data/export', dataTransferApi.exportWorkbook);
+router.post('/data/import/preview', verifyCsrfToken, uploadDataWorkbook.single('workbook'), dataTransferApi.previewImport);
+router.post('/data/import', verifyCsrfToken, uploadDataWorkbook.single('workbook'), dataTransferApi.runImport);
+
 router.get('/sponsors', adminApi.listSponsors);
 router.post('/sponsors', verifyCsrfToken, uploadSponsorLogo.single('logo'), verifyImageSignature, adminApi.createSponsor);
 router.delete('/sponsors/:id', verifyCsrfToken, param('id').isInt(), adminApi.deleteSponsor);
