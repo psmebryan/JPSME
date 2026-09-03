@@ -59,11 +59,19 @@ function appUrl() {
 // --- Reads ---
 
 // A paid membership is good for one year from the moment it is confirmed.
-const MEMBERSHIP_VALIDITY_DAYS = 365;
+const MEMBERSHIP_VALIDITY_YEARS = 1;
 
-function addDays(date, days) {
+// Calendar arithmetic, not 365 days. The two only agree when no 29 February
+// falls in between: paying on 1 March 2027 and adding 365 days lands on
+// 29 February 2028, a day short of the anniversary. Members would silently
+// lose a day whenever their year spanned a leap day.
+//
+// setFullYear also handles the one date that has no anniversary — a membership
+// bought on 29 February rolls to 1 March, which is the later of the two
+// candidate dates and so never shortens what was paid for.
+function addYears(date, years) {
   const d = new Date(date);
-  d.setDate(d.getDate() + days);
+  d.setFullYear(d.getFullYear() + years);
   return d;
 }
 
@@ -73,7 +81,7 @@ function addDays(date, days) {
 // that has already run out.
 function nextMembershipExpiry(currentExpiry, from = new Date()) {
   const base = currentExpiry && new Date(currentExpiry) > from ? new Date(currentExpiry) : from;
-  return addDays(base, MEMBERSHIP_VALIDITY_DAYS);
+  return addYears(base, MEMBERSHIP_VALIDITY_YEARS);
 }
 
 // How the app classifies people, and how the three categories relate:
@@ -102,7 +110,7 @@ function classifyMembership(user, latestMembershipPayment) {
   // from their payment rather than showing them as never having paid.
   if (!expiresAt && latestMembershipPayment
       && latestMembershipPayment.status === 'PAID' && latestMembershipPayment.paidAt) {
-    expiresAt = addDays(latestMembershipPayment.paidAt, MEMBERSHIP_VALIDITY_DAYS);
+    expiresAt = addYears(latestMembershipPayment.paidAt, MEMBERSHIP_VALIDITY_YEARS);
   }
 
   if (!expiresAt) {
@@ -1055,7 +1063,7 @@ module.exports = {
   classifyMembership,
   MEMBERSHIP_TIERS,
   nextMembershipExpiry,
-  MEMBERSHIP_VALIDITY_DAYS,
+  MEMBERSHIP_VALIDITY_YEARS,
   getLatestMembershipPayment,
   getLatestEventPayment,
   getLatestMembershipStatusForUsers,
