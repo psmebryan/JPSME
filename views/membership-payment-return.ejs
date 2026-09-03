@@ -14,10 +14,13 @@ const status = payment ? payment.status : null;
       <p class="text-gray-600 mb-1">Amount:</p>
       <p class="text-2xl font-extrabold text-gray-900 mb-4">&#8369;<%= (payment.amount / 100).toFixed(2) %></p>
       <p class="text-gray-600 mb-1">Registration:</p>
-      <p class="font-semibold text-amber-600 mb-6">Awaiting Admin Approval</p>
-      <a href="/profile" class="inline-block bg-indigo-600 text-white px-6 py-2.5 rounded-md hover:bg-indigo-500 font-semibold">View Profile</a>
+      <p class="font-semibold text-amber-600 mb-2">Awaiting Admin Approval</p>
+      <p class="text-sm text-gray-500 mb-6">There's nothing else to do here yet — an admin needs to review and approve your account first. Log out now, and log back in once you've been approved.</p>
+      <a href="/logout" class="inline-block bg-indigo-600 text-white px-6 py-2.5 rounded-md hover:bg-indigo-500 font-semibold">Log Out</a>
     <% } else if (status === 'PENDING' || status === 'PROCESSING') { %>
-      <div class="text-5xl mb-4">&#8987;</div>
+      <div class="mb-4 flex justify-center">
+        <div class="h-12 w-12 animate-spin rounded-full border-4 border-amber-200 border-t-amber-600"></div>
+      </div>
       <h1 class="text-2xl font-bold text-amber-700 mb-2">Payment Processing</h1>
       <p class="text-gray-600 mb-6">We are waiting for confirmation from the payment provider. Please do not make another payment. This page will update automatically once it's confirmed.</p>
       <a href="/membership-payment" class="inline-block text-indigo-600 hover:underline text-sm">Back to Membership Payment</a>

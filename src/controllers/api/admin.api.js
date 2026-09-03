@@ -1,9 +1,28 @@
+const path = require('path');
+const { validationResult } = require('express-validator');
 const asyncHandler = require('../../utils/asyncHandler');
 const { success, error } = require('../../utils/apiResponse');
+
+// Matches adminPayment.api.js. Without this the query validators declared on
+// this router's routes never actually reject anything — an unrecognised filter
+// value was silently ignored and the endpoint returned the full unfiltered
+// list, which reads to an admin as "the filter found everyone" rather than
+// "the filter was invalid".
+function checkValidation(req, res) {
+  const result = validationResult(req);
+  if (!result.isEmpty()) {
+    error(res, 'Validation failed', 422, result.array());
+    return false;
+  }
+  return true;
+}
 const userService = require('../../services/user.service');
 const settingsService = require('../../services/settings.service');
 const sponsorService = require('../../services/sponsor.service');
 const paymentService = require('../../services/payment.service');
+const storageService = require('../../services/storage.service');
+const organizationAdminService = require('../../services/organizationAdmin.service');
+const organizationService = require('../../services/organization.service');
 
 // Enriches each user with their latest membership-payment status so the admin
 // can see who's paid before approving — one batched query, not N.
@@ -11,9 +30,16 @@ async function withMembershipPaymentStatus(users) {
   const statusByUser = await paymentService.getLatestMembershipStatusForUsers(users.map((u) => u.id));
   return users.map((u) => {
     const payment = statusByUser.get(u.id);
+    // Member vs Non-Member is computed from the row and the payment already
+    // fetched above — no extra query per user, and never stored, so it cannot
+    // go stale when a membership lapses.
+    const membership = paymentService.classifyMembership(u, payment);
     return {
       ...u,
       membershipPayment: payment ? { status: payment.status, paidAt: payment.paidAt } : null,
+      membershipTier: membership.tier,
+      membershipState: membership.state,
+      membershipExpiresAt: membership.expiresAt,
     };
   });
 }
@@ -24,18 +50,45 @@ const listUsers = asyncHandler(async (req, res) => {
   return success(res, { users: await withMembershipPaymentStatus(users) });
 });
 
-const listChapterMembers = asyncHandler(async (req, res) => {
-  // If apiAdminOrChapterAdmin is used, controller can check req.chapterScope
-  const chapterId = req.query.chapterId || req.chapterScope;
-  if (!chapterId) {
-    // admin: no chapterId provided -> list all chapters members grouped? We'll return all users if admin
-    if (req.session.user && req.session.user.role === 'ADMIN') {
-      const users = await userService.listByStatus();
-      return success(res, { users });
+// Paginated + searchable — backs the "Manage Users" table specifically
+// (listUsers above stays unbounded for the approvals queue, which is
+// naturally small regardless of total membership size).
+const listMembers = asyncHandler(async (req, res) => {
+  if (!checkValidation(req, res)) return;
+
+  const { status, organizationId, search, membership, paymentStatus, page } = req.query;
+  const result = await userService.listMembersForAdmin({
+    status: status || undefined,
+    organizationId: organizationId || undefined,
+    search: search || undefined,
+    membership: membership || undefined,
+    paymentStatus: paymentStatus || undefined,
+    page: Math.max(1, Number(page) || 1),
+  });
+  const users = await withMembershipPaymentStatus(result.users);
+  return success(res, { ...result, users });
+});
+
+// Members of an organization and everything beneath it. A scoped admin is
+// confined to their own subtree (req.orgScope); a main admin may pass any
+// organizationId, or none to list everyone.
+const listOrganizationMembers = asyncHandler(async (req, res) => {
+  const requested = req.query.organizationId;
+
+  if (req.orgScope) {
+    // A scoped admin may only ever query inside their own subtree.
+    if (requested && !req.orgScope.descendantIds.includes(Number(requested))) {
+      return error(res, 'Access denied', 403);
     }
-    return error(res, 'Chapter id required', 400);
+    const users = await userService.listByOrganization(requested || req.orgScope.id);
+    return success(res, { users });
   }
-  const users = await userService.listByChapter(chapterId);
+
+  if (requested) {
+    const users = await userService.listByOrganization(requested);
+    return success(res, { users });
+  }
+  const users = await userService.listByStatus();
   return success(res, { users });
 });
 
@@ -59,13 +112,15 @@ const updateUser = asyncHandler(async (req, res) => {
   const userId = req.params.id;
   let payload = { ...req.body };
 
-  if (req.chapterScope) {
+  if (req.orgScope) {
     const target = await userService.getById(userId);
-    if (target.chapterId !== req.chapterScope) return error(res, 'Access denied', 403);
+    if (!req.orgScope.descendantIds.includes(Number(target.organizationId))) {
+      return error(res, 'Access denied', 403);
+    }
 
-    // Chapter admins may only touch these fields on their own members —
-    // never email, role, or chapterId, even if sent directly to the API.
-    const allowedFields = ['firstName', 'middleInitial', 'lastName', 'phone', 'school'];
+    // Scoped admins may only touch these fields on their own members —
+    // never email, role, or organizationId, even if sent directly to the API.
+    const allowedFields = ['firstName', 'middleInitial', 'lastName', 'phone', 'school', 'yearLevel'];
     payload = Object.fromEntries(
       Object.entries(payload).filter(([key]) => allowedFields.includes(key))
     );
@@ -77,10 +132,12 @@ const updateUser = asyncHandler(async (req, res) => {
 
 const deleteUser = asyncHandler(async (req, res) => {
   const userId = req.params.id;
-  if (req.chapterScope) {
+  if (req.orgScope) {
     const target = await userService.getById(userId);
-    const targetChapterId = target.chapterId ?? (target.chapter && target.chapter.id);
-    if (Number(targetChapterId) !== Number(req.chapterScope)) return error(res, 'Access denied', 403);
+    const targetOrgId = target.organizationId ?? (target.organization && target.organization.id);
+    if (!req.orgScope.descendantIds.includes(Number(targetOrgId))) {
+      return error(res, 'Access denied', 403);
+    }
   }
   const result = await userService.deleteUser(userId);
   return success(res, { result }, 'User deleted');
@@ -89,7 +146,11 @@ const deleteUser = asyncHandler(async (req, res) => {
 const uploadLogo = asyncHandler(async (req, res) => {
   if (!req.file) return error(res, 'No logo file uploaded', 400);
 
-  const publicPath = `/uploads/logo/${req.file.filename}`;
+  const publicPath = await storageService.saveUpload(req.file.buffer, {
+    folder: 'logo',
+    prefix: 'logo',
+    extension: path.extname(req.file.originalname).toLowerCase(),
+  });
   await settingsService.setLogoUrl(publicPath);
   return success(res, { logoUrl: publicPath }, 'Logo updated');
 });
@@ -113,6 +174,15 @@ const updateMembershipFee = asyncHandler(async (req, res) => {
   return success(res, { feeCentavos: centavos }, 'Membership fee updated');
 });
 
+const updateGatewaySurchargePercent = asyncHandler(async (req, res) => {
+  const percent = Number(req.body.percent);
+  if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+    return error(res, 'Enter a valid percentage', 422);
+  }
+  await settingsService.setGatewaySurchargePercent(percent);
+  return success(res, { percent }, 'Payment processing surcharge updated');
+});
+
 const getPaymentsEnabled = asyncHandler(async (req, res) => {
   const enabled = await settingsService.getPaymentsEnabled();
   return success(res, { enabled });
@@ -128,6 +198,20 @@ const updatePaymentsEnabled = asyncHandler(async (req, res) => {
   return success(res, { enabled }, enabled ? 'Payments enabled' : 'Payments disabled');
 });
 
+const getMembershipPaymentRequired = asyncHandler(async (req, res) => {
+  const required = await settingsService.getMembershipPaymentRequired();
+  return success(res, { required });
+});
+
+// Off means a new member may register and use the site without paying, and
+// settle the fee later if they choose. It changes only what a PENDING member
+// is allowed to reach — never whether their account or data is kept.
+const updateMembershipPaymentRequired = asyncHandler(async (req, res) => {
+  const required = req.body.required === true || req.body.required === 'true';
+  await settingsService.setMembershipPaymentRequired(required);
+  return success(res, { required }, required ? 'Membership payment is now required' : 'Membership payment is now optional');
+});
+
 const listSponsors = asyncHandler(async (req, res) => {
   const sponsors = await sponsorService.listSponsors();
   return success(res, { sponsors });
@@ -137,9 +221,14 @@ const createSponsor = asyncHandler(async (req, res) => {
   if (!req.file) return error(res, 'A sponsor logo is required', 400);
   const name = (req.body.name || '').trim();
   if (!name) return error(res, 'Sponsor name is required', 422);
+  const logoUrl = await storageService.saveUpload(req.file.buffer, {
+    folder: 'sponsors',
+    prefix: 'sponsors',
+    extension: path.extname(req.file.originalname).toLowerCase(),
+  });
   const sponsor = await sponsorService.createSponsor({
     name,
-    logoUrl: `/uploads/sponsors/${req.file.filename}`,
+    logoUrl,
     websiteUrl: (req.body.websiteUrl || '').trim(),
   });
   return success(res, { sponsor }, 'Sponsor added', 201);
@@ -150,24 +239,83 @@ const deleteSponsor = asyncHandler(async (req, res) => {
   return success(res, null, 'Sponsor removed');
 });
 
-// Chapter admin assignments
-const listChapterAdmins = asyncHandler(async (req, res) => {
-  const assignments = await require('../../services/chapterAdmin.service').listAssignments();
+// Organization admin assignments
+const listOrganizationAdmins = asyncHandler(async (req, res) => {
+  const assignments = await organizationAdminService.listAssignments();
   return success(res, { assignments });
 });
 
-const assignChapterAdmin = asyncHandler(async (req, res) => {
-  const { chapterId, userId, note, force } = req.body;
+const assignOrganizationAdmin = asyncHandler(async (req, res) => {
+  const { organizationId, userId, note } = req.body;
   const changedBy = req.session.user.id;
-  const assignment = await require('../../services/chapterAdmin.service').assignChapterAdmin({ chapterId, userId, changedBy, note, force });
-  return success(res, { assignment }, 'Chapter admin assigned');
+  const assignment = await organizationAdminService.assignOrganizationAdmin({ organizationId, userId, changedBy, note });
+  return success(res, { assignment }, 'Organization admin assigned');
 });
 
-const removeChapterAdmin = asyncHandler(async (req, res) => {
-  const { chapterId, note } = req.body;
+const removeOrganizationAdmin = asyncHandler(async (req, res) => {
+  const { userId, note } = req.body;
   const changedBy = req.session.user.id;
-  const result = await require('../../services/chapterAdmin.service').removeAssignment({ chapterId, changedBy, note });
-  return success(res, { result }, 'Chapter admin removed');
+  const result = await organizationAdminService.removeAssignment({ userId, changedBy, note });
+  return success(res, { result }, 'Organization admin removed');
 });
 
-module.exports = { listUsers, listChapterMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, getPaymentsEnabled, updatePaymentsEnabled, listSponsors, createSponsor, deleteSponsor, listChapterAdmins, assignChapterAdmin, removeChapterAdmin };
+// One level of the organization tree for the admin's expandable view. Lazy by
+// level rather than serialising the whole hierarchy, so cost stays flat as the
+// organization count grows. `id` omitted means the root's own level.
+const getOrganizationTreeLevel = asyncHandler(async (req, res) => {
+  const { id } = req.query;
+  if (id) {
+    const children = await organizationService.getChildrenForTree(Number(id));
+    return success(res, { children });
+  }
+  const root = await organizationService.getRoot();
+  if (!root) return success(res, { root: null, children: [] });
+  const children = await organizationService.getChildrenForTree(root.id);
+  const counts = await organizationService.getChildrenForTree(null);
+  return success(res, { root: counts[0] || { id: root.id, name: root.name, type: root.type }, children });
+});
+
+// Creates directly beneath a chosen node — the "Add Child" action, where the
+// parent is already known so the admin never has to hunt for it in a list.
+const createChildOrganization = asyncHandler(async (req, res) => {
+  const { parentId, name, type, code } = req.body;
+
+  // Omitting parentId is only legitimate for the very first organization —
+  // the root every other node hangs off. Without this, a fresh install has no
+  // way in: the tree has no node to click "+ Child" on, and every create form
+  // demands a parent that cannot exist yet. createOrganization still enforces
+  // the single-root rule, so a second attempt is refused there.
+  if (!parentId) {
+    const existingRoot = await organizationService.getRoot();
+    if (existingRoot) {
+      return error(res, `A parent organization is required. "${existingRoot.name}" is already the root — add beneath it instead.`, 400);
+    }
+  }
+
+  const created = await organizationService.createOrganization({
+    parentId: parentId ? Number(parentId) : null,
+    name,
+    type,
+    code: code || null,
+  });
+  const pathLabel = await organizationService.getOrganizationPathLabel(created.id);
+  return success(res, { organization: { id: created.id, name: created.name, type: created.type }, pathLabel }, 'Organization created');
+});
+
+// Permanent removal, and only ever for an organization with nothing attached —
+// the service refuses if it has children, members, or past registrations, and
+// points the admin at deactivation instead.
+const deleteOrganizationApi = asyncHandler(async (req, res) => {
+  await organizationService.deleteOrganization(Number(req.params.id));
+  return success(res, { deleted: true }, 'Organization deleted');
+});
+
+// Retire or restore. The reversible option, and the correct one for anything
+// that already has history behind it.
+const setOrganizationActiveApi = asyncHandler(async (req, res) => {
+  const isActive = req.body.isActive === true || req.body.isActive === 'true';
+  const result = await organizationService.setOrganizationActive(Number(req.params.id), isActive);
+  return success(res, result, isActive ? 'Organization reactivated' : 'Organization deactivated');
+});
+
+module.exports = { listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, getMembershipPaymentRequired, updateMembershipPaymentRequired, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin, getOrganizationTreeLevel, createChildOrganization, deleteOrganizationApi, setOrganizationActiveApi };

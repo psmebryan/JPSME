@@ -1,7 +1,9 @@
+const path = require('path');
 const { validationResult } = require('express-validator');
 const asyncHandler = require('../../utils/asyncHandler');
 const { success, error } = require('../../utils/apiResponse');
 const eventService = require('../../services/event.service');
+const storageService = require('../../services/storage.service');
 
 function checkValidation(req, res) {
   const result = validationResult(req);
@@ -40,10 +42,13 @@ const getEvent = asyncHandler(async (req, res) => {
 
 const createEvent = asyncHandler(async (req, res) => {
   if (!checkValidation(req, res)) return;
-  // If a file was uploaded via multer, use its public path
   const payload = applyFeeConversion({ ...req.body });
   if (req.file) {
-    payload.imageUrl = `/uploads/events/${req.file.filename}`;
+    payload.imageUrl = await storageService.saveUpload(req.file.buffer, {
+      folder: 'events',
+      prefix: 'events',
+      extension: path.extname(req.file.originalname).toLowerCase(),
+    });
   }
   const event = await eventService.createEvent(payload);
   return success(res, { event }, 'Event created', 201);
@@ -53,7 +58,11 @@ const updateEvent = asyncHandler(async (req, res) => {
   if (!checkValidation(req, res)) return;
   const payload = applyFeeConversion({ ...req.body });
   if (req.file) {
-    payload.imageUrl = `/uploads/events/${req.file.filename}`;
+    payload.imageUrl = await storageService.saveUpload(req.file.buffer, {
+      folder: 'events',
+      prefix: 'events',
+      extension: path.extname(req.file.originalname).toLowerCase(),
+    });
   }
   const event = await eventService.updateEvent(req.params.id, payload);
   return success(res, { event }, 'Event updated');

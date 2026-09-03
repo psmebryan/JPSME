@@ -7,14 +7,19 @@ const sheetsSyncService = require("./sheetsSync.service");
 const SALT_ROUNDS = 12;
 const normalizeName = (value) => String(value || '').trim().toUpperCase();
 
+// Precomputed once at startup — compared against when the email doesn't
+// exist, purely to burn roughly the same amount of time as the real
+// bcrypt.compare below. Without this, a missing account returns
+// immediately while a wrong password takes ~100ms, and that timing
+// difference alone lets an attacker enumerate which emails have accounts
+// without ever seeing a different error message.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('not-a-real-password', SALT_ROUNDS);
+
+// Ancestors are derived from Organization.path (see organization.service.js),
+// so this no longer needs the nested area→region include the fixed chapter
+// hierarchy required — a single organization include is enough at any depth.
 const userInclude = {
-  chapter: {
-    include: {
-      area: {
-        include: { region: true },
-      },
-    },
-  },
+  organization: true,
 };
 
 function toPublicUser(user) {
@@ -40,7 +45,8 @@ async function registerUser({
   password,
   phone,
   school,
-  chapterId,
+  yearLevel,
+  organizationId,
   next,
 }) {
   const existing = await prisma.user.findUnique({ where: { email } });
@@ -48,13 +54,16 @@ async function registerUser({
     throw new AppError("An account with this email already exists", 409);
   }
 
-  if (!chapterId) {
-    throw new AppError("Please select a chapter", 400);
+  if (!organizationId) {
+    throw new AppError("Please select your organization", 400);
   }
 
-  const chapter = await prisma.chapter.findUnique({ where: { id: Number(chapterId) } });
-  if (!chapter || chapter.isActive === false) {
-    throw new AppError("Please select a valid chapter", 400);
+  // Any organization type is acceptable — a member may belong directly to a
+  // student unit, chapter, cluster, or region, whichever is actually correct
+  // for them. The old flow could only accept a chapter.
+  const organization = await prisma.organization.findUnique({ where: { id: Number(organizationId) } });
+  if (!organization || organization.isActive === false) {
+    throw new AppError("Please select a valid organization", 400);
   }
 
   const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
@@ -68,7 +77,8 @@ async function registerUser({
       password: hashedPassword,
       phone: phone || null,
       school: school || null,
-      chapterId: Number(chapterId),
+      yearLevel: yearLevel || null,
+      organizationId: Number(organizationId),
       status: "PENDING",
       role: "USER",
       postApprovalRedirectUrl: sanitizeRedirectPath(next),
@@ -94,6 +104,12 @@ async function registerUser({
 async function login(email, password, { context = "user" } = {}) {
   const user = await prisma.user.findUnique({ where: { email }, include: userInclude });
   if (!user) {
+    // Still run a bcrypt compare (against a hash nobody's real password will
+    // ever match) so this takes roughly the same time as the "wrong
+    // password" path below — otherwise a missing account returns near-
+    // instantly while a wrong password takes ~100ms, and that timing gap
+    // alone lets an attacker enumerate registered emails.
+    await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
     throw new AppError("Invalid email or password", 401);
   }
 
@@ -145,10 +161,10 @@ async function getById(id) {
   return toPublicUser(user);
 }
 
-async function updateProfile(userId, { middleInitial, phone, school, chapterId }) {
-  const value = chapterId === '' || chapterId === undefined || chapterId === null ? null : Number(chapterId);
-  if (chapterId !== '' && chapterId !== undefined && chapterId !== null && chapterId !== 'null' && Number.isNaN(value)) {
-    throw new AppError('Invalid chapter selection', 400);
+async function updateProfile(userId, { middleInitial, phone, school, yearLevel, organizationId }) {
+  const value = organizationId === '' || organizationId === undefined || organizationId === null ? null : Number(organizationId);
+  if (organizationId !== '' && organizationId !== undefined && organizationId !== null && organizationId !== 'null' && Number.isNaN(value)) {
+    throw new AppError('Invalid organization selection', 400);
   }
 
   const user = await prisma.user.update({
@@ -157,7 +173,8 @@ async function updateProfile(userId, { middleInitial, phone, school, chapterId }
       middleInitial: middleInitial && middleInitial.trim() ? normalizeName(middleInitial) : null,
       phone: phone && phone.trim() ? phone.trim() : null,
       school: school && school.trim() ? school.trim() : null,
-      chapterId: value,
+      yearLevel: yearLevel || null,
+      organizationId: value,
     },
     include: userInclude,
   });

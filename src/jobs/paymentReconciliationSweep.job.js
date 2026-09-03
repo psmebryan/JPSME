@@ -1,3 +1,4 @@
+const config = require('../config');
 const paymentService = require('../services/payment.service');
 
 // A payment stuck PENDING/PROCESSING this long past creation almost always
@@ -6,8 +7,8 @@ const paymentService = require('../services/payment.service');
 // checkout sessions themselves stay valid for far longer than this. Both are
 // configurable via env vars since "normal" webhook latency and acceptable
 // sweep frequency are operational judgment calls, not something to hardcode.
-const STUCK_THRESHOLD_MINUTES = Number(process.env.RECONCILIATION_STUCK_THRESHOLD_MINUTES) || 10;
-const SWEEP_INTERVAL_MINUTES = Number(process.env.RECONCILIATION_SWEEP_INTERVAL_MINUTES) || 15;
+const STUCK_THRESHOLD_MINUTES = config.jobs.paymentReconciliation.stuckThresholdMinutes;
+const SWEEP_INTERVAL_MINUTES = config.jobs.paymentReconciliation.sweepIntervalMinutes;
 
 // Deliberately NOT gated by the payments-enabled kill switch — same reasoning
 // as processWebhookEvent: disabling new checkout creation must never block

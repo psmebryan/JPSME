@@ -1,18 +1,20 @@
 const path = require('path');
+const config = require('../config');
 const { transporter, MAIL_FROM } = require('../config/mailer');
 const emailTemplateService = require('./emailTemplate.service');
+const storageService = require('./storage.service');
 const { substituteTokens, formatDate, fullName } = require('../utils/templateTokens');
 
-const PROJECT_ROOT = path.join(__dirname, '..', '..');
-const PUBLIC_UPLOADS_ROOT = path.join(PROJECT_ROOT, 'public', 'uploads');
-
 function getAppUrl() {
-  return process.env.APP_URL || `http://localhost:${process.env.PORT || 3000}`;
+  return config.appUrl;
 }
 
+// nodemailer's attachments contract (both the Brevo shim and the real SMTP
+// transport in config/mailer.js) needs a real local path — one of the few
+// remaining spots that can't go through storageService's normal
+// read/readStream, see its getAbsolutePath doc comment.
 function attachmentToAbsolutePath(publicPath) {
-  const relative = publicPath.replace(/^\//, '').replace(/^uploads\//, '');
-  return path.join(PUBLIC_UPLOADS_ROOT, relative);
+  return storageService.getAbsolutePath(publicPath);
 }
 
 // Templates are authored as plain text with {{token}} placeholders (same
@@ -60,7 +62,13 @@ async function sendMemberApprovedEmail(user) {
       lastName: user.lastName,
       fullName: fullName(user),
       email: user.email,
-      chapterName: user.chapter ? user.chapter.name : 'JPSME National',
+      // Alias kept alongside the current name so approval templates written
+      // before the organization migration keep substituting. Unlike the
+      // certificate path this never threw — user.chapter was simply undefined,
+      // so every approval email silently said "JPSME National" regardless of
+      // the member's actual organization.
+      organizationName: user.organization ? user.organization.name : 'JPSME National',
+      chapterName: user.organization ? user.organization.name : 'JPSME National',
     };
 
     const attachments = [];

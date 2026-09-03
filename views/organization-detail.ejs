@@ -1,0 +1,81 @@
+<%
+const organization = locals.organization;
+const ancestors = locals.ancestors || [];
+const children = locals.children || [];
+const memberCount = locals.memberCount || 0;
+const TYPE_LABEL = {
+  NATIONAL: 'National', PROVINCE: 'Province', STUDENT_UNIT: 'Student Unit',
+};
+// Only the levels that actually exist above this organization are shown —
+// a chapter hanging directly off a region shows two crumbs, not a padded four.
+%>
+
+<section class="relative left-1/2 -ml-[50vw] w-screen border-b border-[#26365f] bg-[radial-gradient(circle_at_14%_25%,#1c1442_0,transparent_35%),#080f29]">
+  <div class="max-w-6xl mx-auto px-4 py-16">
+    <nav class="text-sm text-slate-400 mb-4">
+      <a href="/">Home</a><span class="mx-2">&gt;</span>
+      <a href="/organizations">Organizations</a>
+      <% ancestors.forEach(a => { %>
+        <span class="mx-2">&gt;</span><a href="/organizations/<%= a.id %>"><%= a.name %></a>
+      <% }) %>
+      <span class="mx-2">&gt;</span><span class="font-bold text-amber-400"><%= organization.name %></span>
+    </nav>
+    <span class="inline-block text-xs font-semibold uppercase tracking-wide text-amber-400 mb-2"><%= TYPE_LABEL[organization.type] || organization.type %></span>
+    <h1 class="text-4xl sm:text-5xl font-extrabold text-white"><%= organization.name %></h1>
+  </div>
+</section>
+
+<div class="max-w-6xl mx-auto px-4 py-16">
+  <div class="grid gap-10 lg:grid-cols-[1.2fr_.8fr]">
+    <div>
+      <h2 class="text-2xl font-extrabold mb-4">
+        <% if (children.length) { %>Organizations under <%= organization.name %><% } else { %>About this organization<% } %>
+      </h2>
+
+      <% if (children.length) { %>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <% children.forEach(child => { %>
+            <a href="/organizations/<%= child.id %>"
+               class="block rounded-xl border border-slate-200 p-5 hover:shadow-md transition-shadow">
+              <span class="inline-block text-[11px] font-semibold uppercase tracking-wide text-indigo-600 mb-1"><%= TYPE_LABEL[child.type] || child.type %></span>
+              <h3 class="font-semibold leading-snug"><%= child.name %></h3>
+              <% if (child.institution) { %>
+                <p class="mt-1 text-xs text-slate-500"><%= child.institution %></p>
+              <% } %>
+            </a>
+          <% }) %>
+        </div>
+      <% } else { %>
+        <p class="text-slate-500">
+          This organization has no sub-organizations listed. Members belong to it directly.
+        </p>
+      <% } %>
+    </div>
+
+    <aside class="rounded-xl border border-slate-200 p-6 h-fit">
+      <h3 class="font-semibold mb-4">Details</h3>
+      <dl class="space-y-3 text-sm">
+        <div>
+          <dt class="text-slate-500">Type</dt>
+          <dd class="font-medium"><%= TYPE_LABEL[organization.type] || organization.type %></dd>
+        </div>
+        <div>
+          <dt class="text-slate-500">Members (including sub-organizations)</dt>
+          <dd class="font-medium"><%= memberCount %></dd>
+        </div>
+        <% if (organization.institution) { %>
+          <div><dt class="text-slate-500">Institution</dt><dd class="font-medium"><%= organization.institution %></dd></div>
+        <% } %>
+        <% if (organization.email) { %>
+          <div><dt class="text-slate-500">Email</dt><dd class="font-medium break-all"><%= organization.email %></dd></div>
+        <% } %>
+        <% if (organization.facebookUrl) { %>
+          <div><dt class="text-slate-500">Facebook</dt><dd><a class="text-indigo-600 hover:underline break-all" href="<%= organization.facebookUrl %>" rel="noopener noreferrer" target="_blank">View page</a></dd></div>
+        <% } %>
+        <% if (organization.yearFounded) { %>
+          <div><dt class="text-slate-500">Founded</dt><dd class="font-medium"><%= organization.yearFounded %></dd></div>
+        <% } %>
+      </dl>
+    </aside>
+  </div>
+</div>

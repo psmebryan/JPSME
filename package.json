@@ -7,12 +7,18 @@
     "start": "node src/cluster.js",
     "start:cluster": "node src/cluster.js",
     "dev": "node --watch src/server.js",
+    "worker": "node src/worker.js",
+    "worker:dev": "node --watch src/worker.js",
     "build:css": "tailwindcss -i ./src/styles/tailwind.css -o ./public/css/tailwind.css --minify",
     "watch:css": "tailwindcss -i ./src/styles/tailwind.css -o ./public/css/tailwind.css --watch",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "db:seed": "node prisma/seed.js",
-    "test:paymongo": "node tests/paymongo.service.test.js"
+    "import:organizations": "node prisma/importOrganizations.js",
+    "test:paymongo": "node tests/paymongo.service.test.js",
+    "test:organizations": "node tests/organization.service.test.js",
+    "seed:dummy": "node prisma/seedDummyUsers.js",
+    "test:attachment": "node tests/organization.attachment.test.js"
   },
   "license": "UNLICENSED",
   "dependencies": {
@@ -37,6 +43,7 @@
     "pdfkit": "^0.19.1"
   },
   "devDependencies": {
+    "autocannon": "^8.0.0",
     "prisma": "^5.20.0",
     "tailwindcss": "^3.4.19"
   },

@@ -1,10 +1,9 @@
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
-const fs = require('fs').promises;
-const path = require('path');
 const certificateService = require('./certificate.service');
 const emailTemplateService = require('./emailTemplate.service');
 const sheetsSyncService = require('./sheetsSync.service');
+const storageService = require('./storage.service');
 
 const DEFAULT_PAGE_SIZE = 5;
 
@@ -65,20 +64,15 @@ async function createEvent(data) {
 async function updateEvent(id, data) {
   const existing = await getEventById(id);
 
-  // If a new imageUrl was provided and the existing image is an uploaded file, try to remove it.
+  // If a new imageUrl was provided and the existing image is an uploaded
+  // file (not an external URL), remove it — storageService.remove() already
+  // no-ops for anything it doesn't manage, so no separate check is needed
+  // here first.
   if (data.imageUrl !== undefined && existing.imageUrl) {
-    try {
-      const prev = existing.imageUrl;
-      // Only unlink files that are in the local uploads/events folder (avoid removing external URLs)
-      if (prev.startsWith('/uploads/events/') || prev.startsWith('uploads/events/')) {
-        const relative = prev.replace(/^\//, ''); // remove leading slash if present
-        const filePath = path.join(__dirname, '..', '..', 'public', relative);
-        await fs.unlink(filePath).catch(() => {});
-      }
-    } catch (err) {
+    await storageService.remove(existing.imageUrl).catch((err) => {
       // swallow errors — failure to delete should not prevent the update
       console.error('Failed to remove previous event image:', err.message || err);
-    }
+    });
   }
 
   const updated = await prisma.event.update({
@@ -118,14 +112,10 @@ async function deleteEvent(id) {
   }
 
   // Remove uploaded image file if present
-  if (existing.imageUrl && (existing.imageUrl.startsWith('/uploads/events/') || existing.imageUrl.startsWith('uploads/events/'))) {
-    try {
-      const relative = existing.imageUrl.replace(/^\//, '');
-      const filePath = path.join(__dirname, '..', '..', 'public', relative);
-      await fs.unlink(filePath).catch(() => {});
-    } catch (err) {
+  if (existing.imageUrl) {
+    await storageService.remove(existing.imageUrl).catch((err) => {
       console.error('Failed to remove event image on delete:', err.message || err);
-    }
+    });
   }
   // Remove the event's certificate template background + any generated certificate
   // PDFs so deleting an event doesn't orphan files (DB rows cascade automatically).
@@ -138,6 +128,7 @@ async function deleteEvent(id) {
   });
   await prisma.event.delete({ where: { id: Number(id) } });
   sheetsSyncService.deleteEventTab(id);
+  sheetsSyncService.deleteEventInvitationsTab(id);
 }
 
 /**

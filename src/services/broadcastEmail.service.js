@@ -1,37 +1,40 @@
 const path = require('path');
+const config = require('../config');
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
 const { transporter, MAIL_FROM } = require('../config/mailer');
+const storageService = require('./storage.service');
 const { substituteTokens, fullName } = require('../utils/templateTokens');
 
-const PROJECT_ROOT = path.join(__dirname, '..', '..');
-const PUBLIC_UPLOADS_ROOT = path.join(PROJECT_ROOT, 'public', 'uploads');
-
-const SEND_INTERVAL_MS = Number(process.env.BROADCAST_SEND_INTERVAL_MS) || 350;
+const SEND_INTERVAL_MS = config.jobs.broadcastSendIntervalMs;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// See mail.service.js's identical comment — nodemailer's attachments
+// contract needs a real local path, one of the few remaining spots that
+// can't go through storageService's normal read/readStream.
 function attachmentToAbsolutePath(publicPath) {
-  const relative = publicPath.replace(/^\//, '').replace(/^uploads\//, '');
-  return path.join(PUBLIC_UPLOADS_ROOT, relative);
+  return storageService.getAbsolutePath(publicPath);
 }
 
 function textToHtml(text) {
   return String(text || '').replace(/\n/g, '<br>');
 }
 
-// scope 'all' -> every APPROVED USER (optionally narrowed to one chapter);
+// scope 'all' -> every APPROVED USER (optionally narrowed to one organization
+// subtree — organizationIds carries the org plus its descendants);
 // scope 'selected' -> exactly the given userIds. Never trusts a client-sent
 // recipient LIST for 'all' — only the filter criteria.
-function buildAudienceWhere({ scope, status, chapterId, userIds }) {
+function buildAudienceWhere({ scope, status, organizationId, organizationIds, userIds }) {
   if (scope === 'selected') {
     const ids = (userIds || []).map(Number).filter((id) => Number.isInteger(id));
     return { id: { in: ids } };
   }
   const where = { role: 'USER', status: status || 'APPROVED' };
-  if (chapterId) where.chapterId = Number(chapterId);
+  if (Array.isArray(organizationIds)) where.organizationId = { in: organizationIds };
+  else if (organizationId) where.organizationId = Number(organizationId);
   return where;
 }
 

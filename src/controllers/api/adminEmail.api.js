@@ -1,7 +1,9 @@
+const path = require('path');
 const { validationResult } = require('express-validator');
 const asyncHandler = require('../../utils/asyncHandler');
 const { success, error } = require('../../utils/apiResponse');
 const emailTemplateService = require('../../services/emailTemplate.service');
+const storageService = require('../../services/storage.service');
 
 function checkValidation(req, res) {
   const result = validationResult(req);
@@ -27,7 +29,11 @@ const updateMemberApprovedTemplate = asyncHandler(async (req, res) => {
 
 const uploadMemberApprovedAttachment = asyncHandler(async (req, res) => {
   if (!req.file) return error(res, 'No image uploaded', 400);
-  const publicPath = `/uploads/email-attachments/${req.file.filename}`;
+  const publicPath = await storageService.saveUpload(req.file.buffer, {
+    folder: 'email-attachments',
+    prefix: 'emailattach',
+    extension: path.extname(req.file.originalname).toLowerCase(),
+  });
   const template = await emailTemplateService.setMemberApprovedAttachment(publicPath);
   return success(res, { template }, 'Attachment updated');
 });
@@ -47,7 +53,11 @@ const updateEventTemplate = asyncHandler(async (req, res) => {
 
 const uploadEventAttachment = asyncHandler(async (req, res) => {
   if (!req.file) return error(res, 'No image uploaded', 400);
-  const publicPath = `/uploads/email-attachments/${req.file.filename}`;
+  const publicPath = await storageService.saveUpload(req.file.buffer, {
+    folder: 'email-attachments',
+    prefix: 'emailattach',
+    extension: path.extname(req.file.originalname).toLowerCase(),
+  });
   const template = await emailTemplateService.setEventTemplateAttachment(req.params.eventId, publicPath);
   return success(res, { template }, 'Attachment updated');
 });

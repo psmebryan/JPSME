@@ -1,4 +1,5 @@
 const { Prisma } = require('@prisma/client');
+const config = require('../config');
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
 const settingsService = require('./settings.service');
@@ -9,6 +10,26 @@ const userService = require('./user.service');
 const mailService = require('./mail.service');
 const sheetsSyncService = require('./sheetsSync.service');
 const invitationService = require('./invitation.service');
+
+// Grosses up baseCentavos so that after PayMongo deducts its own percentage
+// cut from the TOTAL charged, JPSME still nets baseCentavos — i.e. the payer
+// absorbs the gateway's fee instead of JPSME. Simply adding baseCentavos *
+// percent would under-charge, since PayMongo's cut is taken from the
+// grossed-up total, not from the base fee alone: if T is the total and p the
+// fee rate, T - T*p = baseCentavos, so T = baseCentavos / (1 - p).
+// This is an upfront estimate to decide what to charge — PayMongo's actual
+// deducted fee (captured separately as gatewayFeeCentavos once the payment
+// settles, see applyPaymentPaid) can differ by a centavo or two due to their
+// own internal rounding, so the real net occasionally lands a centavo off
+// baseCentavos either way. No safety buffer here by design — charge exactly
+// what the formula says, nothing padded on top.
+async function calculateGatewaySurcharge(baseCentavos) {
+  if (baseCentavos <= 0) return 0;
+  const percent = await settingsService.getGatewaySurchargePercent();
+  const rate = percent / 100;
+  const total = baseCentavos / (1 - rate);
+  return Math.round(total - baseCentavos);
+}
 
 const ACTIVE_STATUSES = ['PENDING', 'PROCESSING'];
 const PAID_EVENT_TYPES = new Set(['checkout_session.payment.paid', 'payment.paid']);
@@ -25,17 +46,97 @@ const SAFE_USER_SELECT = {
   email: true,
   phone: true,
   school: true,
-  chapterId: true,
+  organizationId: true,
   role: true,
   status: true,
-  chapter: true,
+  organization: true,
 };
 
 function appUrl() {
-  return process.env.APP_URL || `http://localhost:${process.env.PORT || 3000}`;
+  return config.appUrl;
 }
 
 // --- Reads ---
+
+// A paid membership is good for one year from the moment it is confirmed.
+const MEMBERSHIP_VALIDITY_DAYS = 365;
+
+function addDays(date, days) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+// Renewing extends from whichever is later — the existing expiry, or today.
+// Paying early therefore never forfeits the remainder of the current year,
+// while renewing after a lapse starts a fresh year rather than back-dating one
+// that has already run out.
+function nextMembershipExpiry(currentExpiry, from = new Date()) {
+  const base = currentExpiry && new Date(currentExpiry) > from ? new Date(currentExpiry) : from;
+  return addDays(base, MEMBERSHIP_VALIDITY_DAYS);
+}
+
+// How the app classifies people, and how the three categories relate:
+//
+//   MEMBER      — has an account and a membership inside its validity year
+//   NON_MEMBER  — has an account but has never paid, or has lapsed
+//   GUEST       — has no account at all; exists only as an EventInvitation
+//                 row with a null userId, created for one specific event
+//
+// GUEST is deliberately absent from this function: it is not a state a User
+// can be in. Someone with no account has no User row to classify, so guests
+// are identified where they actually live — by an invitation without a userId.
+//
+// MEMBER/NON_MEMBER are derived from payment state on every read rather than
+// stored, because a stored copy would silently go stale the moment a
+// membership lapsed with nothing running to update it.
+const MEMBERSHIP_TIERS = { MEMBER: 'MEMBER', NON_MEMBER: 'NON_MEMBER', GUEST: 'GUEST' };
+
+// Pure, and takes the payment as an argument, so a list view can classify a
+// page of members from data it has already batched instead of issuing a query
+// per row. `latestMembershipPayment` may be null/undefined.
+function classifyMembership(user, latestMembershipPayment) {
+  let expiresAt = user && user.membershipExpiresAt;
+
+  // Backfill for anyone who paid before expiry was tracked: derive the date
+  // from their payment rather than showing them as never having paid.
+  if (!expiresAt && latestMembershipPayment
+      && latestMembershipPayment.status === 'PAID' && latestMembershipPayment.paidAt) {
+    expiresAt = addDays(latestMembershipPayment.paidAt, MEMBERSHIP_VALIDITY_DAYS);
+  }
+
+  if (!expiresAt) {
+    return { tier: MEMBERSHIP_TIERS.NON_MEMBER, state: 'NONE', expiresAt: null, daysRemaining: null };
+  }
+
+  const msLeft = new Date(expiresAt).getTime() - Date.now();
+  const active = msLeft > 0;
+  return {
+    tier: active ? MEMBERSHIP_TIERS.MEMBER : MEMBERSHIP_TIERS.NON_MEMBER,
+    state: active ? 'ACTIVE' : 'EXPIRED',
+    expiresAt,
+    daysRemaining: Math.ceil(msLeft / 86400000),
+  };
+}
+
+// Single-user convenience over classifyMembership, for the member's own pages.
+// NONE and EXPIRED both classify as NON_MEMBER but stay distinguishable here,
+// since only EXPIRED is something to renew.
+async function getMembershipStatus(userId) {
+  const user = await prisma.user.findUnique({
+    where: { id: Number(userId) },
+    select: { membershipExpiresAt: true },
+  });
+  if (!user) throw new AppError('User not found', 404);
+
+  const latest = user.membershipExpiresAt ? null : await prisma.payment.findFirst({
+    where: { userId: Number(userId), purpose: 'MEMBERSHIP_REGISTRATION', status: 'PAID' },
+    orderBy: { paidAt: 'desc' },
+    select: { status: true, paidAt: true },
+  });
+
+  return classifyMembership(user, latest);
+}
 
 async function getLatestMembershipPayment(userId) {
   return prisma.payment.findFirst({
@@ -99,7 +200,7 @@ async function getPaymentForViewer(paymentId, viewer) {
 // `purpose` unset means "all purposes" — event-fee payments show up alongside
 // membership payments by default now that both exist; pass an explicit
 // purpose to filter down to one.
-function buildAdminPaymentWhere({ status, chapterId, dateFrom, dateTo, purpose, eventId }) {
+function buildAdminPaymentWhere({ status, organizationId, organizationIds, dateFrom, dateTo, purpose, eventId }) {
   const where = {};
   if (purpose) where.purpose = purpose;
   if (eventId) where.eventId = Number(eventId);
@@ -109,14 +210,18 @@ function buildAdminPaymentWhere({ status, chapterId, dateFrom, dateTo, purpose, 
     if (dateFrom) where.createdAt.gte = new Date(dateFrom);
     if (dateTo) where.createdAt.lte = new Date(dateTo);
   }
-  if (chapterId) {
-    where.user = { chapterId: Number(chapterId) };
+  // Subtree-aware: filtering by a cluster includes payments from members of
+  // the chapters and student units beneath it, not just its direct members.
+  if (Array.isArray(organizationIds)) {
+    where.user = { organizationId: { in: organizationIds } };
+  } else if (organizationId) {
+    where.user = { organizationId: Number(organizationId) };
   }
   return where;
 }
 
-async function listPaymentsForAdmin({ status, chapterId, dateFrom, dateTo, purpose, eventId, page = 1, pageSize = 20 }) {
-  const where = buildAdminPaymentWhere({ status, chapterId, dateFrom, dateTo, purpose, eventId });
+async function listPaymentsForAdmin({ status, organizationId, organizationIds, dateFrom, dateTo, purpose, eventId, page = 1, pageSize = 20 }) {
+  const where = buildAdminPaymentWhere({ status, organizationId, organizationIds, dateFrom, dateTo, purpose, eventId });
 
   const [total, payments] = await Promise.all([
     prisma.payment.count({ where }),
@@ -195,7 +300,7 @@ async function createNextPaymentAttempt(paymentId) {
 // PayMongo call happens after this transaction commits, further below) —
 // holding a DB transaction open across a third-party network call would pin
 // row locks for an unbounded time.
-async function createCheckout({ userId, purpose, eventId, amount, description, referencePrefix, successUrl, cancelUrl, alreadyPaidMessage, withinTransaction }) {
+async function createCheckout({ userId, purpose, eventId, amount, description, referencePrefix, successUrl, cancelUrl, alreadyPaidMessage, allowRenewal = false, withinTransaction }) {
   if (!(await settingsService.getPaymentsEnabled())) {
     throw new AppError('Payments are temporarily unavailable. Please try again later.', 503);
   }
@@ -203,12 +308,25 @@ async function createCheckout({ userId, purpose, eventId, amount, description, r
   const user = await prisma.user.findUnique({ where: { id: Number(userId) } });
   if (!user) throw new AppError('User not found', 404);
 
-  const alreadyPaid = await prisma.payment.findFirst({
-    where: { userId: user.id, purpose, eventId: eventId || null, status: 'PAID' },
-  });
-  if (alreadyPaid) {
-    throw new AppError(alreadyPaidMessage, 409);
+  // Membership is renewable, so a past PAID payment must not block a new one —
+  // the caller (createMembershipCheckout) has already refused the case that
+  // actually matters, an membership still inside its validity year. For an
+  // event fee there is nothing to renew, so any prior payment still blocks.
+  if (!allowRenewal) {
+    const alreadyPaid = await prisma.payment.findFirst({
+      where: { userId: user.id, purpose, eventId: eventId || null, status: 'PAID' },
+    });
+    if (alreadyPaid) {
+      throw new AppError(alreadyPaidMessage, 409);
+    }
   }
+
+  // `amount` is always the fee JPSME actually wants to net — the payer covers
+  // PayMongo's cut on top, so what actually gets charged (and stored as
+  // Payment.amount, since that's what the gateway will report back and
+  // verifyGatewayAmountMatches compares against) is the grossed-up total.
+  const surchargeCentavos = await calculateGatewaySurcharge(amount);
+  const totalAmount = amount + surchargeCentavos;
 
   // Serializable isolation closes the "double-click Pay" race: if two concurrent
   // requests both try to create a payment for the same user (+event, for the
@@ -229,10 +347,16 @@ async function createCheckout({ userId, purpose, eventId, amount, description, r
           if (existing.status === 'PROCESSING') {
             throw new AppError('Your payment is already being processed. Please wait for confirmation.', 409);
           }
-          paymentRow = existing; // PENDING with no successful checkout yet — reuse it for a retry
+          // PENDING with no successful checkout yet — reuse it for a retry,
+          // refreshed to the current fee/surcharge (covers the surcharge
+          // rate changing, or a legacy pre-surcharge row, between attempts).
+          paymentRow = await tx.payment.update({
+            where: { id: existing.id },
+            data: { amount: totalAmount },
+          });
         } else {
           paymentRow = await tx.payment.create({
-            data: { userId: user.id, purpose, eventId: eventId || null, amount, currency: 'PHP', status: 'PENDING' },
+            data: { userId: user.id, purpose, eventId: eventId || null, amount: totalAmount, currency: 'PHP', status: 'PENDING' },
           });
         }
 
@@ -261,7 +385,8 @@ async function createCheckout({ userId, purpose, eventId, amount, description, r
 
   try {
     const { checkoutId, checkoutUrl } = await paymongoService.createGcashCheckout({
-      amountCentavos: payment.amount,
+      amountCentavos: amount,
+      surchargeCentavos,
       description,
       referenceNumber: `${referencePrefix}-${payment.id}`,
       successUrl,
@@ -301,6 +426,15 @@ async function createMembershipCheckout(userId) {
     throw new AppError('Membership fee is not configured yet. Please contact an administrator.', 503);
   }
 
+  // Renewal is allowed once the year has run out, or early while still active
+  // is not — paying twice inside one validity period is almost always a
+  // double-click or a misunderstanding, not an intent to buy two years.
+  const membership = await getMembershipStatus(userId);
+  if (membership.state === 'ACTIVE') {
+    const until = new Date(membership.expiresAt).toLocaleDateString();
+    throw new AppError(`Your membership is already active until ${until}.`, 409);
+  }
+
   return createCheckout({
     userId,
     purpose: 'MEMBERSHIP_REGISTRATION',
@@ -311,6 +445,7 @@ async function createMembershipCheckout(userId) {
     successUrl: `${appUrl()}/membership-payment/return`,
     cancelUrl: `${appUrl()}/membership-payment/return`,
     alreadyPaidMessage: 'You have already paid your membership fee.',
+    allowRenewal: true,
   });
 }
 
@@ -430,11 +565,19 @@ async function verifyGatewayAmountMatches(localPayment, gatewayAmount, gatewayCu
 // EventRegistration from PENDING_PAYMENT to REGISTERED — that cross-table
 // invariant isn't DB-enforced, so a missing/wrong-state registration here is
 // logged loudly (console.error + audit metadata) rather than silently ignored.
-async function applyPaymentPaid(localPayment, { gatewayPaymentId, webhookRecordId, source, ipAddress } = {}) {
+async function applyPaymentPaid(localPayment, { gatewayPaymentId, gatewayFeeCentavos, webhookRecordId, source, ipAddress } = {}) {
   const result = await prisma.$transaction(async (tx) => {
     await tx.payment.update({
       where: { id: localPayment.id },
-      data: { status: 'PAID', paidAt: new Date(), gatewayPaymentId: gatewayPaymentId || localPayment.gatewayPaymentId },
+      data: {
+        status: 'PAID',
+        paidAt: new Date(),
+        gatewayPaymentId: gatewayPaymentId || localPayment.gatewayPaymentId,
+        // PayMongo's own reported cut — recorded for accounting (Total paid /
+        // Fee deducted / Net received on the admin report), not estimated in
+        // advance. Left at 0 if the gateway didn't report one.
+        ...(gatewayFeeCentavos !== undefined ? { gatewayFeeCentavos } : {}),
+      },
     });
 
     const latestAttempt = await tx.paymentAttempt.findFirst({
@@ -512,6 +655,17 @@ async function applyPaymentPaid(localPayment, { gatewayPaymentId, webhookRecordI
   if (localPayment.purpose === 'MEMBERSHIP_REGISTRATION') {
     try {
       const user = await prisma.user.findUnique({ where: { id: localPayment.userId } });
+
+      // Start (or extend) the one-year validity. Done before the approval
+      // below so that even if setStatus fails, the member still gets the year
+      // they paid for — the two are independent facts.
+      if (user) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { membershipExpiresAt: nextMembershipExpiry(user.membershipExpiresAt) },
+        });
+      }
+
       if (user && user.status === 'PENDING') {
         await userService.setStatus(localPayment.userId, 'APPROVED', {
           reason: 'MEMBERSHIP_PAYMENT_CONFIRMED',
@@ -520,6 +674,17 @@ async function applyPaymentPaid(localPayment, { gatewayPaymentId, webhookRecordI
       }
     } catch (err) {
       console.error('applyPaymentPaid: failed to auto-approve membership for payment', localPayment.id, err.message);
+      // Previously this console.error was the ONLY record of the failure —
+      // invisible outside server logs, so a stuck PENDING-despite-PAID
+      // account could go unnoticed indefinitely (found exactly this happening
+      // to a real user). Logged here too so it surfaces on the admin audit
+      // log and actually gets someone's attention.
+      await auditService.log({
+        action: 'AUTO_APPROVAL_FAILED',
+        targetUserId: localPayment.userId,
+        paymentId: localPayment.id,
+        metadata: { error: err.message },
+      }).catch(() => {});
     }
   }
 
@@ -632,6 +797,9 @@ async function handlePaymentPaidEvent({ webhookRecord, resource, ipAddress }) {
   const gatewayCurrency = gatewayPayment?.attributes?.currency ?? gatewayPayment?.currency ?? 'PHP';
   const gatewayStatus = gatewayPayment?.attributes?.status ?? gatewayPayment?.status;
   const gatewayId = gatewayPayment?.id;
+  // Only present once PayMongo has actually settled the payment — this is
+  // their real deducted cut, not an estimate.
+  const gatewayFeeCentavos = gatewayPayment?.attributes?.fee ?? gatewayPayment?.fee;
 
   await verifyGatewayAmountMatches(localPayment, gatewayAmount, gatewayCurrency, {
     webhookId: webhookRecord.webhookId,
@@ -644,7 +812,7 @@ async function handlePaymentPaidEvent({ webhookRecord, resource, ipAddress }) {
     return { notPaid: true };
   }
 
-  await applyPaymentPaid(localPayment, { gatewayPaymentId: gatewayId, webhookRecordId: webhookRecord.id, source: 'webhook', ipAddress });
+  await applyPaymentPaid(localPayment, { gatewayPaymentId: gatewayId, gatewayFeeCentavos, webhookRecordId: webhookRecord.id, source: 'webhook', ipAddress });
 
   return { confirmed: true, paymentId: localPayment.id };
 }
@@ -794,7 +962,11 @@ async function reconcilePayment(paymentId, { triggeredBy = 'admin' } = {}) {
     const gatewayAmount = paidGatewayPayment.attributes?.amount;
     const gatewayCurrency = paidGatewayPayment.attributes?.currency ?? 'PHP';
     await verifyGatewayAmountMatches(payment, gatewayAmount, gatewayCurrency, {});
-    await applyPaymentPaid(payment, { gatewayPaymentId: paidGatewayPayment.id, source: 'reconcile' });
+    await applyPaymentPaid(payment, {
+      gatewayPaymentId: paidGatewayPayment.id,
+      gatewayFeeCentavos: paidGatewayPayment.attributes?.fee,
+      source: 'reconcile',
+    });
     await auditService.log({ action: 'PAYMENT_RECONCILED', paymentId: payment.id, metadata: { outcome: 'marked_paid', gatewayPaymentId: paidGatewayPayment.id, triggeredBy } });
     return { outcome: 'marked_paid', paymentId: payment.id };
   }
@@ -879,6 +1051,11 @@ async function requestRefund({ paymentId, adminUserId, reason, notes }) {
 }
 
 module.exports = {
+  getMembershipStatus,
+  classifyMembership,
+  MEMBERSHIP_TIERS,
+  nextMembershipExpiry,
+  MEMBERSHIP_VALIDITY_DAYS,
   getLatestMembershipPayment,
   getLatestEventPayment,
   getLatestMembershipStatusForUsers,
@@ -887,6 +1064,7 @@ module.exports = {
   getPaymentSummary,
   createMembershipCheckout,
   createEventCheckout,
+  calculateGatewaySurcharge,
   processWebhookEvent,
   requestRefund,
   reconcilePayment,

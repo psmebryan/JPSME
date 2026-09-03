@@ -1,4 +1,3 @@
-require('dotenv').config();
 const crypto = require('crypto');
 const path = require('path');
 const express = require('express');
@@ -7,6 +6,9 @@ const helmet = require('helmet');
 const compression = require('compression');
 const expressLayouts = require('express-ejs-layouts');
 
+const config = require('./config');
+const prisma = require('./config/prisma');
+const logger = require('./utils/logger');
 const pagesRoutes = require('./routes/pages.routes');
 const apiRoutes = require('./routes/api');
 const { issueCsrfToken } = require('./middleware/csrf.middleware');
@@ -15,14 +17,88 @@ const settingsService = require('./services/settings.service');
 const sessionStore = require('./config/sessionStore');
 
 const app = express();
-const isProduction = process.env.NODE_ENV === 'production';
 
 // Only trust X-Forwarded-* headers when we know there's an actual reverse proxy
 // in front (set TRUST_PROXY=true once deployed behind one) — trusting them
 // blindly lets clients spoof their IP and dodge the rate limiters below.
-if (process.env.TRUST_PROXY === 'true') {
+if (config.trustProxy) {
   app.set('trust proxy', 1);
 }
+
+// Health checks — mounted before every other middleware (session, CSRF,
+// helmet, static) on purpose: a load balancer or uptime monitor can hit
+// these every few seconds, and they must never create a session row (the
+// MySQL-backed session store would otherwise fill with one row per health
+// check), depend on CSRF state, or wait behind any other middleware.
+// - /health: liveness only — the process is up and Express is handling
+//   requests. No dependency checks, so it can't report "unhealthy" just
+//   because the database is slow.
+// - /health/db: readiness — a real query, so a DB outage or connection-pool
+//   exhaustion shows up here even though /health still reports fine. Timeout-
+//   raced against a fixed budget so a hung connection fails fast instead of
+//   hanging the health check itself indefinitely (defeating its purpose).
+// - /health/dependencies: which external providers are actually configured
+//   (booleans only, never the credential values) — checks configuration
+//   presence, not live reachability, so hitting this endpoint never spends
+//   a real PayMongo/Brevo/Google API call.
+const HEALTH_DB_TIMEOUT_MS = 3000;
+
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
+app.get('/health/db', async (req, res) => {
+  try {
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Database health check timed out')), HEALTH_DB_TIMEOUT_MS)),
+    ]);
+    res.status(200).json({ status: 'ok', database: 'up' });
+  } catch (err) {
+    res.status(503).json({ status: 'error', database: 'down' });
+  }
+});
+
+app.get('/health/dependencies', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    dependencies: {
+      database: !!config.database.url,
+      email: config.email.provider === 'brevo' ? !!config.email.brevoApiKey : true,
+      payment: config.payment.provider === 'paymongo' ? !!config.payment.paymongoSecretKey : true,
+      googleSheets: !!(config.googleSheets.sheetId && config.googleSheets.serviceAccountEmail && config.googleSheets.serviceAccountPrivateKey),
+    },
+  });
+});
+
+// Every request gets a correlation id — generated fresh, or reused from an
+// upstream X-Request-Id header if one arrives already set (e.g. from a
+// future reverse proxy/load balancer) — echoed back as a response header so
+// a client-reported issue can be traced to its exact server-side log lines.
+// req.log is a child logger with this id attached to every field
+// automatically; a route handler that wants request-scoped structured
+// logging uses req.log instead of the bare logger. Mounted after the health
+// checks (and before everything else) so frequent monitor pings never
+// generate a log line, but every real request does — logged once, at
+// completion, with the method/path/status/duration together rather than
+// scattered across whatever a handler happened to console.log along the way.
+app.use((req, res, next) => {
+  req.id = req.get('X-Request-Id') || crypto.randomUUID();
+  res.setHeader('X-Request-Id', req.id);
+  req.log = logger.child({ requestId: req.id });
+
+  const startedAt = Date.now();
+  res.on('finish', () => {
+    req.log.info('request completed', {
+      method: req.method,
+      path: req.originalUrl,
+      status: res.statusCode,
+      durationMs: Date.now() - startedAt,
+    });
+  });
+
+  next();
+});
 
 app.use(compression());
 
@@ -56,13 +132,14 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use(
   session({
-    secret: process.env.SESSION_SECRET,
+    name: 'jpsme.sid', // avoid the express-session default 'connect.sid', which fingerprints the stack to anyone probing the site
+    secret: config.session.secret,
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: isProduction,
+      secure: config.isProduction,
       sameSite: 'lax',
       maxAge: 1000 * 60 * 60 * 8, // 8 hours
     },
@@ -78,6 +155,17 @@ app.set('layout', 'layout');
 
 // Uploaded files always get a fresh random filename (upload.middleware.js), so a
 // "same" URL never serves different content — long caching is safe here.
+//
+// SECURITY-LOAD-BEARING ORDERING: this must stay registered after helmet()
+// above, not before. Profile images/logos/sponsor logos allow SVG uploads,
+// and an SVG can embed a <script> — verifyImageSignature.js only checks that
+// the file looks like an image, it doesn't sanitize SVG content. What
+// actually neutralizes that is the CSP header helmet attaches to every
+// response, including this static one: script-src has no 'unsafe-inline'
+// and a per-request nonce a pre-uploaded file could never contain, so a
+// malicious SVG opened directly in a browser tab has its embedded script
+// blocked. Moving this static mount before helmet (e.g. "for performance")
+// would silently remove that protection.
 app.use('/uploads', express.static(path.join(__dirname, '..', 'public', 'uploads'), { maxAge: '7d', etag: true }));
 
 // Everything else (app JS/CSS/images) lives at a FIXED filename that does
@@ -109,13 +197,36 @@ app.use(async (req, res, next) => {
 // membership payment, since the admin's approval decision is informed by
 // seeing that payment status. Everywhere else, confine them to the payment
 // flow until an admin approves the account.
+// A PENDING member is verified but not yet approved. What they may do while
+// waiting depends on whether membership payment is required (Admin →
+// Settings, off by default).
+//
+// Optional membership (the default): they are not confined at all. They can
+// browse, keep their profile up to date, and settle the fee whenever they
+// like — the account and everything on it is retained either way, and an
+// admin still decides approval. Member-only actions remain gated by the
+// normal ensureAuth/approved checks further in, so "not confined" does not
+// mean "treated as approved".
+//
+// Required membership: the original behaviour — held on /membership-payment
+// until the payment clears (which auto-approves them, see payment.service.js)
+// or an admin approves them by hand.
 const PENDING_USER_ALLOWED_PREFIXES = ['/membership-payment', '/logout', '/api/payments', '/api/auth/logout', '/api/csrf-token'];
-app.use((req, res, next) => {
+app.use(async (req, res, next) => {
   const user = req.session.user;
   if (!user || user.role !== 'USER' || user.status !== 'PENDING') return next();
 
   const allowed = PENDING_USER_ALLOWED_PREFIXES.some((prefix) => req.path === prefix || req.path.startsWith(`${prefix}/`));
   if (allowed) return next();
+
+  try {
+    if (!(await settingsService.getMembershipPaymentRequired())) return next();
+  } catch (err) {
+    // A settings lookup failure must not lock every pending member out of the
+    // site; fall through to the permissive default this setting ships with.
+    (req.log || logger).error('pending-user gate: settings lookup failed', { err });
+    return next();
+  }
 
   if (req.path.startsWith('/api/')) {
     return res.status(403).json({ success: false, message: 'Please complete your membership payment first' });
@@ -139,10 +250,20 @@ app.use((req, res) => {
 // for those, no matter what raw error text it carries.
 app.use((err, req, res, next) => {
   const isKnownError = err instanceof AppError;
-  const statusCode = isKnownError ? err.statusCode : 500;
-  const safeMessage = isKnownError ? err.message : 'Something went wrong. Please try again.';
+
+  // A body that isn't valid JSON is the caller's mistake, not ours. express.json()
+  // raises a SyntaxError with a 400 status already attached; without this it fell
+  // through to the 500 branch, which both told the client the server had broken
+  // and wrote a server-error log line for what is really malformed input — noise
+  // that would trip 5xx alerting on nothing more than a bad request body.
+  const isBodyParseError = err instanceof SyntaxError && err.status === 400 && 'body' in err;
+
+  const statusCode = isKnownError ? err.statusCode : (isBodyParseError ? 400 : 500);
+  const safeMessage = isKnownError
+    ? err.message
+    : (isBodyParseError ? 'Invalid JSON in request body' : 'Something went wrong. Please try again.');
   if (statusCode >= 500) {
-    console.error(err);
+    (req.log || logger).error('unhandled request error', { err, method: req.method, path: req.originalUrl });
   }
 
   if (req.path.startsWith('/api/')) {

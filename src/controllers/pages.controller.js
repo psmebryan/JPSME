@@ -1,8 +1,10 @@
+const prisma = require('../config/prisma');
 const asyncHandler = require('../utils/asyncHandler');
 const eventService = require('../services/event.service');
 const userService = require('../services/user.service');
 const authService = require('../services/auth.service');
-const chapterService = require('../services/chapter.service');
+const organizationService = require('../services/organization.service');
+const organizationAdminService = require('../services/organizationAdmin.service');
 const settingsService = require('../services/settings.service');
 const registrationService = require('../services/registration.service');
 const invitationService = require('../services/invitation.service');
@@ -48,8 +50,9 @@ const officersPage = aboutPlaceholderPage('Officers');
 const membershipPage = aboutPlaceholderPage('Membership');
 
 const registerPage = asyncHandler(async (req, res) => {
-  const chapters = await chapterService.listChapters();
-  const activeChapters = chapters.filter((chapter) => chapter.isActive !== false);
+  // The picker is search-driven (see /api/organizations/search); this seeds it
+  // with a first page so the form is usable before the user types anything.
+  const seed = await organizationService.searchOrganizations({ page: 1, pageSize: 50 });
   // Same-site-only, mirroring the login page's own ?next= guard — this one
   // just gets embedded as a hidden field and re-validated/sanitized again
   // server-side at actual registration time (auth.service.js), so a bad
@@ -57,7 +60,7 @@ const registerPage = asyncHandler(async (req, res) => {
   const next = typeof req.query.next === 'string' && req.query.next.startsWith('/') && !req.query.next.startsWith('//')
     ? req.query.next
     : '';
-  res.render('register', { title: 'Create Account', chapters: activeChapters, next });
+  res.render('register', { title: 'Create Account', organizations: seed.organizations, next });
 });
 
 const verifyEmailPage = asyncHandler(async (req, res) => {
@@ -107,7 +110,11 @@ const eventDetailPage = asyncHandler(async (req, res) => {
     isRegistered = registrationStatus === 'REGISTERED';
   }
 
-  res.render('event-details', { title: event.title, event, isRegistered, registrationStatus });
+  // Previewed before "Register & Pay" so the total on PayMongo's own checkout
+  // page (fee + this same surcharge, itemized) isn't a surprise.
+  const surchargeCentavos = event.feeCentavos > 0 ? await paymentService.calculateGatewaySurcharge(event.feeCentavos) : 0;
+
+  res.render('event-details', { title: event.title, event, isRegistered, registrationStatus, surchargeCentavos });
 });
 
 // PayMongo's redirect-return pages aside, this is the one other place a
@@ -138,7 +145,9 @@ const eventInvitePage = asyncHandler(async (req, res) => {
       : invitation.email.toLowerCase() !== req.session.user.email.toLowerCase();
   }
 
-  res.render('event-details', { title: event.title, event, isRegistered, registrationStatus, invitation, invitationMismatch });
+  const surchargeCentavos = event.feeCentavos > 0 ? await paymentService.calculateGatewaySurcharge(event.feeCentavos) : 0;
+
+  res.render('event-details', { title: event.title, event, isRegistered, registrationStatus, invitation, invitationMismatch, surchargeCentavos });
 });
 
 // One-click RSVP link embedded directly in the invitation email's
@@ -172,13 +181,16 @@ const articleDetailPage = asyncHandler(async (req, res) => {
 });
 
 const profilePage = asyncHandler(async (req, res) => {
-  const [userProfile, registrations, chapters] = await Promise.all([
+  const [userProfile, registrations, orgSeed, membership] = await Promise.all([
     authService.getById(req.session.user.id),
     registrationService.getUserRegistrations(req.session.user.id),
-    chapterService.listChapters(),
+    organizationService.searchOrganizations({ page: 1, pageSize: 50 }),
+    paymentService.getMembershipStatus(req.session.user.id),
   ]);
 
-  const activeChapters = chapters.filter((chapter) => chapter.isActive !== false);
+  const organizationPath = userProfile.organizationId
+    ? await organizationService.getOrganizationPathLabel(userProfile.organizationId)
+    : null;
 
   const registeredEventIds = registrations
     .filter((reg) => reg.status === 'REGISTERED')
@@ -189,17 +201,26 @@ const profilePage = asyncHandler(async (req, res) => {
     title: 'My Profile',
     userProfile,
     registrations,
-    chapters: activeChapters,
+    membership,
+    organizations: orgSeed.organizations,
+    organizationPath,
     certifiedEventIds,
   });
 });
 
 const membershipPaymentPage = asyncHandler(async (req, res) => {
-  const [payment, feeCentavos] = await Promise.all([
+  const [payment, feeCentavos, membershipPaymentRequired, membership] = await Promise.all([
     paymentService.getLatestMembershipPayment(req.session.user.id),
     settingsService.getMembershipFeeCentavos(),
+    settingsService.getMembershipPaymentRequired(),
+    paymentService.getMembershipStatus(req.session.user.id),
   ]);
-  res.render('membership-payment', { title: 'Membership Payment', payment, feeCentavos });
+  // Shown before they click "Continue to Payment" so the total on PayMongo's
+  // own checkout page (fee + this same surcharge, itemized) isn't a surprise.
+  const surchargeCentavos = await paymentService.calculateGatewaySurcharge(feeCentavos);
+  res.render('membership-payment', {
+    title: 'Membership Payment', payment, feeCentavos, surchargeCentavos, membershipPaymentRequired, membership,
+  });
 });
 
 const membershipPaymentReturnPage = asyncHandler(async (req, res) => {
@@ -240,8 +261,8 @@ const adminDashboardPage = asyncHandler(async (req, res) => {
     return renderAdmin(req, res, 'admin/dashboard', { title: 'Admin Dashboard', isMainAdmin, ...dashboard });
   }
 
-  const dashboard = req.session.user.chapterId
-    ? await statsService.getChapterAdminDashboard(req.session.user.chapterId)
+  const dashboard = req.session.user.organizationId
+    ? await statsService.getOrganizationAdminDashboard(req.session.user.organizationId)
     : { totals: { totalMembers: 0, pendingApprovals: 0 }, upcomingEvents: [] };
   return renderAdmin(req, res, 'admin/dashboard', { title: 'Admin Dashboard', isMainAdmin, ...dashboard });
 });
@@ -255,10 +276,16 @@ const adminUsersPage = asyncHandler(async (req, res) => {
     viewMode = 'list';
     title = 'Manage Users';
   }
-  // fetch chapters for assignment dropdown
-  const chapters = await chapterService.listChapters();
-  const currentUser = req.session.user ? { role: req.session.user.role, chapterId: req.session.user.chapterId } : { role: null, chapterId: null };
-  renderAdmin(req, res, 'admin/users', { title, viewMode, chapters, currentUser });
+  // Organizations for the assignment dropdown — one page; the picker searches
+  // server-side for anything beyond this. Narrowed to the two fields the client
+  // actually uses (see admin.js's option renderers and doAssign): shipping whole
+  // rows also embedded importNote/path/timestamps into the page for no reason.
+  const orgSeed = await organizationService.searchOrganizations({ page: 1, pageSize: 50 });
+  const organizations = orgSeed.organizations.map((o) => ({ id: o.id, name: o.name }));
+  const currentUser = req.session.user
+    ? { role: req.session.user.role, organizationId: req.session.user.organizationId }
+    : { role: null, organizationId: null };
+  renderAdmin(req, res, 'admin/users', { title, viewMode, organizations, currentUser });
 });
 
 const adminEventsPage = asyncHandler(async (req, res) => {
@@ -288,12 +315,14 @@ const adminEventsPage = asyncHandler(async (req, res) => {
 });
 
 const adminSettingsPage = asyncHandler(async (req, res) => {
-  const [logoUrl, membershipFeeCentavos, paymentsEnabled] = await Promise.all([
+  const [logoUrl, membershipFeeCentavos, paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired] = await Promise.all([
     settingsService.getLogoUrl(),
     settingsService.getMembershipFeeCentavos(),
     settingsService.getPaymentsEnabled(),
+    settingsService.getGatewaySurchargePercent(),
+    settingsService.getMembershipPaymentRequired(),
   ]);
-  renderAdmin(req, res, 'admin/settings', { title: 'Site Settings', logoUrl, membershipFeeCentavos, paymentsEnabled });
+  renderAdmin(req, res, 'admin/settings', { title: 'Site Settings', logoUrl, membershipFeeCentavos, paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired });
 });
 
 const adminSponsorsPage = asyncHandler(async (req, res) => {
@@ -366,15 +395,15 @@ const adminEventEmailPage = asyncHandler(async (req, res) => {
 });
 
 const adminBroadcastsPage = asyncHandler(async (req, res) => {
-  const [broadcasts, chapters, members] = await Promise.all([
+  const [broadcasts, orgSeed, members] = await Promise.all([
     broadcastEmailService.listBroadcasts(),
-    chapterService.listChapters(),
+    organizationService.searchOrganizations({ page: 1, pageSize: 50 }),
     userService.listByStatus('APPROVED'),
   ]);
   renderAdmin(req, res, 'admin/broadcasts', {
     title: 'Broadcast Email',
     broadcasts,
-    chapters,
+    organizations: orgSeed.organizations,
     members,
   });
 });
@@ -404,68 +433,113 @@ const adminAuditLogPage = asyncHandler(async (req, res) => {
   });
 });
 
-const chaptersPage = asyncHandler(async (req, res) => {
-  const regions = await chapterService.listChaptersGrouped();
-  res.render('chapters', { title: 'Chapters', regions });
+// Public browse. Renders one level at a time from the real tree rather than a
+// fixed region>area>chapter nesting, so a branch with no cluster simply shows
+// its chapters directly — no empty level is displayed just to pad the shape.
+const organizationsPage = asyncHandler(async (req, res) => {
+  const root = await prisma.organization.findFirst({ where: { parentId: null } });
+  const children = root ? await organizationService.getChildren(root.id, { activeOnly: true }) : [];
+  res.render('organizations', { title: 'Organizations', root, children });
 });
 
-const chapterRegionPage = asyncHandler(async (req, res) => {
-  const region = await chapterService.getRegionWithChapters(Number(req.params.id));
-  if (!region) throw new AppError('Region not found', 404);
-  res.render('chapters-region', { title: region.name, region });
-});
-
-const chapterDetailPage = asyncHandler(async (req, res) => {
-  const chapter = await chapterService.getChapterWithRegion(Number(req.params.id));
-  if (!chapter) throw new AppError('Chapter not found', 404);
-  res.render('chapter-detail', { title: chapter.name, chapter });
-});
-
-const adminChaptersPage = asyncHandler(async (req, res) => {
-  const [regions, areas, chapters] = await Promise.all([
-    chapterService.listRegions(),
-    chapterService.listAreas(),
-    chapterService.listChapters(),
+const organizationDetailPage = asyncHandler(async (req, res) => {
+  const organization = await organizationService.getOrganization(Number(req.params.id));
+  if (!organization) throw new AppError('Organization not found', 404);
+  const [ancestors, children, memberCount] = await Promise.all([
+    organizationService.getAncestors(organization.id),
+    organizationService.getChildren(organization.id, { activeOnly: true }),
+    organizationService.countMembersInSubtree(organization.id),
   ]);
-  renderAdmin(req, res, 'admin/chapters', { title: 'Manage Chapters', regions, areas, chapters });
+  res.render('organization-detail', {
+    title: organization.name, organization, ancestors, children, memberCount,
+  });
 });
 
-const adminChapterMembersPage = asyncHandler(async (req, res) => {
-  let chapterId = null;
-  if (req.session.user.role === 'CHAPTER_ADMIN') chapterId = req.session.user.chapterId;
-  if (req.session.user.role === 'ADMIN' && req.query.chapterId) chapterId = req.query.chapterId;
+// Paginated + filterable, per the 5K work — the tree can hold thousands of
+// organizations, so this never loads it wholesale. needsReview surfaces the
+// rows the Excel import could not fully resolve.
+const adminOrganizationsPage = asyncHandler(async (req, res) => {
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const q = (req.query.q || '').toString().trim();
+  const type = (req.query.type || '').toString();
+  const needsReview = req.query.needsReview === '1';
+
+  const [result, root, reviewCount] = await Promise.all([
+    organizationService.listForAdmin({ q, type, needsReview, page }),
+    prisma.organization.findFirst({ where: { parentId: null } }),
+    prisma.organization.count({ where: { needsReview: true } }),
+  ]);
+
+  renderAdmin(req, res, 'admin/organizations', {
+    title: 'Manage Organizations',
+    organizations: result.organizations,
+    total: result.total, page: result.page, totalPages: result.totalPages,
+    q, type, needsReview, reviewCount, root,
+  });
+});
+
+// The hierarchy as a tree rather than a flat page of rows — the shape is the
+// point, and a paginated table can't show that a chapter sits directly under a
+// region with no cluster between them. Only the first level is rendered here;
+// deeper levels load on expand via /api/admin/organization-tree.
+const adminOrganizationTreePage = asyncHandler(async (req, res) => {
+  const root = await organizationService.getRoot();
+  const [children, reviewCount] = await Promise.all([
+    root ? organizationService.getChildrenForTree(root.id) : [],
+    prisma.organization.count({ where: { needsReview: true } }),
+  ]);
+  renderAdmin(req, res, 'admin/organization-tree', {
+    title: 'Organization Structure',
+    root,
+    children,
+    reviewCount,
+    typeLabels: organizationService.TYPE_LABELS,
+    csrfToken: req.session.csrfToken,
+  });
+});
+
+// Members of an organization AND its descendants — a cluster admin sees the
+// members of the chapters and units beneath them, which the old exact-chapter
+// lookup could not express.
+const adminOrganizationMembersPage = asyncHandler(async (req, res) => {
+  let organizationId = null;
+  if (req.session.user.role === 'CHAPTER_ADMIN') organizationId = req.session.user.organizationId;
+  if (req.session.user.role === 'ADMIN' && req.query.organizationId) organizationId = req.query.organizationId;
 
   let members = [];
-  let chapter = null;
+  let organization = null;
+  let organizationPath = null;
   let leader = null;
 
-  if (chapterId) {
-    [members, chapter] = await Promise.all([
-      userService.listByChapter(chapterId),
-      chapterService.getChapterById(Number(chapterId)),
+  if (organizationId) {
+    [members, organization] = await Promise.all([
+      userService.listByOrganization(organizationId),
+      organizationService.getOrganization(Number(organizationId)),
     ]);
+    if (organization) organizationPath = await organizationService.getOrganizationPathLabel(organization.id);
     leader = members.find((m) => m.role === 'CHAPTER_ADMIN') || null;
   }
 
-  renderAdmin(req, res, 'admin/chapter-members', {
-    title: chapter ? `${chapter.name} Members` : 'Chapter Members',
+  renderAdmin(req, res, 'admin/organization-members', {
+    title: organization ? `${organization.name} Members` : 'Organization Members',
     members,
-    chapter,
-    chapterId,
+    organization,
+    organizationPath,
+    organizationId,
     leader,
   });
 });
 
-const adminChapterAdminsPage = asyncHandler(async (req, res) => {
-  const [chaptersWithStats, chapters, users] = await Promise.all([
-    chapterService.listChaptersWithStats(),
-    chapterService.listChapters(),
+const adminOrganizationAdminsPage = asyncHandler(async (req, res) => {
+  const [assignments, orgSeed, users] = await Promise.all([
+    organizationAdminService.listAssignments(),
+    organizationService.searchOrganizations({ page: 1, pageSize: 100 }),
     userService.listByStatus('APPROVED'),
   ]);
-  renderAdmin(req, res, 'admin/chapter-admins', {
-    title: 'Chapter Admins',
-    chaptersWithStats,
-    chapters,
+  renderAdmin(req, res, 'admin/organization-admins', {
+    title: 'Organization Admins',
+    assignments,
+    organizations: orgSeed.organizations,
     users,
     csrfToken: req.session.csrfToken,
   });
@@ -473,92 +547,128 @@ const adminChapterAdminsPage = asyncHandler(async (req, res) => {
 
 const adminEditUserPage = asyncHandler(async (req, res) => {
   const user = await userService.getById(req.params.id);
-  const isChapterAdmin = req.session.user && req.session.user.role === 'CHAPTER_ADMIN';
+  const isScopedAdmin = req.session.user && req.session.user.role === 'CHAPTER_ADMIN';
 
-  if (isChapterAdmin) {
-    const adminChapterId = req.session.user.chapterId;
-    if (!user.chapter || Number(user.chapter.id) !== Number(adminChapterId)) {
+  if (isScopedAdmin) {
+    const scopeIds = await organizationService.getDescendantIds(req.session.user.organizationId);
+    if (!user.organizationId || !scopeIds.includes(Number(user.organizationId))) {
       throw new AppError('User not found', 404);
     }
   }
 
-  const chapters = await chapterService.listChapters();
+  const orgSeed = await organizationService.searchOrganizations({ page: 1, pageSize: 100 });
   renderAdmin(req, res, 'admin/user-edit', {
-    title: isChapterAdmin ? 'Edit Member' : 'Edit User',
+    title: isScopedAdmin ? 'Edit Member' : 'Edit User',
     user,
-    chapters,
+    organizations: orgSeed.organizations,
     csrfToken: req.session.csrfToken,
-    restricted: isChapterAdmin,
+    restricted: isScopedAdmin,
   });
 });
 
-const adminDeleteChapterMember = asyncHandler(async (req, res) => {
+const adminDeleteOrganizationMember = asyncHandler(async (req, res) => {
   const user = await userService.getById(req.params.id);
-  const isChapterAdmin = req.session.user && req.session.user.role === 'CHAPTER_ADMIN';
+  const isScopedAdmin = req.session.user && req.session.user.role === 'CHAPTER_ADMIN';
 
-  if (isChapterAdmin) {
-    const adminChapterId = req.session.user.chapterId;
-    if (!user.chapter || Number(user.chapter.id) !== Number(adminChapterId)) {
+  if (isScopedAdmin) {
+    const scopeIds = await organizationService.getDescendantIds(req.session.user.organizationId);
+    if (!user.organizationId || !scopeIds.includes(Number(user.organizationId))) {
       throw new AppError('User not found', 404);
     }
   }
 
   await userService.deleteUser(req.params.id);
-  res.redirect(isChapterAdmin ? '/admin/chapter-members' : '/admin/users/all');
+  res.redirect(isScopedAdmin ? '/admin/organization-members' : '/admin/users/all');
 });
 
-const adminCreateRegion = asyncHandler(async (req, res) => {
-  await chapterService.createRegion({ name: req.body.name });
-  res.redirect('/admin/chapters');
-});
-
-const adminDeleteRegion = asyncHandler(async (req, res) => {
-  await chapterService.deleteRegion(Number(req.params.id));
-  res.redirect('/admin/chapters');
-});
-
-const adminCreateArea = asyncHandler(async (req, res) => {
-  await chapterService.createArea({ name: req.body.name, regionId: Number(req.body.regionId) });
-  res.redirect('/admin/chapters');
-});
-
-const adminDeleteArea = asyncHandler(async (req, res) => {
-  await chapterService.deleteArea(Number(req.params.id));
-  res.redirect('/admin/chapters');
-});
-
-const adminCreateChapter = asyncHandler(async (req, res) => {
-  await chapterService.createChapter({
+// One entity replaces three: the old region / area / chapter CRUD handlers
+// collapse into a single set, with `type` and `parentId` supplied by the form.
+const adminCreateOrganization = asyncHandler(async (req, res) => {
+  await organizationService.createOrganization({
     name: req.body.name,
-    yearFounded: Number(req.body.yearFounded),
-    areaId: Number(req.body.areaId),
+    type: req.body.type,
+    parentId: req.body.parentId ? Number(req.body.parentId) : null,
+    code: req.body.code || null,
+    institution: req.body.institution || null,
+    email: req.body.email || null,
+    yearFounded: req.body.yearFounded ? Number(req.body.yearFounded) : null,
     isActive: req.body.isActive === 'on',
   });
-  res.redirect('/admin/chapters');
+  res.redirect('/admin/organizations');
 });
 
-const adminEditChapterPage = asyncHandler(async (req, res) => {
-  const [chapter, areas] = await Promise.all([
-    chapterService.getChapterById(Number(req.params.id)),
-    chapterService.listAreas(),
+const adminEditOrganizationPage = asyncHandler(async (req, res) => {
+  const organization = await organizationService.getOrganizationOrThrow(Number(req.params.id));
+  const [ancestors, children, orgSeed] = await Promise.all([
+    organizationService.getAncestors(organization.id),
+    organizationService.getChildren(organization.id),
+    organizationService.searchOrganizations({ page: 1, pageSize: 100 }),
   ]);
-  if (!chapter) throw new AppError('Chapter not found', 404);
-  renderAdmin(req, res, 'admin/chapter-edit', { title: 'Edit Chapter', chapter, areas });
-});
-
-const adminUpdateChapter = asyncHandler(async (req, res) => {
-  await chapterService.updateChapter(Number(req.params.id), {
-    name: req.body.name,
-    yearFounded: Number(req.body.yearFounded),
-    areaId: Number(req.body.areaId),
-    isActive: req.body.isActive === 'on',
+  renderAdmin(req, res, 'admin/organization-edit', {
+    title: 'Edit Organization',
+    organization, ancestors, children,
+    organizations: orgSeed.organizations,
+    csrfToken: req.session.csrfToken,
   });
-  res.redirect('/admin/chapters');
 });
 
-const adminDeleteChapter = asyncHandler(async (req, res) => {
-  await chapterService.deleteChapter(Number(req.params.id));
-  res.redirect('/admin/chapters');
+const adminUpdateOrganization = asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  await organizationService.updateOrganization(id, {
+    name: req.body.name,
+    type: req.body.type,
+    code: req.body.code || null,
+    institution: req.body.institution || null,
+    email: req.body.email || null,
+    yearFounded: req.body.yearFounded,
+    isActive: req.body.isActive === 'on',
+    // Resolving an imported row is exactly what clears its review flag.
+    needsReview: req.body.needsReview === 'on',
+  });
+  // Reparenting is a separate operation because it rewrites a whole subtree's
+  // materialized paths and must reject cycles — see moveOrganization.
+  if (req.body.parentId && Number(req.body.parentId) !== Number(req.body.currentParentId)) {
+    await organizationService.moveOrganization(id, Number(req.body.parentId));
+  }
+  res.redirect('/admin/organizations');
+});
+
+const adminDeleteOrganization = asyncHandler(async (req, res) => {
+  await organizationService.deleteOrganization(Number(req.params.id));
+  res.redirect('/admin/organizations');
+});
+
+// The Excel import left ~180 rows needing a real parent assigned by hand
+// (see organization.service.js's importOrganizations note) — reassigning one
+// at a time through adminUpdateOrganization above is workable but slow at
+// that volume. This applies one target parent to every checked row from the
+// current filtered page in a single submit; each move still goes through
+// moveOrganization so a cycle attempt on any row is rejected individually
+// rather than aborting the whole batch.
+const adminBulkReassignOrganizations = asyncHandler(async (req, res) => {
+  const ids = [].concat(req.body.ids || []).map(Number).filter((n) => Number.isInteger(n) && n > 0);
+  const parentId = Number(req.body.bulkParentId);
+  const clearReview = req.body.clearReview === 'on';
+
+  if (ids.length && parentId) {
+    for (const id of ids) {
+      if (id === parentId) continue; // a stray click landing an org on itself — skip, don't abort the batch
+      // eslint-disable-next-line no-await-in-loop
+      await organizationService.moveOrganization(id, parentId);
+      if (clearReview) {
+        // eslint-disable-next-line no-await-in-loop
+        await organizationService.updateOrganization(id, { needsReview: false });
+      }
+    }
+  }
+
+  const qs = new URLSearchParams();
+  if (req.body.q) qs.set('q', req.body.q);
+  if (req.body.type) qs.set('type', req.body.type);
+  if (req.body.needsReview) qs.set('needsReview', '1');
+  if (req.body.page) qs.set('page', req.body.page);
+  const query = qs.toString();
+  res.redirect(`/admin/organizations${query ? `?${query}` : ''}`);
 });
 
 // Render the admin "Create Event" page (Add Event)
@@ -575,12 +685,24 @@ const adminEditEventPage = asyncHandler(async (req, res) => {
 // Admin view registrations page
 const adminEventRegistrationsPage = asyncHandler(async (req, res) => {
   const isMainAdmin = req.session.user.role === 'ADMIN';
-  const [event, registrations] = await Promise.all([
+  const search = (req.query.search || '').toString().trim();
+  const status = (req.query.status || '').toString();
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+
+  const [event, result] = await Promise.all([
     eventService.getEventById(req.params.id),
-    registrationService.getEventRegistrations(req.params.id),
+    registrationService.getEventRegistrationsForAdmin(req.params.id, { search, status, page }),
   ]);
   renderAdmin(req, res, 'admin/event-registrations', {
-    title: `Registrations — ${event.title}`, event, registrations, isMainAdmin,
+    title: `Registrations — ${event.title}`,
+    event,
+    registrations: result.registrations,
+    total: result.total,
+    page: result.page,
+    totalPages: result.totalPages,
+    search,
+    status,
+    isMainAdmin,
   });
 });
 
@@ -593,28 +715,45 @@ const adminInvitationsPage = asyncHandler(async (req, res) => {
   const events = await eventService.listAllEvents();
   const eventId = req.query.eventId ? Number(req.query.eventId) : null;
 
-  let selectedEvent = null;
-  let invitations = [];
-  let members = [];
-  if (eventId) {
-    [selectedEvent, invitations, members] = await Promise.all([
-      eventService.getEventById(eventId),
-      invitationService.listInvitationsForEvent(eventId),
-      userService.listByStatus('APPROVED'),
-    ]);
-  } else {
-    // Default view, before any event is picked from the dropdown — every
-    // invitation across every event, so the page always shows something
-    // useful instead of an empty prompt.
-    invitations = await invitationService.listAllInvitations();
-  }
-
   // Lets the sidebar's "Invitation Requests" link land here pre-filtered
   // (?source=SELF_REQUESTED) instead of needing a separate page/route for
   // what's really just this same report with one filter pre-set.
   const sourceFilter = req.query.source === 'SELF_REQUESTED' ? 'SELF_REQUESTED' : '';
 
-  renderAdmin(req, res, 'admin/invitations', { title: 'Invitations', events, selectedEvent, invitations, members, sourceFilter });
+  let selectedEvent = null;
+  let members = [];
+  let summary = null;
+  let invitedEmailStatuses = [];
+  const reportParams = { eventId: eventId || undefined, source: sourceFilter || undefined, page: 1 };
+
+  const [reportResult, filterOptions] = await Promise.all([
+    invitationService.listInvitationsForAdmin(reportParams),
+    invitationService.getInvitationFilterOptions(eventId),
+  ]);
+
+  if (eventId) {
+    [selectedEvent, members, summary, invitedEmailStatuses] = await Promise.all([
+      eventService.getEventById(eventId),
+      userService.listByStatus('APPROVED'),
+      invitationService.getInvitationSummary(eventId),
+      invitationService.getInvitedEmailStatusesForEvent(eventId),
+    ]);
+  }
+
+  renderAdmin(req, res, 'admin/invitations', {
+    title: 'Invitations',
+    events,
+    selectedEvent,
+    invitations: reportResult.invitations,
+    total: reportResult.total,
+    page: reportResult.page,
+    totalPages: reportResult.totalPages,
+    filterOptions,
+    summary,
+    members,
+    invitedEmailStatuses,
+    sourceFilter,
+  });
 });
 
 // Admin — Articles (MAIN_ADMIN only, route-gated)
@@ -676,20 +815,17 @@ module.exports = {
   adminEventEmailPage,
   adminBroadcastsPage,
   adminAuditLogPage,
-  chaptersPage,
-  chapterRegionPage,
-  chapterDetailPage,
-  adminChaptersPage,
-  adminChapterMembersPage,
-  adminChapterAdminsPage,
+  organizationsPage,
+  organizationDetailPage,
+  adminOrganizationsPage,
+  adminOrganizationTreePage,
+  adminOrganizationMembersPage,
+  adminOrganizationAdminsPage,
   adminEditUserPage,
-  adminDeleteChapterMember,
-  adminCreateRegion,
-  adminDeleteRegion,
-  adminCreateArea,
-  adminDeleteArea,
-  adminCreateChapter,
-  adminEditChapterPage,
-  adminUpdateChapter,
-  adminDeleteChapter,
+  adminDeleteOrganizationMember,
+  adminCreateOrganization,
+  adminEditOrganizationPage,
+  adminUpdateOrganization,
+  adminDeleteOrganization,
+  adminBulkReassignOrganizations,
 };

@@ -2,13 +2,16 @@ function initAdminPage() {
   initUserApprovals();
   initLogoUpload();
   initMembershipFeeForm();
+  initGatewaySurchargeForm();
   initPaymentsEnabledToggle();
+  initMembershipRequiredToggle();
   initEventsTable();
   initArticlesTable();
   initInvitationsModule();
-  initInvitationsReportTable({ tableId: 'all-invitations-table', eventFilterId: 'all-inv-event-filter', chapterFilterId: 'all-inv-chapter-filter', schoolFilterId: 'all-inv-school-filter', statusFilterId: 'all-inv-status-filter', sourceFilterId: 'all-inv-source-filter', emptyStateId: 'all-inv-empty', paginationId: 'all-inv-pagination' });
-  initInvitationsReportTable({ tableId: 'invitations-table', chapterFilterId: 'event-inv-chapter-filter', schoolFilterId: 'event-inv-school-filter', statusFilterId: 'event-inv-status-filter', sourceFilterId: 'event-inv-source-filter', emptyStateId: 'event-inv-empty', paginationId: 'event-inv-pagination' });
-  initChapterAdmins();
+  initInvitationsReportTable({ moduleId: 'all-invitations-module', tableId: 'all-invitations-table', formId: 'all-invitations-filter-form', emptyStateId: 'all-inv-empty', paginationId: 'all-inv-pagination', includeEventColumn: true });
+  initInvitationsReportTable({ moduleId: 'event-invitations-module', tableId: 'invitations-table', formId: 'event-invitations-filter-form', emptyStateId: 'event-inv-empty', paginationId: 'event-inv-pagination', includeEventColumn: false });
+  initOrganizationAdmins();
+  initOrganizationTree();
   initSponsors();
   initCertificates();
   initPaymentsModule();
@@ -142,8 +145,8 @@ function initBroadcastModule() {
       const userIds = Array.from(document.querySelectorAll('.broadcast-row-checkbox:checked')).map((cb) => Number(cb.value));
       return { scope: 'selected', userIds };
     }
-    const chapterId = document.getElementById('audience-chapter')?.value || '';
-    return chapterId ? { scope: 'all', chapterId: Number(chapterId) } : { scope: 'all' };
+    const organizationId = document.getElementById('audience-organization')?.value || '';
+    return organizationId ? { scope: 'all', organizationId: Number(organizationId) } : { scope: 'all' };
   }
 
   async function refreshAudienceCount() {
@@ -332,6 +335,8 @@ function initPaymentsModule() {
         <td class="admin-td max-w-[140px] truncate">${escapeHtml(chapter)}</td>
         <td class="admin-td max-w-[160px] truncate">${escapeHtml(eventLabel)}</td>
         <td class="admin-td">${peso(p.amount)}</td>
+        <td class="admin-td text-slate-500">${p.status === 'PAID' ? '&minus;' + peso(p.gatewayFeeCentavos) : '-'}</td>
+        <td class="admin-td font-medium">${p.status === 'PAID' ? peso(p.amount - p.gatewayFeeCentavos) : '-'}</td>
         <td class="admin-td payment-status-cell">${paymentStatusBadgeHtml(p.status)}</td>
         <td class="admin-td">${new Date(p.createdAt).toLocaleDateString()}</td>
         <td class="admin-td text-xs text-slate-500 max-w-[160px] truncate">${escapeHtml(reference)}</td>
@@ -609,13 +614,36 @@ function initEventCertificateModule() {
     loadRegistrants(tab.getAttribute('data-cert-filter'));
   });
 
+  // Generation runs on the job worker now (PDF rendering is CPU-bound and a
+  // large "generate all pending" batch could otherwise hold this request
+  // open for a long time) — this starts the job, then polls
+  // GET /api/admin/jobs/:jobId every 1.5s until it's COMPLETED or FAILED.
+  async function pollJobStatus(jobId, { intervalMs = 1500, timeoutMs = 120000 } = {}) {
+    const deadline = Date.now() + timeoutMs;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const res = await apiFetch(`/api/admin/jobs/${jobId}`);
+      if (res.data.status === 'COMPLETED' || res.data.status === 'FAILED') return res.data;
+      if (Date.now() > deadline) throw new Error('Still generating — this is taking longer than expected. Check back in a bit.');
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
+
   async function generateFor(userIds, force) {
     try {
-      const res = await apiFetch(`/api/admin/certificates/events/${eventId}/generate`, {
+      const startRes = await apiFetch(`/api/admin/certificates/events/${eventId}/generate`, {
         method: 'POST',
         body: JSON.stringify({ userIds, force }),
       });
-      showToast(res.message);
+      showToast('Generating certificate(s)…');
+      const finalStatus = await pollJobStatus(startRes.data.jobId);
+      if (finalStatus.status === 'FAILED') {
+        showToast(finalStatus.lastError || 'Certificate generation failed', 'error');
+      } else {
+        const { generatedCount, skippedCount } = finalStatus.result || {};
+        showToast(`${generatedCount || 0} certificate(s) generated, ${skippedCount || 0} skipped (already generated)`);
+      }
       await loadRegistrants(activeFilter);
     } catch (err) {
       showToast(err.message, 'error');
@@ -700,11 +728,11 @@ function initUserApprovals() {
   if (!table || !module) return;
 
   const viewMode = module.dataset.viewMode || 'approvals';
-  // parse chapters passed from server fragment (dataset holds JSON string)
+  // organizations passed from the server fragment (dataset holds a JSON string)
   try {
-    window.adminChapters = module.dataset.chapters ? JSON.parse(module.dataset.chapters) : (window.adminChapters || []);
+    window.adminOrganizations = module.dataset.organizations ? JSON.parse(module.dataset.organizations) : (window.adminOrganizations || []);
   } catch (err) {
-    window.adminChapters = window.adminChapters || [];
+    window.adminOrganizations = window.adminOrganizations || [];
   }
   try {
     window.currentAdmin = module.dataset.currentUser ? JSON.parse(module.dataset.currentUser) : (window.currentAdmin || null);
@@ -715,7 +743,7 @@ function initUserApprovals() {
   if (viewMode === 'approvals') {
     loadPendingUsers(table);
   } else {
-    loadAllUsers(table);
+    initMembersFilterAndPagination(table);
   }
 
   table.addEventListener('click', async (e) => {
@@ -734,10 +762,10 @@ function initUserApprovals() {
       const userId = assignConfirm.getAttribute('data-assign-confirm');
       const row = assignConfirm.closest('tr');
       const select = row.querySelector('.assign-select');
-      const chapterId = select ? select.value : null;
-      if (!chapterId) return showToast('Please select a chapter to assign', 'error');
+      const organizationId = select ? select.value : null;
+      if (!organizationId) return showToast('Please select an organization to assign', 'error');
 
-      await doAssign({ chapterId, userId, row, force: false });
+      await doAssign({ organizationId, userId, row });
       return;
     }
 
@@ -766,8 +794,12 @@ function initUserApprovals() {
       try {
         await apiFetch(`/api/admin/users/${id}`, { method: 'DELETE' });
         showToast('User deleted');
-        del.closest('tr').remove();
-        maybeShowEmptyState(table);
+        if (table.__reloadMembers) {
+          await table.__reloadMembers();
+        } else {
+          del.closest('tr').remove();
+          maybeShowEmptyState(table);
+        }
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -775,28 +807,22 @@ function initUserApprovals() {
   });
 }
 
-// Assign (or reassign) a chapter admin. If the chapter already has a
-// different admin, the API responds 409 — we surface that as a confirm()
-// prompt and retry with force:true only if the admin agrees to replace.
-async function doAssign({ chapterId, userId, row, force }) {
+// Assign (or reassign) an organization admin. An organization may now have
+// more than one admin, and a user administers at most one organization, so
+// reassigning simply moves them — the old force/409 replace prompt is gone.
+async function doAssign({ organizationId, userId, row }) {
   try {
-    await apiFetch('/api/admin/chapter-admins/assign', {
+    await apiFetch('/api/admin/organization-admins/assign', {
       method: 'POST',
-      body: JSON.stringify({ chapterId, userId, note: 'Assigned via users page', force }),
+      body: JSON.stringify({ organizationId, userId, note: 'Assigned via users page' }),
     });
-    showToast(force ? 'Chapter admin replaced' : 'Chapter admin assigned');
-    const chapterName = (window.adminChapters || []).find(c => String(c.id) === String(chapterId))?.name || '';
-    const chapterCell = row.querySelector('td:nth-child(4)');
-    if (chapterCell) chapterCell.textContent = chapterName;
+    showToast('Organization admin assigned');
+    const orgName = (window.adminOrganizations || []).find(c => String(c.id) === String(organizationId))?.name || '';
+    const orgCell = row.querySelector('td:nth-child(4)');
+    if (orgCell) orgCell.textContent = orgName;
     const panel = row.querySelector('.assign-panel');
     if (panel) panel.classList.add('hidden');
   } catch (err) {
-    if (err.status === 409) {
-      if (confirm(`${err.message}\n\nReplace them?`)) {
-        await doAssign({ chapterId, userId, row, force: true });
-      }
-      return;
-    }
     showToast(err.message, 'error');
   }
 }
@@ -812,9 +838,11 @@ async function loadPendingUsers(table) {
           <td class="admin-td">${escapeHtml(u.firstName)} ${escapeHtml(u.lastName)}</td>
           <td class="admin-td max-w-[220px] truncate" title="${escapeHtml(u.email)}">${escapeHtml(u.email)}</td>
           <td class="admin-td max-w-[160px] truncate">${escapeHtml(u.school || '-')}</td>
-          <td class="admin-td max-w-[140px] truncate">${escapeHtml((u.chapter && u.chapter.name) || '-')}</td>
-          <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
-          <td class="admin-td">${membershipPaymentBadge(u)}</td>
+          <td class="admin-td max-w-[140px] truncate">${escapeHtml((u.organization && u.organization.name) || '-')}</td>
+          <td class="admin-td">${accountStatusBadge(u)}</td>
+      <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
+          <td class="admin-td">${membershipTierBadge(u)}</td>
+      <td class="admin-td">${membershipPaymentBadge(u)}</td>
           <td class="admin-td text-right">
             <div class="flex flex-wrap justify-end items-center gap-2">
               <button data-approve="${u.id}" class="text-green-600 hover:underline text-sm font-medium">Approve</button>
@@ -823,8 +851,8 @@ async function loadPendingUsers(table) {
             </div>
             <div class="assign-panel hidden w-full mt-2 flex flex-wrap justify-end items-center gap-2">
               <select class="assign-select form-input py-1.5 w-auto">
-                <option value="">Select chapter</option>
-                ${window.adminChapters.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
+                <option value="">Select organization</option>
+                ${(window.adminOrganizations || []).map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
               </select>
               <button data-assign-confirm="${u.id}" class="btn-primary px-3 py-1.5 text-sm">Confirm</button>
             </div>
@@ -838,49 +866,171 @@ async function loadPendingUsers(table) {
   }
 }
 
-async function loadAllUsers(table) {
-  const tbody = table.querySelector('tbody');
-  try {
-    const res = await apiFetch('/api/admin/users');
-    tbody.innerHTML = res.data.users
-      .map(
-        (u) => {
-          const canEdit = (window.currentAdmin && window.currentAdmin.role === 'ADMIN') || (window.currentAdmin && window.currentAdmin.role === 'CHAPTER_ADMIN' && u.chapter && Number(u.chapter.id) === Number(window.currentAdmin.chapterId));
-          const assignAllowed = (window.currentAdmin && window.currentAdmin.role === 'ADMIN');
-          return `
-            <tr data-user-id="${u.id}" class="admin-tr align-top">
-              <td class="admin-td">${escapeHtml(u.firstName)} ${escapeHtml(u.lastName)}</td>
-              <td class="admin-td max-w-[220px] truncate" title="${escapeHtml(u.email)}">${escapeHtml(u.email)}</td>
-              <td class="admin-td max-w-[160px] truncate">${escapeHtml(u.school || '-')}</td>
-              <td class="admin-td max-w-[140px] truncate">${escapeHtml((u.chapter && u.chapter.name) || '-')}</td>
-              <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
-              <td class="admin-td">${membershipPaymentBadge(u)}</td>
-              <td class="admin-td text-right">
-                <div class="flex flex-wrap justify-end items-center gap-2">
-                  ${canEdit ? `<a href="/admin/users/${u.id}/edit" class="text-indigo-600 hover:underline text-sm font-medium">Edit</a>` : ''}
-                  ${canEdit ? `<button data-delete-user="${u.id}" class="text-red-600 hover:underline text-sm font-medium">Delete</button>` : ''}
-                  ${assignAllowed ? `<button data-assign-toggle="${u.id}" class="text-indigo-600 hover:underline text-sm font-medium">Assign</button>` : ''}
-                </div>
-                ${assignAllowed ? `<div class="assign-panel hidden w-full mt-2 flex flex-wrap justify-end items-center gap-2">
-                  <select class="assign-select form-input py-1.5 w-auto">
-                    <option value="">Select chapter</option>
-                    ${window.adminChapters.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
-                  </select>
-                  <button data-assign-confirm="${u.id}" class="btn-primary px-3 py-1.5 text-sm">Confirm</button>
-                </div>` : ''}
-              </td>
-            </tr>`
-        }      )
-      .join('');
-    maybeShowEmptyState(table);
-  } catch (err) {
-    showToast(err.message, 'error');
+function memberRowHtml(u) {
+  const canEdit = (window.currentAdmin && window.currentAdmin.role === 'ADMIN') || (window.currentAdmin && window.currentAdmin.role === 'CHAPTER_ADMIN' && u.organization && Number(u.organization.id) === Number(window.currentAdmin.organizationId));
+  const assignAllowed = (window.currentAdmin && window.currentAdmin.role === 'ADMIN');
+  return `
+    <tr data-user-id="${u.id}" class="admin-tr align-top">
+      <td class="admin-td">${escapeHtml(u.firstName)} ${escapeHtml(u.lastName)}</td>
+      <td class="admin-td max-w-[220px] truncate" title="${escapeHtml(u.email)}">${escapeHtml(u.email)}</td>
+      <td class="admin-td max-w-[160px] truncate">${escapeHtml(u.school || '-')}</td>
+      <td class="admin-td max-w-[140px] truncate">${escapeHtml((u.organization && u.organization.name) || '-')}</td>
+      <td class="admin-td">${accountStatusBadge(u)}</td>
+      <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
+      <td class="admin-td">${membershipTierBadge(u)}</td>
+      <td class="admin-td">${membershipPaymentBadge(u)}</td>
+      <td class="admin-td text-right">
+        <div class="flex flex-wrap justify-end items-center gap-2">
+          ${canEdit ? `<a href="/admin/users/${u.id}/edit" class="text-indigo-600 hover:underline text-sm font-medium">Edit</a>` : ''}
+          ${canEdit ? `<button data-delete-user="${u.id}" class="text-red-600 hover:underline text-sm font-medium">Delete</button>` : ''}
+          ${assignAllowed ? `<button data-assign-toggle="${u.id}" class="text-indigo-600 hover:underline text-sm font-medium">Assign</button>` : ''}
+        </div>
+        ${assignAllowed ? `<div class="assign-panel hidden w-full mt-2 flex flex-wrap justify-end items-center gap-2">
+          <select class="assign-select form-input py-1.5 w-auto">
+            <option value="">Select organization</option>
+            ${(window.adminOrganizations || []).map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
+          </select>
+          <button data-assign-confirm="${u.id}" class="btn-primary px-3 py-1.5 text-sm">Confirm</button>
+        </div>` : ''}
+      </td>
+    </tr>`;
+}
+
+function renderMembersPagination(pagination, page, totalPages) {
+  if (!pagination) return;
+  pagination.dataset.page = page;
+  pagination.dataset.totalPages = totalPages;
+  if (totalPages <= 1) {
+    pagination.innerHTML = '';
+    return;
   }
+  let html = '';
+  for (let p = 1; p <= totalPages; p += 1) {
+    html += `<button type="button" data-members-page="${p}" class="px-3 py-1.5 text-sm rounded-md border ${p === page ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}">${p}</button>`;
+  }
+  pagination.innerHTML = html;
+}
+
+// Server-side search/filter/pagination for the "Manage Users" (list) view —
+// the full member roster, the one admin table most likely to actually reach
+// thousands of rows, unlike the naturally-small pending-approvals queue.
+const MEMBER_FILTER_KEYS = ['search', 'organizationId', 'status', 'membership', 'paymentStatus'];
+
+function initMembersFilterAndPagination(table) {
+  const tbody = table.querySelector('tbody');
+  const filterForm = document.getElementById('members-filter-form');
+  const pagination = document.getElementById('members-pagination');
+  const summary = document.getElementById('members-result-summary');
+  const clearBtn = document.getElementById('members-clear-filters');
+
+  // Filters live in the URL as well as the form. Reloading, sharing or
+  // going back therefore keeps the view you were looking at, and — the
+  // reason this matters — the address bar makes it visible that a filter
+  // is applied, so a filter that legitimately matches nothing can't be
+  // mistaken for one that silently did nothing.
+  function readFiltersFromUrl() {
+    if (!filterForm) return;
+    const url = new URLSearchParams(window.location.search);
+    MEMBER_FILTER_KEYS.forEach((key) => {
+      const field = filterForm.elements[key];
+      if (field && url.has(key)) field.value = url.get(key);
+    });
+  }
+
+  function activeFilters(formData) {
+    return MEMBER_FILTER_KEYS.filter((k) => formData.get(k));
+  }
+
+  async function loadMembers(page, { pushUrl = true } = {}) {
+    const formData = filterForm ? new FormData(filterForm) : new FormData();
+    const params = new URLSearchParams();
+    MEMBER_FILTER_KEYS.forEach((key) => {
+      const value = formData.get(key);
+      if (value) params.set(key, value);
+    });
+    const applied = activeFilters(formData);
+    params.set('page', page);
+
+    if (pushUrl && window.history && window.history.replaceState) {
+      window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+    }
+    if (clearBtn) clearBtn.classList.toggle('hidden', applied.length === 0);
+
+    try {
+      const res = await apiFetch(`/api/admin/members?${params.toString()}`);
+      const { users, total, totalPages, page: currentPage } = res.data;
+      tbody.innerHTML = users.map(memberRowHtml).join('');
+      maybeShowEmptyState(table);
+      renderMembersPagination(pagination, currentPage, totalPages);
+
+      if (summary) {
+        if (!total && applied.length) {
+          summary.textContent = `No users match the ${applied.length} filter${applied.length === 1 ? '' : 's'} applied. Clear them to see everyone.`;
+        } else if (applied.length) {
+          summary.textContent = `${total} user${total === 1 ? '' : 's'} match ${applied.length} filter${applied.length === 1 ? '' : 's'}.`;
+        } else {
+          summary.textContent = `${total} user${total === 1 ? '' : 's'}.`;
+        }
+      }
+    } catch (err) {
+      // A rejected filter value used to look identical to "no results" —
+      // say so instead.
+      if (summary) summary.textContent = `Could not apply those filters: ${err.message}`;
+      showToast(err.message, 'error');
+    }
+  }
+
+  filterForm?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    loadMembers(1);
+  });
+
+  clearBtn?.addEventListener('click', () => {
+    MEMBER_FILTER_KEYS.forEach((key) => {
+      const field = filterForm.elements[key];
+      if (field) field.value = '';
+    });
+    loadMembers(1);
+  });
+
+  readFiltersFromUrl();
+
+  pagination?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-members-page]');
+    if (!btn) return;
+    loadMembers(Number(btn.getAttribute('data-members-page')));
+  });
+
+  // Exposed so the shared users-table click handler (delete) can re-fetch
+  // the current page instead of just removing the row — otherwise the page
+  // is left one short of pageSize until the admin manually changes pages.
+  table.__reloadMembers = () => loadMembers(Number(pagination?.dataset.page) || 1);
+
+  loadMembers(1);
 }
 
 // Renders each user's latest membership-payment status as a small badge for
 // the admin Users table — "did they pay, or not" at a glance, including a
 // failed/bounced payment so the admin isn't just guessing from silence.
+// Member vs Non-Member — the classification the org actually cares about,
+// distinct from the raw payment-transaction badge beside it. A Non-Member is
+// anyone with an account who has not paid or has lapsed; Guest never appears
+// here because a guest has no account and so no row in this table.
+function accountStatusBadge(u) {
+  const styles = { APPROVED: 'badge-green', PENDING: 'badge-amber', REJECTED: 'badge-red' };
+  const label = { APPROVED: 'Approved', PENDING: 'Pending', REJECTED: 'Rejected' };
+  return '<span class="' + (styles[u.status] || 'badge-slate') + '">' + escapeHtml(label[u.status] || u.status || '-') + '</span>';
+}
+
+function membershipTierBadge(u) {
+  if (u.membershipTier === 'MEMBER') {
+    const until = u.membershipExpiresAt ? new Date(u.membershipExpiresAt).toLocaleDateString() : '';
+    return '<span class="badge-green" title="Valid until ' + escapeHtml(until) + '">Member</span>';
+  }
+  const lapsed = u.membershipState === 'EXPIRED';
+  return '<span class="badge-slate">Non-Member' + (lapsed ? ' (lapsed)' : '') + '</span>';
+}
+
 function membershipPaymentBadge(u) {
   const payment = u.membershipPayment;
   if (!payment) {
@@ -905,8 +1055,13 @@ function membershipPaymentBadge(u) {
     REFUNDED: 'Refunded',
   };
   const cls = badges[payment.status] || 'badge-slate';
-  const label = labels[payment.status] || payment.status;
-  const date = payment.status === 'PAID' && payment.paidAt ? ` &middot; ${new Date(payment.paidAt).toLocaleDateString()}` : '';
+  // The fallback interpolates the raw status. PaymentStatus is a database enum
+  // today, so it can only be one of the values above and the fallback is
+  // unreachable — but this is the only field in this table rendered without
+  // escaping, and it would become a live injection the moment that column ever
+  // held free text. Escaped so that can't happen quietly.
+  const label = labels[payment.status] || escapeHtml(payment.status);
+  const date = payment.status === 'PAID' && payment.paidAt ? ` &middot; ${escapeHtml(new Date(payment.paidAt).toLocaleDateString())}` : '';
   return `<span class="${cls}">${label}${date}</span>`;
 }
 
@@ -962,6 +1117,55 @@ function initMembershipFeeForm() {
       showToast('Membership fee updated');
     } catch (err) {
       showToast(err.errors?.[0]?.msg || err.message, 'error');
+    }
+  });
+}
+
+function initGatewaySurchargeForm() {
+  const form = document.getElementById('gateway-surcharge-form');
+  if (!form) return;
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const percent = document.getElementById('gateway-surcharge-input').value;
+
+    try {
+      await apiFetch('/api/admin/settings/gateway-surcharge-percent', {
+        method: 'PUT',
+        body: JSON.stringify({ percent }),
+      });
+      showToast('Payment processing surcharge updated');
+    } catch (err) {
+      showToast(err.errors?.[0]?.msg || err.message, 'error');
+    }
+  });
+}
+
+// --- Membership payment required toggle (admin/settings page) ---
+function initMembershipRequiredToggle() {
+  const module = document.getElementById('membership-required-module');
+  if (!module) return;
+
+  const checkbox = document.getElementById('membership-required-checkbox');
+  const label = document.getElementById('membership-required-label');
+
+  checkbox?.addEventListener('change', async () => {
+    const required = checkbox.checked;
+    checkbox.disabled = true;
+    try {
+      await apiFetch('/api/admin/settings/membership-payment-required', {
+        method: 'PUT',
+        body: JSON.stringify({ required }),
+      });
+      label.textContent = required ? 'Payment required to use the site' : 'Membership payment is optional';
+      label.classList.toggle('text-amber-700', required);
+      label.classList.toggle('text-green-700', !required);
+      showToast(required ? 'Membership payment is now required' : 'Membership payment is now optional');
+    } catch (err) {
+      checkbox.checked = !required;
+      showToast(err.errors?.[0]?.msg || err.message, 'error');
+    } finally {
+      checkbox.disabled = false;
     }
   });
 }
@@ -1193,6 +1397,33 @@ function initInvitationsModule() {
     company.value = '';
   });
 
+  document.getElementById('invite-fetch-sheet')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = 'Fetching...';
+
+    try {
+      const res = await apiFetch('/api/admin/invitations/import-contacts');
+      const contacts = res.data.contacts || [];
+      if (!contacts.length) {
+        showToast(res.message || 'No contacts found in the sheet', 'error');
+        return;
+      }
+      let added = 0;
+      contacts.forEach((c) => {
+        if (addPending({ fullName: c.fullName, email: c.email, chapter: c.chapter, school: c.school, company: c.company }, true)) added += 1;
+      });
+      renderPendingList();
+      showToast(added ? `Added ${added} contact${added === 1 ? '' : 's'} from the sheet` : 'All contacts from the sheet were already on the list', added ? 'success' : 'error');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
+  });
+
   pendingListEl.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-remove-pending]');
     if (!btn) return;
@@ -1230,7 +1461,12 @@ function initInvitationsModule() {
     try {
       await apiFetch(`/api/events/${eventId}/invitations/${invitationId}/resend`, { method: 'POST' });
       showToast('Invitation resent');
-      window.location.reload();
+      const table = document.getElementById('invitations-table');
+      if (table?.__reloadInvitations) {
+        await table.__reloadInvitations();
+      } else {
+        window.location.reload();
+      }
     } catch (err) {
       showToast(err.message, 'error');
       btn.disabled = false;
@@ -1238,189 +1474,421 @@ function initInvitationsModule() {
   });
 }
 
-// --- Filter + sort for an invitations report table (admin/invitations page)
-// --- Works for both the cross-event "All Invitations" table and the
-// per-event "Invitation Report" table — same markup shape (data-chapter/
-// data-school/data-status for filtering, data-sort-* for sorting), called
-// once per table id, each a no-op if that table isn't on the current page.
-// Filter + sort operate on the full row set already in the DOM; pagination
-// is purely a display layer on top of whatever that filtered/sorted result
-// is — deliberately NOT server-side paging, since that would only let you
-// filter/sort within whatever one page the server happened to send, instead
-// of across the whole list (the same limitation the payments/audit-log pages
-// accept, but which would defeat the point of the filters built here).
-const INVITATIONS_PAGE_SIZE = 20;
+// --- Filter + sort + pagination for an invitations report table
+// (admin/invitations page) — works for both the cross-event "All
+// Invitations" table (includeEventColumn: true) and the per-event
+// "Invitation Report" table (includeEventColumn: false). All three are
+// server-side (filter, sort, and page all become query params on a
+// GET /api/admin/invitations request) so a filter reflects the *entire*
+// matching set, not just whatever page happened to already be in the DOM —
+// unlike the admin Payments page, this table's data volume (an event's full
+// invitee list) can realistically be large enough that "load everything,
+// filter client-side" stops being viable.
+function invStatusBadgeHtml(status) {
+  const styles = { PENDING: 'badge-slate', SENT: 'badge-blue', DELIVERED: 'badge-green', BOUNCED: 'badge-red', FAILED: 'badge-red' };
+  return `<span class="${styles[status] || 'badge-slate'}">${status}</span>`;
+}
+// Three-way, matching how the org classifies people:
+//   Guest      — no account; invited to this one event only
+//   Member     — has an account and a membership inside its validity year
+//   Non-Member — has an account but never paid, or has lapsed
+function memberOrGuestBadgeHtml(inv) {
+  if (!inv.userId) return '<span class="badge-slate">Guest</span>';
+  const expiry = inv.user && inv.user.membershipExpiresAt;
+  const active = expiry && new Date(expiry).getTime() > Date.now();
+  return active
+    ? '<span class="badge-green">Member</span>'
+    : '<span class="badge-amber">Non-Member</span>';
+}
+function sourceBadgeHtml(source) {
+  return source === 'SELF_REQUESTED' ? '<span class="badge-green">Requested</span>' : '<span class="badge-slate">Admin-Sent</span>';
+}
+function rsvpBadgeHtml(inv) {
+  if (inv.userId) return '<span class="text-slate-300">&mdash;</span>';
+  const styles = { ATTENDING: 'badge-green', NOT_ATTENDING: 'badge-red', PENDING: 'badge-slate' };
+  const labels = { ATTENDING: 'Attending', NOT_ATTENDING: 'Not Attending', PENDING: 'No response' };
+  return `<span class="${styles[inv.rsvpStatus] || 'badge-slate'}">${labels[inv.rsvpStatus] || inv.rsvpStatus}</span>`;
+}
+function fmtDate(date) {
+  return date ? new Date(date).toLocaleString() : '-';
+}
+function invitationRowHtml(inv, includeEventColumn) {
+  const eventCell = includeEventColumn
+    ? `<td class="admin-td max-w-[180px] truncate"><a href="/admin/invitations?eventId=${inv.event.id}" class="text-indigo-600 hover:underline">${escapeHtml(inv.event.title)}</a></td>`
+    : '';
+  const actionsCell = includeEventColumn ? '' : `
+    <td class="admin-td text-right">
+      ${(inv.status === 'FAILED' || inv.status === 'BOUNCED') && !inv.registeredAt
+        ? `<button type="button" data-resend-invitation="${inv.id}" class="text-indigo-600 hover:underline text-sm font-medium">Resend</button>`
+        : ''}
+    </td>`;
+  return `
+    <tr class="admin-tr" data-invitation-row="${inv.id}">
+      ${eventCell}
+      <td class="admin-td">${escapeHtml(inv.fullName)}</td>
+      <td class="admin-td max-w-[180px] truncate">${escapeHtml(inv.email)}</td>
+      <td class="admin-td">${escapeHtml(inv.chapter) || '-'}</td>
+      <td class="admin-td">${escapeHtml(inv.school) || '-'}</td>
+      <td class="admin-td">${escapeHtml(inv.company) || '-'}</td>
+      <td class="admin-td">${memberOrGuestBadgeHtml(inv)}</td>
+      <td class="admin-td">${sourceBadgeHtml(inv.source)}</td>
+      <td class="admin-td">${rsvpBadgeHtml(inv)}</td>
+      <td class="admin-td invitation-status-cell">${invStatusBadgeHtml(inv.status)}</td>
+      <td class="admin-td whitespace-nowrap text-xs">${fmtDate(inv.sentAt)}</td>
+      <td class="admin-td whitespace-nowrap text-xs">${fmtDate(inv.openedAt)}</td>
+      <td class="admin-td whitespace-nowrap text-xs">${fmtDate(inv.clickedAt)}</td>
+      <td class="admin-td whitespace-nowrap text-xs">${fmtDate(inv.registeredAt)}</td>
+      ${actionsCell}
+    </tr>`;
+}
 
-function initInvitationsReportTable({ tableId, eventFilterId, chapterFilterId, schoolFilterId, statusFilterId, sourceFilterId, emptyStateId, paginationId }) {
+function initInvitationsReportTable({ moduleId, tableId, formId, emptyStateId, paginationId, includeEventColumn }) {
+  const module = document.getElementById(moduleId);
   const table = document.getElementById(tableId);
-  if (!table) return;
+  if (!module || !table) return;
 
+  const eventId = module.dataset.eventId || '';
   const tbody = table.querySelector('tbody');
-  const rows = Array.from(tbody.querySelectorAll('tr'));
-  const eventFilter = eventFilterId ? document.getElementById(eventFilterId) : null;
-  const chapterFilter = document.getElementById(chapterFilterId);
-  const schoolFilter = document.getElementById(schoolFilterId);
-  const statusFilter = document.getElementById(statusFilterId);
-  const sourceFilter = sourceFilterId ? document.getElementById(sourceFilterId) : null;
+  const filterForm = document.getElementById(formId);
   const emptyEl = document.getElementById(emptyStateId);
-  const paginationEl = paginationId ? document.getElementById(paginationId) : null;
+  const paginationEl = document.getElementById(paginationId);
+  const headers = Array.from(table.querySelectorAll('button[data-sort-key]'));
 
-  let currentPage = 1;
+  let sort = null;
+  let dir = 'desc';
 
-  function matchesFilters(row) {
-    const eventId = eventFilter ? eventFilter.value : '';
-    const chapter = chapterFilter ? chapterFilter.value : '';
-    const school = schoolFilter ? schoolFilter.value : '';
-    const status = statusFilter ? statusFilter.value : '';
-    const source = sourceFilter ? sourceFilter.value : '';
-    return (!eventId || row.dataset.eventId === eventId)
-      && (!chapter || row.dataset.chapter === chapter)
-      && (!school || row.dataset.school === school)
-      && (!status || row.dataset.status === status)
-      && (!source || row.dataset.source === source);
-  }
-
-  function renderPagination(total, totalPages) {
+  function renderPagination(page, totalPages, total) {
     if (!paginationEl) return;
+    paginationEl.dataset.page = page;
+    paginationEl.dataset.totalPages = totalPages;
     if (totalPages <= 1) {
       paginationEl.innerHTML = total ? `<span>${total} total</span>` : '';
       return;
     }
     paginationEl.innerHTML = `
-      <span>Page ${currentPage} of ${totalPages} (${total} total)</span>
+      <span>Page ${page} of ${totalPages} (${total} total)</span>
       <div class="flex gap-2">
-        <button type="button" data-page-prev class="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed" ${currentPage === 1 ? 'disabled' : ''}>&larr; Prev</button>
-        <button type="button" data-page-next class="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed" ${currentPage === totalPages ? 'disabled' : ''}>Next &rarr;</button>
+        <button type="button" data-page-prev class="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed" ${page === 1 ? 'disabled' : ''}>&larr; Prev</button>
+        <button type="button" data-page-next class="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed" ${page === totalPages ? 'disabled' : ''}>Next &rarr;</button>
       </div>`;
-    paginationEl.querySelector('[data-page-prev]')?.addEventListener('click', () => { currentPage -= 1; render(); }); // eslint-disable-line no-use-before-define
-    paginationEl.querySelector('[data-page-next]')?.addEventListener('click', () => { currentPage += 1; render(); }); // eslint-disable-line no-use-before-define
+    paginationEl.querySelector('[data-page-prev]')?.addEventListener('click', () => loadInvitations(page - 1)); // eslint-disable-line no-use-before-define
+    paginationEl.querySelector('[data-page-next]')?.addEventListener('click', () => loadInvitations(page + 1)); // eslint-disable-line no-use-before-define
   }
 
-  // Re-reads tbody order each time (rather than the `rows` array's original
-  // order) so pagination always reflects whatever sort was last applied.
-  function render() {
-    const ordered = Array.from(tbody.querySelectorAll('tr'));
-    const filtered = ordered.filter(matchesFilters);
-    const totalPages = Math.max(1, Math.ceil(filtered.length / INVITATIONS_PAGE_SIZE));
-    currentPage = Math.min(Math.max(1, currentPage), totalPages);
-
-    const pageStart = (currentPage - 1) * INVITATIONS_PAGE_SIZE;
-    const pageEnd = pageStart + INVITATIONS_PAGE_SIZE;
-    filtered.forEach((row, i) => row.classList.toggle('hidden', i < pageStart || i >= pageEnd));
-    rows.filter((row) => !filtered.includes(row)).forEach((row) => row.classList.add('hidden'));
-
-    emptyEl?.classList.toggle('hidden', filtered.length > 0);
-    renderPagination(filtered.length, totalPages);
-  }
-
-  function applyFilters() {
-    currentPage = 1;
-    render();
-  }
-
-  eventFilter?.addEventListener('change', applyFilters);
-  chapterFilter?.addEventListener('change', applyFilters);
-  schoolFilter?.addEventListener('change', applyFilters);
-  statusFilter?.addEventListener('change', applyFilters);
-  sourceFilter?.addEventListener('change', applyFilters);
-
-  // --- Sorting ---
-  let currentSort = { key: null, dir: 1 };
-  const headers = Array.from(table.querySelectorAll('button[data-sort-key]'));
-
-  headers.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const key = btn.dataset.sortKey;
-      currentSort = currentSort.key === key ? { key, dir: -currentSort.dir } : { key, dir: 1 };
-
-      headers.forEach((h) => {
-        const arrow = h.querySelector('.sort-arrow');
-        if (!arrow) return;
-        if (h === btn) {
-          arrow.textContent = currentSort.dir === 1 ? '▲' : '▼';
-          arrow.classList.remove('text-slate-300');
-          arrow.classList.add('text-indigo-600');
-        } else {
-          arrow.textContent = '▲▼';
-          arrow.classList.add('text-slate-300');
-          arrow.classList.remove('text-indigo-600');
-        }
-      });
-
-      const sortAttr = `sort${key.charAt(0).toUpperCase()}${key.slice(1)}`;
-      const sorted = [...rows].sort((a, b) => {
-        const av = a.dataset[sortAttr] || '';
-        const bv = b.dataset[sortAttr] || '';
-        if (av < bv) return -1 * currentSort.dir;
-        if (av > bv) return 1 * currentSort.dir;
-        return 0;
-      });
-      sorted.forEach((row) => tbody.appendChild(row));
-      currentPage = 1;
-      render();
-    });
-  });
-
-  render();
-}
-
-// --- Chapter Admins grid (admin/chapter-admins page) ---
-function initChapterAdmins() {
-  const toggleBtn = document.getElementById('toggle-assign-panel');
-  const panel = document.getElementById('assign-panel');
-  if (!toggleBtn || !panel) return; // not on this page
-
-  toggleBtn.addEventListener('click', () => panel.classList.toggle('hidden'));
-
-  document.querySelectorAll('[data-view-chapter]').forEach((el) => {
-    el.addEventListener('click', () => {
-      window.location.href = `/admin/chapter-members?chapterId=${el.getAttribute('data-view-chapter')}`;
-    });
-  });
-
-  const assignForm = document.getElementById('assign-form');
-  if (assignForm) {
-    assignForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const chapterId = document.getElementById('assign-chapterId').value;
-      const userId = document.getElementById('assign-userId').value;
-      const note = document.getElementById('assign-note').value;
-      if (!chapterId || !userId) return showToast('Please select a chapter and a user', 'error');
-      await doAssignChapterAdmin({ chapterId, userId, note, force: false });
-    });
-  }
-
-  async function doAssignChapterAdmin({ chapterId, userId, note, force }) {
-    try {
-      await apiFetch('/api/admin/chapter-admins/assign', {
-        method: 'POST',
-        body: JSON.stringify({ chapterId, userId, note: note || 'Assigned via Chapter Admins page', force }),
-      });
-      showToast(force ? 'Chapter admin replaced' : 'Chapter admin assigned');
-      window.location.reload();
-    } catch (err) {
-      if (err.status === 409) {
-        if (confirm(`${err.message}\n\nReplace them?`)) {
-          await doAssignChapterAdmin({ chapterId, userId, note, force: true });
-        }
-        return;
+  function updateSortArrows() {
+    headers.forEach((h) => {
+      const arrow = h.querySelector('.sort-arrow');
+      if (!arrow) return;
+      if (h.dataset.sortKey === sort) {
+        arrow.textContent = dir === 'asc' ? '▲' : '▼';
+        arrow.classList.remove('text-slate-300');
+        arrow.classList.add('text-indigo-600');
+      } else {
+        arrow.textContent = '▲▼';
+        arrow.classList.add('text-slate-300');
+        arrow.classList.remove('text-indigo-600');
       }
+    });
+  }
+
+  async function loadInvitations(page) {
+    const formData = filterForm ? new FormData(filterForm) : new FormData();
+    const params = new URLSearchParams();
+    ['eventId', 'chapter', 'school', 'type', 'status', 'source'].forEach((key) => {
+      const value = formData.get(key) || (key === 'eventId' ? eventId : '');
+      if (value) params.set(key, value);
+    });
+    if (sort) {
+      params.set('sort', sort);
+      params.set('dir', dir);
+    }
+    params.set('page', page);
+
+    try {
+      const res = await apiFetch(`/api/admin/invitations?${params.toString()}`);
+      const { invitations, total, page: currentPage, totalPages } = res.data;
+      tbody.innerHTML = invitations.map((inv) => invitationRowHtml(inv, includeEventColumn)).join('');
+      emptyEl?.classList.toggle('hidden', invitations.length > 0);
+      renderPagination(currentPage, totalPages, total);
+    } catch (err) {
       showToast(err.message, 'error');
     }
   }
 
-  document.querySelectorAll('[data-remove-chapter]').forEach((btn) => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const chapterId = btn.getAttribute('data-remove-chapter');
-      const chapterName = btn.getAttribute('data-chapter-name');
-      if (!confirm(`Remove the chapter admin for "${chapterName}"?`)) return;
+  filterForm?.addEventListener('change', () => loadInvitations(1));
+
+  headers.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.sortKey;
+      dir = sort === key && dir === 'desc' ? 'asc' : 'desc';
+      sort = key;
+      updateSortArrows();
+      loadInvitations(1);
+    });
+  });
+
+  // Exposed so the resend-invitation handler (initInvitationsModule) can
+  // refresh this table's current page after a resend instead of leaving a
+  // stale row in place.
+  table.__reloadInvitations = () => loadInvitations(Number(paginationEl?.dataset.page) || 1);
+}
+
+// --- Organization tree (admin/organizations/tree page) ---
+// Expands one level at a time rather than shipping the whole hierarchy: the
+// tree stays cheap to open no matter how many organizations exist, and a level
+// is only fetched the first time it's opened.
+function initOrganizationTree() {
+  // Bootstrap form, shown only while no root exists. Handled before the
+  // early return below, since the tree itself isn't rendered in that state.
+  const rootForm = document.getElementById('create-root-form');
+  if (rootForm) {
+    rootForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('root-name').value.trim();
+      if (!name) return showToast('Please enter a name', 'error');
       try {
-        await apiFetch('/api/admin/chapter-admins/remove', {
+        await apiFetch('/api/admin/organizations/child', {
           method: 'POST',
-          body: JSON.stringify({ chapterId, note: 'Removed via Chapter Admins page' }),
+          body: JSON.stringify({ name, type: 'NATIONAL' }), // no parentId: this is the root
         });
-        showToast('Chapter admin removed');
+        showToast('National organization created');
+        window.location.reload();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+  }
+
+  const tree = document.getElementById('org-tree');
+  const modal = document.getElementById('add-child-modal');
+  if (!tree || !modal) return; // not on this page
+
+  const TYPE_LABEL = {
+    NATIONAL: 'National', PROVINCE: 'Province', STUDENT_UNIT: 'Student Unit',
+  };
+  const TYPE_BADGE = {
+    NATIONAL: 'badge-purple', PROVINCE: 'badge-blue', STUDENT_UNIT: 'badge-slate',
+  };
+
+  function nodeHtml(c) {
+    const badge = TYPE_BADGE[c.type] || 'badge-slate';
+    const label = TYPE_LABEL[c.type] || c.type;
+    return `
+      <li class="org-node" data-node-id="${c.id}">
+        <div class="flex items-center gap-2 py-1.5 border-b border-slate-100">
+          <button type="button" class="org-toggle w-5 h-5 shrink-0 text-slate-400 hover:text-slate-700 ${c.childCount ? '' : 'invisible'}"
+                  data-node-toggle="${c.id}" aria-expanded="false" aria-label="Expand">&#9656;</button>
+          <span class="${badge}">${escapeHtml(label)}</span>
+          <span class="font-medium text-slate-800 truncate flex-1">${escapeHtml(c.name)}</span>
+          ${c.needsReview ? '<span class="badge-amber shrink-0">Needs review</span>' : ''}
+          ${c.isActive ? '' : '<span class="badge-slate shrink-0">Inactive</span>'}
+          <span class="text-xs text-slate-400 shrink-0 tabular-nums">
+            ${c.childCount} child${c.childCount === 1 ? '' : 'ren'} &middot; ${c.memberCount} member${c.memberCount === 1 ? '' : 's'}
+          </span>
+          <span class="shrink-0 flex items-center gap-2">
+            <button type="button" class="text-indigo-600 hover:underline text-xs font-medium"
+                    data-add-child="${c.id}" data-parent-name="${escapeHtml(c.name)}">+ Child</button>
+            <a href="/admin/organizations/${c.id}/edit" data-admin-link class="text-slate-500 hover:underline text-xs">Edit</a>
+            <button type="button" class="text-amber-600 hover:underline text-xs"
+                    data-toggle-active="${c.id}" data-active="${c.isActive ? '1' : '0'}"
+                    data-org-name="${escapeHtml(c.name)}">${c.isActive ? 'Deactivate' : 'Reactivate'}</button>
+            <button type="button" class="text-red-600 hover:underline text-xs"
+                    data-delete-org="${c.id}" data-org-name="${escapeHtml(c.name)}">Delete</button>
+          </span>
+        </div>
+        <ul class="org-children hidden pl-6 border-l border-slate-200 ml-2.5"></ul>
+      </li>`;
+  }
+
+  async function toggleNode(btn) {
+    const li = btn.closest('.org-node');
+    const childList = li.querySelector('.org-children');
+    const expanded = btn.getAttribute('aria-expanded') === 'true';
+
+    if (expanded) {
+      childList.classList.add('hidden');
+      btn.setAttribute('aria-expanded', 'false');
+      btn.innerHTML = '&#9656;';
+      return;
+    }
+
+    // Fetch only on first open; afterwards just re-show what's already there.
+    if (!childList.dataset.loaded) {
+      btn.innerHTML = '&hellip;';
+      try {
+        const res = await apiFetch(`/api/admin/organization-tree?id=${li.dataset.nodeId}`);
+        childList.innerHTML = res.data.children.map(nodeHtml).join('');
+        childList.dataset.loaded = '1';
+      } catch (err) {
+        showToast(err.message, 'error');
+        btn.innerHTML = '&#9656;';
+        return;
+      }
+    }
+    childList.classList.remove('hidden');
+    btn.setAttribute('aria-expanded', 'true');
+    btn.innerHTML = '&#9662;';
+  }
+
+  function openAddChild(parentId, parentName) {
+    document.getElementById('add-child-parent-id').value = parentId;
+    document.getElementById('add-child-parent-name').textContent = parentName;
+    document.getElementById('add-child-name').value = '';
+    document.getElementById('add-child-code').value = '';
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    document.getElementById('add-child-name').focus();
+  }
+
+  function closeAddChild() {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+
+  // Re-fetches the level a node lives in, so a change to that node is
+  // reflected without discarding the rest of the admin's expanded tree.
+  async function refreshParentLevel(li) {
+    const parentList = li.parentElement;
+    const parentLi = parentList.closest('.org-node');
+    if (!parentLi) { window.location.reload(); return; } // top level
+    const toggle = parentLi.querySelector('[data-node-toggle]');
+    delete parentList.dataset.loaded;
+    parentList.innerHTML = '';
+    toggle.setAttribute('aria-expanded', 'false');
+    await toggleNode(toggle);
+  }
+
+  document.addEventListener('click', async (e) => {
+    const toggle = e.target.closest('[data-node-toggle]');
+    if (toggle && tree.contains(toggle)) { toggleNode(toggle); return; }
+
+    const add = e.target.closest('[data-add-child]');
+    if (add) {
+      openAddChild(add.getAttribute('data-add-child'), add.getAttribute('data-parent-name'));
+      return;
+    }
+
+    // Deactivate / reactivate — the reversible action, and the one to use for
+    // anything with history. Deactivating takes the whole subtree out of
+    // service, so the count is spelled out before confirming.
+    const act = e.target.closest('[data-toggle-active]');
+    if (act && tree.contains(act)) {
+      const id = act.getAttribute('data-toggle-active');
+      const name = act.getAttribute('data-org-name');
+      const currentlyActive = act.getAttribute('data-active') === '1';
+      const msg = currentlyActive
+        ? `Deactivate "${name}"?\n\nIt and everything beneath it will stop appearing to new members. Existing members and past registrations are kept, and you can reactivate it later.`
+        : `Reactivate "${name}"?`;
+      if (!confirm(msg)) return;
+      try {
+        const res = await apiFetch(`/api/admin/organizations/${id}/active`, {
+          method: 'POST',
+          body: JSON.stringify({ isActive: !currentlyActive }),
+        });
+        showToast(res.message + (res.data.affected > 1 ? ` (${res.data.affected} organizations)` : ''));
+        await refreshParentLevel(act.closest('.org-node'));
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+      return;
+    }
+
+    // Permanent delete. The server refuses when anything is attached and says
+    // what — this only warns; it does not pre-judge.
+    const del = e.target.closest('[data-delete-org]');
+    if (del && tree.contains(del)) {
+      const id = del.getAttribute('data-delete-org');
+      const name = del.getAttribute('data-org-name');
+      if (!confirm(`Permanently delete "${name}"?\n\nThis cannot be undone. It is only possible if the organization has no child organizations, no members, and no past event registrations — otherwise deactivate it instead.`)) return;
+      try {
+        await apiFetch(`/api/admin/organizations/${id}`, { method: 'DELETE' });
+        showToast('Organization deleted');
+        await refreshParentLevel(del.closest('.org-node'));
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+  });
+
+  document.getElementById('add-child-cancel')?.addEventListener('click', closeAddChild);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeAddChild(); });
+
+  document.getElementById('add-child-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const parentId = document.getElementById('add-child-parent-id').value;
+    const payload = {
+      parentId,
+      name: document.getElementById('add-child-name').value.trim(),
+      type: document.getElementById('add-child-type').value,
+      code: document.getElementById('add-child-code').value.trim() || null,
+    };
+    if (!payload.name) return showToast('Please enter a name', 'error');
+
+    try {
+      const res = await apiFetch('/api/admin/organizations/child', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      showToast('Created: ' + res.data.pathLabel);
+      closeAddChild();
+
+      // Drop the cached children for that parent so the next expand re-fetches
+      // and shows the new node, instead of silently serving a stale level.
+      const parentLi = tree.querySelector(`.org-node[data-node-id="${parentId}"]`);
+      if (parentLi) {
+        const list = parentLi.querySelector('.org-children');
+        delete list.dataset.loaded;
+        list.innerHTML = '';
+        list.classList.add('hidden');
+        const t = parentLi.querySelector('[data-node-toggle]');
+        t.classList.remove('invisible');
+        t.setAttribute('aria-expanded', 'false');
+        t.innerHTML = '&#9656;';
+        toggleNode(t);
+      } else {
+        window.location.reload(); // added under the root itself
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+}
+
+// --- Organization Admins (admin/organization-admins page) ---
+// Assignment is by userId now: an organization may have several admins, and a
+// user administers at most one organization, so reassigning just moves them —
+// there's no 'this org already has an admin' conflict to resolve any more.
+function initOrganizationAdmins() {
+  const assignForm = document.getElementById('assign-org-admin-form');
+  if (!assignForm) return; // not on this page
+
+  assignForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const organizationId = document.getElementById('assign-organizationId').value;
+    const userId = document.getElementById('assign-userId').value;
+    if (!organizationId || !userId) return showToast('Please select an organization and a member', 'error');
+    try {
+      await apiFetch('/api/admin/organization-admins/assign', {
+        method: 'POST',
+        body: JSON.stringify({ organizationId, userId, note: 'Assigned via Organization Admins page' }),
+      });
+      showToast('Organization admin assigned');
+      window.location.reload();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+
+  document.querySelectorAll('[data-remove-org-admin]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const userId = btn.getAttribute('data-remove-org-admin');
+      if (!confirm('Remove this organization admin? They will revert to a regular member.')) return;
+      try {
+        await apiFetch('/api/admin/organization-admins/remove', {
+          method: 'POST',
+          body: JSON.stringify({ userId, note: 'Removed via Organization Admins page' }),
+        });
+        showToast('Organization admin removed');
         window.location.reload();
       } catch (err) {
         showToast(err.message, 'error');

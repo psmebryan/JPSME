@@ -1,10 +1,6 @@
-const fs = require('fs').promises;
-const path = require('path');
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
-
-const PROJECT_ROOT = path.join(__dirname, '..', '..');
-const PUBLIC_UPLOADS_ROOT = path.join(PROJECT_ROOT, 'public', 'uploads');
+const storageService = require('./storage.service');
 
 const DEFAULT_MEMBER_APPROVED_SUBJECT = 'Welcome to JPSME, {{firstName}}!';
 const DEFAULT_MEMBER_APPROVED_BODY =
@@ -19,20 +15,6 @@ const DEFAULT_INVITATION_BODY =
   'Hi {{fullName}},\n\nYou\'re invited to {{eventTitle}} on {{eventDate}}.\n\n'
   + 'Just want to attend? Click here — no account needed:\n{{attendUrl}}\n\n'
   + 'Want to register as a JPSME member instead?\n{{inviteUrl}}\n\n- JPSME National';
-
-async function safeUnlink(absPath) {
-  if (!absPath) return;
-  try {
-    await fs.unlink(absPath);
-  } catch (err) {
-    // File may already be gone — deletion is best-effort.
-  }
-}
-
-function attachmentToAbsolutePath(publicPath) {
-  const relative = publicPath.replace(/^\//, '').replace(/^uploads\//, '');
-  return path.join(PUBLIC_UPLOADS_ROOT, relative);
-}
 
 // --- Member-approved template (single global row) ---
 
@@ -59,7 +41,7 @@ async function upsertMemberApprovedTemplate({ subject, bodyHtml }) {
 
 async function setMemberApprovedAttachment(publicPath) {
   const template = await getMemberApprovedTemplate();
-  if (template.attachmentImage) await safeUnlink(attachmentToAbsolutePath(template.attachmentImage));
+  if (template.attachmentImage) await storageService.remove(template.attachmentImage);
   return prisma.emailTemplate.update({ where: { id: template.id }, data: { attachmentImage: publicPath } });
 }
 
@@ -98,7 +80,7 @@ async function upsertEventTemplate(eventId, { subject, bodyHtml }) {
 
 async function setEventTemplateAttachment(eventId, publicPath) {
   const template = await getEventTemplate(eventId);
-  if (template.attachmentImage) await safeUnlink(attachmentToAbsolutePath(template.attachmentImage));
+  if (template.attachmentImage) await storageService.remove(template.attachmentImage);
   return prisma.emailTemplate.update({ where: { id: template.id }, data: { attachmentImage: publicPath } });
 }
 
@@ -128,7 +110,7 @@ async function upsertEventInvitationTemplate(eventId, { subject, bodyHtml }) {
 // findUnique — an event can now hold more than one template row.
 async function deleteEventTemplateAssets(eventId) {
   const templates = await prisma.emailTemplate.findMany({ where: { eventId: Number(eventId) } });
-  await Promise.all(templates.filter((t) => t.attachmentImage).map((t) => safeUnlink(attachmentToAbsolutePath(t.attachmentImage))));
+  await Promise.all(templates.filter((t) => t.attachmentImage).map((t) => storageService.remove(t.attachmentImage)));
 }
 
 module.exports = {

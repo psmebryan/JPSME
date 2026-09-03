@@ -1,46 +1,57 @@
-<% const members = locals.members || []; const chapter = locals.chapter || null; const leader = locals.leader || null; %>
+<% const members = locals.members || []; const organization = locals.organization || null; %>
+<% const organizationPath = locals.organizationPath || null; const leader = locals.leader || null; %>
 <% const otherMembers = members.filter(m => !leader || m.id !== leader.id); %>
 <% const isMainAdmin = locals.currentUser && currentUser.role === 'ADMIN'; %>
+<%
+const TYPE_LABEL = {
+  NATIONAL: 'National', PROVINCE: 'Province', STUDENT_UNIT: 'Student Unit',
+};
+%>
 
 <div class="mb-6">
   <% if (isMainAdmin) { %>
-    <a href="/admin/chapter-admins" class="text-sm text-indigo-600 hover:underline">&larr; Back to Chapter Admins</a>
+    <a href="/admin/organization-admins" class="text-sm text-indigo-600 hover:underline">&larr; Back to Organization Admins</a>
   <% } %>
-  <h1 class="admin-h1 mt-2"><%= chapter ? chapter.name : 'Chapter Members' %></h1>
-  <% if (chapter && chapter.area) { %>
-    <p class="admin-subtitle"><%= chapter.area.name %><%= chapter.area.region ? ' · ' + chapter.area.region.name : '' %></p>
+  <h1 class="admin-h1 mt-2"><%= organization ? organization.name : 'Organization Members' %></h1>
+  <% if (organizationPath) { %>
+    <p class="admin-subtitle"><%= organizationPath %></p>
+  <% } %>
+  <% if (organization) { %>
+    <p class="mt-1 text-xs text-slate-400">
+      Includes members of every organization beneath
+      <%= TYPE_LABEL[organization.type] ? TYPE_LABEL[organization.type].toLowerCase() : 'this organization' %>
+      <%= organization.name %>, not only those attached to it directly.
+    </p>
   <% } %>
 </div>
 
-<% if (!chapter) { %>
-  <p class="text-slate-500">Select a chapter to view its members.</p>
+<% if (!organization) { %>
+  <p class="text-slate-500">Select an organization to view its members.</p>
 <% } else { %>
 
-  <!-- Chapter leader spotlight -->
   <div class="flex justify-center mb-10">
     <div class="admin-card px-8 py-6 flex flex-col items-center text-center w-full max-w-sm">
       <% if (leader) { %>
         <img src="<%= leader.profileImage || '/img/default-avatar.svg' %>" alt=""
              class="h-20 w-20 rounded-full object-cover ring-4 ring-amber-100 shadow-sm mb-3">
-        <p class="text-[11px] font-semibold tracking-wide uppercase text-amber-600 mb-1">Chapter Leader</p>
+        <p class="text-[11px] font-semibold tracking-wide uppercase text-amber-600 mb-1">Organization Admin</p>
         <p class="font-semibold text-slate-900"><%= leader.firstName %> <%= leader.lastName %></p>
         <p class="text-sm text-slate-500"><%= leader.email %></p>
-        <a href="/admin/chapter-members/<%= leader.id %>/edit" class="mt-3 text-xs text-indigo-600 hover:underline">Edit profile</a>
+        <a href="/admin/organization-members/<%= leader.id %>/edit" class="mt-3 text-xs text-indigo-600 hover:underline">Edit profile</a>
       <% } else { %>
         <img src="/img/default-avatar.svg" alt="" class="h-20 w-20 rounded-full object-cover ring-4 ring-slate-100 mb-3 opacity-60">
-        <p class="text-[11px] font-semibold tracking-wide uppercase text-slate-400 mb-1">Chapter Leader</p>
+        <p class="text-[11px] font-semibold tracking-wide uppercase text-slate-400 mb-1">Organization Admin</p>
         <p class="text-sm text-slate-400 italic">No admin assigned</p>
       <% } %>
     </div>
   </div>
 
-  <!-- Members grid -->
   <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">
     Members <span class="text-slate-400 font-normal normal-case">(<%= members.length %>)</span>
   </h2>
 
   <% if (otherMembers.length === 0) { %>
-    <p class="text-slate-500">No other members in this chapter yet.</p>
+    <p class="text-slate-500">No other members in this organization yet.</p>
   <% } else { %>
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       <% otherMembers.forEach(member => { %>
@@ -49,9 +60,13 @@
                class="h-14 w-14 rounded-full object-cover ring-2 ring-slate-100 mb-3">
           <p class="text-sm font-medium text-slate-900 truncate w-full"><%= member.firstName %> <%= member.lastName %></p>
           <p class="text-xs text-slate-500 truncate w-full"><%= member.email %></p>
+          <% if (member.organization && organization && member.organization.id !== organization.id) { %>
+            <p class="mt-1 text-[11px] text-slate-400 truncate w-full"><%= member.organization.name %></p>
+          <% } %>
           <div class="flex items-center gap-3 mt-3">
-            <a href="/admin/chapter-members/<%= member.id %>/edit" class="text-xs text-indigo-600 hover:underline">Edit</a>
-            <form action="/admin/chapter-members/<%= member.id %>/delete" method="POST" data-confirm="Delete this member?">
+            <a href="/admin/organization-members/<%= member.id %>/edit" class="text-xs text-indigo-600 hover:underline">Edit</a>
+            <form action="/admin/organization-members/<%= member.id %>/delete" method="POST" data-confirm="Delete this member?">
+              <input type="hidden" name="_csrf" value="<%= locals.csrfToken || '' %>">
               <button type="submit" class="text-xs text-red-600 hover:underline">Delete</button>
             </form>
           </div>

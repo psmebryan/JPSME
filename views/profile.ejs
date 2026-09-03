@@ -35,7 +35,46 @@
         <% } %>
       </div>
 
-      <div class="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <%
+        // NONE is not a problem state — membership payment is optional, so an
+        // account that has simply never paid says so neutrally. Only EXPIRED
+        // gets the amber treatment and the Renew action.
+        const ms = locals.membership || { state: 'NONE' };
+        const msExpiry = ms.expiresAt ? new Date(ms.expiresAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : null;
+      %>
+      <div class="mt-8 rounded-xl border <%= ms.state === 'EXPIRED' ? 'border-amber-300' : 'border-gray-200' %> bg-gray-50 p-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Membership</p>
+            <% if (ms.state === 'ACTIVE') { %>
+              <p class="mt-2 text-sm font-medium text-gray-900">
+                Active &mdash; valid until <%= msExpiry %>
+              </p>
+              <p class="text-xs text-gray-500 mt-0.5">
+                <%= ms.daysRemaining %> day<%= ms.daysRemaining === 1 ? '' : 's' %> remaining.
+              </p>
+            <% } else if (ms.state === 'EXPIRED') { %>
+              <p class="mt-2 text-sm font-medium text-gray-900">Expired on <%= msExpiry %></p>
+              <p class="text-xs text-gray-500 mt-0.5">
+                Renew to start another year. Your account and details stay as they are either way.
+              </p>
+            <% } else { %>
+              <p class="mt-2 text-sm font-medium text-gray-900">No paid membership</p>
+              <p class="text-xs text-gray-500 mt-0.5">
+                Paying is optional &mdash; you can use your account without it.
+              </p>
+            <% } %>
+          </div>
+          <% if (ms.state !== 'ACTIVE') { %>
+            <a href="/membership-payment"
+               class="inline-flex items-center justify-center rounded-md bg-amber-400 px-5 py-2.5 font-semibold text-indigo-950 hover:bg-amber-300">
+              <%= ms.state === 'EXPIRED' ? 'Renew Membership' : 'Pay Membership Fee' %>
+            </a>
+          <% } %>
+        </div>
+      </div>
+
+      <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
           <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">School</p>
           <p class="mt-2 text-sm font-medium text-gray-900"><%= profileData.school || 'Not provided' %></p>
@@ -44,8 +83,8 @@
         <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
           <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Chapter</p>
           <p class="mt-2 text-sm font-medium text-gray-900">
-            <% if (profileData.chapter && profileData.chapter.name) { %>
-              <%= profileData.chapter.name %>
+            <% if (profileData.organization && profileData.organization.name) { %>
+              <%= profileData.organization.name %>
             <% } else { %>
               Not assigned yet
             <% } %>
@@ -77,18 +116,32 @@
           </div>
 
           <div>
-            <label for="chapterId" class="block text-sm font-medium mb-1">Chapter</label>
-            <select id="chapterId" name="chapterId" class="w-full border border-gray-300 rounded-md px-3 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <label for="organizationId" class="block text-sm font-medium mb-1">Organization</label>
+            <select id="organizationId" name="organizationId" class="w-full border border-gray-300 rounded-md px-3 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500">
               <option value="">Not assigned</option>
-              <% chapters.forEach(chapter => { %>
-                <option value="<%= chapter.id %>" <%= String(profileData.chapterId) === String(chapter.id) ? 'selected' : '' %>><%= chapter.name %></option>
+              <% (organizations || []).forEach(org => { %>
+                <option value="<%= org.id %>" <%= String(profileData.organizationId) === String(org.id) ? 'selected' : '' %>><%= org.name %></option>
               <% }) %>
             </select>
+            <% if (locals.organizationPath) { %>
+              <p class="mt-1 text-xs text-gray-500">Current: <%= organizationPath %></p>
+            <% } %>
           </div>
 
           <div class="md:col-span-2">
             <label for="school" class="block text-sm font-medium mb-1">School</label>
             <input id="school" name="school" value="<%= profileData.school || '' %>" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+
+          <div>
+          <label class="block text-sm font-medium mb-1">Year level</label>
+          <select name="yearLevel" id="yearLevel" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="">Not applicable</option>
+            <option value="FIRST" <%= (profileData.yearLevel || '') === 'FIRST' ? 'selected' : '' %>>1st Year</option>
+            <option value="SECOND" <%= (profileData.yearLevel || '') === 'SECOND' ? 'selected' : '' %>>2nd Year</option>
+            <option value="THIRD" <%= (profileData.yearLevel || '') === 'THIRD' ? 'selected' : '' %>>3rd Year</option>
+            <option value="FOURTH" <%= (profileData.yearLevel || '') === 'FOURTH' ? 'selected' : '' %>>4th Year</option>
+          </select>
           </div>
 
           <div class="md:col-span-2">
@@ -157,8 +210,9 @@
         const payload = {
           middleInitial: formData.get('middleInitial')?.toString().trim() || null,
           school: formData.get('school')?.toString().trim() || null,
+          yearLevel: formData.get('yearLevel') || null,
           phone: formData.get('phone')?.toString().trim() || null,
-          chapterId: formData.get('chapterId') || null,
+          organizationId: formData.get('organizationId') || null,
         };
 
         try {

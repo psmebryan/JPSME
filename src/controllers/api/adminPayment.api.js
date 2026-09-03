@@ -17,10 +17,10 @@ function checkValidation(req, res) {
 const listPayments = asyncHandler(async (req, res) => {
   if (!checkValidation(req, res)) return;
 
-  const { status, chapterId, dateFrom, dateTo, purpose, eventId, page } = req.query;
+  const { status, organizationId, dateFrom, dateTo, purpose, eventId, page } = req.query;
   const result = await paymentService.listPaymentsForAdmin({
     status: status || undefined,
-    chapterId: chapterId || undefined,
+    organizationId: organizationId || undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
     purpose: purpose || undefined,

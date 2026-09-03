@@ -1,7 +1,6 @@
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
-const fs = require('fs').promises;
-const path = require('path');
+const storageService = require('./storage.service');
 
 // FormData sends checkbox state as the literal string "true"/"false" (the
 // admin form explicitly sets this, since FormData omits unchecked boxes
@@ -66,14 +65,9 @@ async function updateArticle(id, data) {
   const existing = await getArticleById(id);
 
   if (data.imageUrl !== undefined && existing.coverImage) {
-    try {
-      if (existing.coverImage.startsWith('/uploads/articles/')) {
-        const filePath = path.join(__dirname, '..', '..', 'public', existing.coverImage.replace(/^\//, ''));
-        await fs.unlink(filePath).catch(() => {});
-      }
-    } catch (err) {
+    await storageService.remove(existing.coverImage).catch((err) => {
       console.error('Failed to remove previous article cover image:', err.message || err);
-    }
+    });
   }
 
   const willBePublished = data.isPublished !== undefined ? toBool(data.isPublished) : existing.isPublished;
@@ -95,13 +89,10 @@ async function updateArticle(id, data) {
 
 async function deleteArticle(id) {
   const existing = await getArticleById(id);
-  if (existing.coverImage && existing.coverImage.startsWith('/uploads/articles/')) {
-    try {
-      const filePath = path.join(__dirname, '..', '..', 'public', existing.coverImage.replace(/^\//, ''));
-      await fs.unlink(filePath).catch(() => {});
-    } catch (err) {
+  if (existing.coverImage) {
+    await storageService.remove(existing.coverImage).catch((err) => {
       console.error('Failed to remove article cover image on delete:', err.message || err);
-    }
+    });
   }
   await prisma.article.delete({ where: { id: Number(id) } });
 }
