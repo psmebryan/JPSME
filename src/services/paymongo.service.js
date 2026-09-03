@@ -21,7 +21,14 @@ function authHeader() {
 
 const REQUEST_TIMEOUT_MS = 15000;
 
-async function paymongoRequest(method, path, body) {
+// idempotencyKey is sent on state-changing requests so a retry — ours after a
+// timeout, or the user double-clicking through to a second attempt — is
+// recognised by PayMongo as the same logical operation and cannot produce a
+// second charge or a second refund. It must be stable for the operation and
+// distinct between operations, so callers derive it from the row the request
+// belongs to rather than generating a fresh random value each attempt, which
+// would defeat the point entirely.
+async function paymongoRequest(method, path, body, idempotencyKey) {
   // Resolved BEFORE the try block on purpose: authHeader() throws a 503
   // "gateway not configured" AppError when PAYMONGO_SECRET_KEY is missing,
   // and that's a config error, not a network failure — if it were evaluated
@@ -37,6 +44,7 @@ async function paymongoRequest(method, path, body) {
       headers: {
         Authorization: authorization,
         'Content-Type': 'application/json',
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
       // Without this, a hung connection to PayMongo would leave the request
@@ -103,7 +111,9 @@ async function createGcashCheckout({ amountCentavos, surchargeCentavos = 0, desc
     },
   };
 
-  const json = await paymongoRequest('POST', '/checkout_sessions', payload);
+  // Keyed on the reference number: one per Payment row, so retrying the same
+  // payment reuses the session instead of opening a second one.
+  const json = await paymongoRequest('POST', '/checkout_sessions', payload, `checkout:${referenceNumber}`);
   const checkoutId = json?.data?.id;
   const checkoutUrl = json?.data?.attributes?.checkout_url;
 
@@ -137,7 +147,9 @@ async function createRefund({ gatewayPaymentId, amountCentavos, reason, notes })
       },
     },
   };
-  const json = await paymongoRequest('POST', '/refunds', payload);
+  // Keyed on the payment being refunded. Refund is one-to-one with a payment
+  // in this app, so the key is stable for the operation and unique across them.
+  const json = await paymongoRequest('POST', '/refunds', payload, `refund:${gatewayPaymentId}`);
   const refund = json?.data;
   if (!refund?.id) {
     console.error('PayMongo refund response missing expected fields:', JSON.stringify(json));

@@ -17,10 +17,43 @@ const handlePaymongoWebhook = asyncHandler(async (req, res) => {
     return error(res, 'Invalid signature', 400);
   }
 
-  const result = await paymentService.processWebhookEvent(req.body, req.ip);
-  // PayMongo only cares about the HTTP status, not the body shape — 200 means
-  // "received and won't be retried."
-  return res.status(200).json({ received: true, result });
+  // Acknowledge first, process after. Confirming a payment is not a quick
+  // write — it flips a registration, sends a confirmation email, auto-approves
+  // the membership and syncs a Google Sheet — and PayMongo times out a slow
+  // handler and redelivers, so processing before responding invites exactly
+  // the duplicate deliveries this has to defend against.
+  //
+  // Safe to acknowledge early because the work is idempotent regardless: the
+  // (gateway, webhookId) unique constraint in processWebhookEvent makes any
+  // redelivery a database-level no-op. And if this process dies between the
+  // response and the work, the event is not lost — reconcilePayment and the
+  // stuck-payment sweep re-derive state from PayMongo's own API.
+  //
+  // The signature was already verified above, so nothing unauthenticated ever
+  // reaches this point.
+  res.status(200).json({ received: true });
+
+  try {
+    await paymentService.processWebhookEvent(req.body, req.ip);
+  } catch (err) {
+    // The response is already sent, so this cannot be reported to PayMongo —
+    // it has to be visible here instead, or a failure after acknowledgement
+    // would vanish silently.
+    (req.log || console).error('paymongo webhook processing failed after acknowledgement', {
+      err: err.message,
+      eventId: req.body?.data?.id,
+      eventType: req.body?.data?.attributes?.type,
+    });
+    await auditService.log({
+      action: 'WEBHOOK_REJECTED',
+      metadata: {
+        reason: 'processing failed after 200 acknowledgement',
+        eventId: req.body?.data?.id,
+        error: err.message,
+      },
+      ipAddress: req.ip,
+    }).catch(() => {});
+  }
 });
 
 // Brevo doesn't sign webhook requests (no HMAC header, unlike PayMongo), so
