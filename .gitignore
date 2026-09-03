@@ -9,3 +9,5 @@ storage/certificates/events/*
 !storage/certificates/events/.gitkeep
 *.log
 .DS_Store
+CLAUDE.md
+org-backup-before-wipe.json
