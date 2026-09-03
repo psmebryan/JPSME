@@ -69,7 +69,10 @@ const TYPE_LABEL = {
       </tbody>
     </table>
     <% if (!assignments.length) { %>
-      <p class="empty-state">No organization admins assigned yet.</p>
+      <%- include('../partials/empty-state', {
+        title: 'No organization admins yet',
+        hint: 'An organization admin manages the members of their own organization and everything beneath it, and nothing outside it.',
+      }) %>
     <% } %>
   </div>
 </section>

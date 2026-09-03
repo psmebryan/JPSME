@@ -105,8 +105,26 @@
   }
 
   /* Empty states */
+  /* Empty states.
+     .empty-state stays a plain centred line for the many places a one-liner is
+     right. The pieces below build the fuller version used where a screen can
+     actually be empty for a long time — a new deployment sees almost nothing
+     else, so "No events yet." on its own leaves someone with no idea whether
+     the page is broken, still loading, or simply waiting for them to act. */
   .empty-state {
     @apply text-center text-slate-500 py-12 text-sm;
+  }
+  .empty-state-icon {
+    @apply mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-400;
+  }
+  .empty-state-title {
+    @apply text-sm font-semibold text-slate-800;
+  }
+  .empty-state-hint {
+    @apply mt-1 text-sm text-slate-500 max-w-sm mx-auto;
+  }
+  .empty-state-action {
+    @apply mt-4 inline-block;
   }
 }
 

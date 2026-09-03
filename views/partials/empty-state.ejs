@@ -1,0 +1,49 @@
+<%
+/*
+  Fuller empty state for screens that can legitimately sit empty — a fresh
+  deployment sees almost nothing else, and a bare "No events yet." leaves the
+  reader unable to tell whether the page is broken, still loading, or simply
+  waiting for them to do something.
+
+  Include as `partials/empty-state` (or `../partials/empty-state` from
+  views/admin/*), passing:
+
+    title    required. What is absent, stated plainly.
+    hint     optional. One line on why it is empty or what fills it.
+    action   optional. { href, label } — the thing to do about it. Omit when
+             the reader cannot act, which is the case for a filtered view.
+    filtered optional. true when the emptiness comes from a filter rather than
+             from there being no data. The distinction matters: "nothing here
+             yet" and "nothing matched your search" call for opposite
+             responses, and rendering them identically sends people looking
+             for records that are simply filtered out.
+*/
+const es = {
+  title: locals.title || 'Nothing here yet',
+  hint: locals.hint || '',
+  action: locals.action || null,
+  filtered: !!locals.filtered,
+};
+%>
+<div class="empty-state">
+  <div class="empty-state-icon" aria-hidden="true">
+    <% if (es.filtered) { %>
+      <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+              d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+      </svg>
+    <% } else { %>
+      <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+              d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11v6m4-6v6m4-9V4.5A1.5 1.5 0 0016.5 3h-9A1.5 1.5 0 006 4.5V8m-3 0h18" />
+      </svg>
+    <% } %>
+  </div>
+
+  <p class="empty-state-title"><%= es.title %></p>
+  <% if (es.hint) { %><p class="empty-state-hint"><%= es.hint %></p><% } %>
+
+  <% if (es.action && es.action.href) { %>
+    <a href="<%= es.action.href %>" class="btn-primary empty-state-action"><%= es.action.label || 'Get started' %></a>
+  <% } %>
+</div>

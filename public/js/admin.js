@@ -209,7 +209,10 @@ function initBroadcastModule() {
     const table = document.getElementById('broadcast-history-table');
     const tbody = table?.querySelector('tbody');
     if (!tbody) return;
-    table.parentElement?.querySelector('p.empty-state')?.remove();
+    // Matched on the class alone, not p.empty-state: the richer empty states
+    // built from partials/empty-state.ejs are a div, so tying this to the tag
+    // would silently stop clearing the placeholder the day this view adopts one.
+    table.parentElement?.querySelector('.empty-state')?.remove();
     const tr = document.createElement('tr');
     tr.dataset.broadcastId = b.id;
     tr.dataset.status = b.status;

@@ -238,7 +238,11 @@ function modalityBadgeClass(m) {
       </tbody>
     </table>
     <% if (tableEvents.length === 0) { %>
-      <p class="empty-state">No events match these filters.</p>
+      <%- include('../partials/empty-state', {
+        title: 'No events match these filters',
+        hint: 'Try a different search, modality or published state.',
+        filtered: true,
+      }) %>
     <% } %>
   </div>
 

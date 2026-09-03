@@ -101,7 +101,11 @@ const TYPE_BADGE = {
         </tbody>
       </table>
       <% if (!organizations.length) { %>
-        <p class="empty-state">No organizations match these filters.</p>
+        <%- include('../partials/empty-state', {
+          title: 'No organizations match these filters',
+          hint: 'Clear the search, type or needs-review filter to see the full list.',
+          filtered: true,
+        }) %>
       <% } %>
     </div>
 

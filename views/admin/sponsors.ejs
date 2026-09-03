@@ -28,7 +28,10 @@
   <section class="mt-8 admin-card p-6">
     <h2 class="font-semibold">Current Sponsors</h2>
     <% if (!sponsors.length) { %>
-      <p class="mt-4 empty-state">No sponsors have been added yet.</p>
+      <%- include('../partials/empty-state', {
+        title: 'No sponsors yet',
+        hint: 'Sponsor logos appear on the public home page.',
+      }) %>
     <% } else { %>
       <div id="sponsor-list" class="mt-4 divide-y divide-slate-200">
         <% sponsors.forEach(sponsor => { %>
