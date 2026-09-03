@@ -1846,10 +1846,10 @@ function initOrganizationTree() {
   if (!tree || !modal) return; // not on this page
 
   const TYPE_LABEL = {
-    NATIONAL: 'National', PROVINCE: 'Province', STUDENT_UNIT: 'Student Unit',
+    NATIONAL: 'National', REGION: 'Region', PROVINCE: 'Province', STUDENT_UNIT: 'Student Unit',
   };
   const TYPE_BADGE = {
-    NATIONAL: 'badge-purple', PROVINCE: 'badge-blue', STUDENT_UNIT: 'badge-slate',
+    NATIONAL: 'badge-purple', REGION: 'badge-emerald', PROVINCE: 'badge-blue', STUDENT_UNIT: 'badge-slate',
   };
 
   function nodeHtml(c) {

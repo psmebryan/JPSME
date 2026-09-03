@@ -21,7 +21,7 @@ const organizationService = require('./organization.service');
 // dryRun returns exactly what would change without touching anything, and the
 // admin UI runs it first so the report can be read before committing.
 
-const ORG_TYPES = ['NATIONAL', 'PROVINCE', 'STUDENT_UNIT'];
+const ORG_TYPES = ['NATIONAL', 'REGION', 'PROVINCE', 'STUDENT_UNIT'];
 const YEAR_LEVELS = { '1ST YEAR': 'FIRST', '2ND YEAR': 'SECOND', '3RD YEAR': 'THIRD', '4TH YEAR': 'FOURTH', FIRST: 'FIRST', SECOND: 'SECOND', THIRD: 'THIRD', FOURTH: 'FOURTH' };
 
 function cell(row, index) {

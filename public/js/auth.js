@@ -91,7 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const orgError = document.getElementById('chapter-error');
 
     const ORG_TYPE_LABEL = {
-      NATIONAL: 'National', PROVINCE: 'Province', STUDENT_UNIT: 'Student Unit',
+      NATIONAL: 'National', REGION: 'Region', PROVINCE: 'Province', STUDENT_UNIT: 'Student Unit',
     };
 
     if (orgCascade && orgHidden) {
@@ -130,7 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Shallowest level first, so a step that mixes levels reads top-down the
       // way the hierarchy does rather than in arbitrary order.
-      const TYPE_ORDER = ['NATIONAL', 'PROVINCE', 'STUDENT_UNIT'];
+      const TYPE_ORDER = ['NATIONAL', 'REGION', 'PROVINCE', 'STUDENT_UNIT'];
 
       function optionHtml(o, selectedId) {
         return `<option value="${o.id}" ${String(o.id) === String(selectedId) ? 'selected' : ''}>${escapeHtml(o.name)}</option>`;

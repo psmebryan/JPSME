@@ -234,8 +234,9 @@ async function getChildrenForTree(parentId) {
 // stays silent about merely-skipped levels, which are legitimate.
 const CONTAINER_RANK = {
   NATIONAL: 0,
-  PROVINCE: 1,
-  STUDENT_UNIT: 2,
+  REGION: 1,
+  PROVINCE: 2,
+  STUDENT_UNIT: 3,
 };
 
 function validateParentChild(childType, parentType) {
@@ -256,7 +257,7 @@ function validateParentChild(childType, parentType) {
 }
 
 const LABELS = {
-  NATIONAL: 'National', PROVINCE: 'Province', STUDENT_UNIT: 'Student Unit',
+  NATIONAL: 'National', REGION: 'Region', PROVINCE: 'Province', STUDENT_UNIT: 'Student Unit',
 };
 
 // --- Writes ---

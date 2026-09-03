@@ -350,12 +350,18 @@ model SiteSetting {
 // (MOTHER ORG / REGION / CLUSTER / CHAPTER / STUDENT UNIT) with NATIONAL as the
 // single root above them.
 //
-// National → Province → Student Unit. The tree itself is still parent-driven
-// and variable-depth — nothing enforces this order, and a student unit may
-// attach straight to National where no province is recorded — but these are
-// the only levels PSME uses, so no other type exists to create.
+// National → Region → Province → Student Unit.
+//
+// Region is the island-group tier: LUZON, VISAYAS, MINDANAO, NCR. Those are
+// not provinces — provinces sit beneath them — and only one NATIONAL root is
+// permitted, so without this level they had nowhere to go.
+//
+// Still parent-driven and variable-depth: nothing enforces the order, and a
+// school may attach straight to a region where no province is recorded rather
+// than having a placeholder invented for it.
 enum OrganizationType {
   NATIONAL
+  REGION
   PROVINCE
   STUDENT_UNIT
 }
