@@ -6,6 +6,7 @@ function initAdminPage() {
   initPaymentsEnabledToggle();
   initMembershipRequiredToggle();
   initDataTransfer();
+  initRowActionMenus();
   initEventsTable();
   initArticlesTable();
   initInvitationsModule();
@@ -844,12 +845,12 @@ async function loadPendingUsers(table) {
       <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
           <td class="admin-td">${membershipTierBadge(u)}</td>
       <td class="admin-td">${membershipPaymentBadge(u)}</td>
-          <td class="admin-td text-right">
-            <div class="flex flex-wrap justify-end items-center gap-2">
-              <button data-approve="${u.id}" class="text-green-600 hover:underline text-sm font-medium">Approve</button>
-              <button data-reject="${u.id}" class="text-red-600 hover:underline text-sm font-medium">Reject</button>
-              <button data-assign-toggle="${u.id}" class="text-indigo-600 hover:underline text-sm font-medium">Assign</button>
-            </div>
+          <td class="admin-td text-right relative">
+            ${rowMenuHtml([
+              `<button type="button" data-approve="${u.id}" class="${ROW_MENU_ITEM} text-green-700">Approve</button>`,
+              `<button type="button" data-assign-toggle="${u.id}" class="${ROW_MENU_ITEM}">Assign organization</button>`,
+              `<button type="button" data-reject="${u.id}" class="${ROW_MENU_ITEM} text-red-600">Reject</button>`,
+            ])}
             <div class="assign-panel hidden w-full mt-2 flex flex-wrap justify-end items-center gap-2">
               <select class="assign-select form-input py-1.5 w-auto">
                 <option value="">Select organization</option>
@@ -867,6 +868,25 @@ async function loadPendingUsers(table) {
   }
 }
 
+
+// Shared by both row renderers. Kept as one helper so the trigger and the menu
+// container stay in sync — the menu is found via the button's parent element.
+const ROW_MENU_ITEM = 'block w-full text-left px-3 py-2 text-sm hover:bg-slate-50';
+
+function rowMenuHtml(items) {
+  const body = items.filter(Boolean).join('');
+  if (!body) return '';
+  return `
+    <button type="button" data-actions-toggle aria-haspopup="true" aria-expanded="false"
+            aria-label="Actions"
+            class="inline-flex items-center justify-center w-8 h-8 rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800">
+      <span class="text-lg leading-none tracking-widest">&#8943;</span>
+    </button>
+    <div class="row-menu hidden min-w-[190px] rounded-md border border-slate-200 bg-white py-1 shadow-lg" role="menu">
+      ${body}
+    </div>`;
+}
+
 function memberRowHtml(u) {
   const canEdit = (window.currentAdmin && window.currentAdmin.role === 'ADMIN') || (window.currentAdmin && window.currentAdmin.role === 'CHAPTER_ADMIN' && u.organization && Number(u.organization.id) === Number(window.currentAdmin.organizationId));
   const assignAllowed = (window.currentAdmin && window.currentAdmin.role === 'ADMIN');
@@ -880,12 +900,12 @@ function memberRowHtml(u) {
       <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
       <td class="admin-td">${membershipTierBadge(u)}</td>
       <td class="admin-td">${membershipPaymentBadge(u)}</td>
-      <td class="admin-td text-right">
-        <div class="flex flex-wrap justify-end items-center gap-2">
-          ${canEdit ? `<a href="/admin/users/${u.id}/edit" class="text-indigo-600 hover:underline text-sm font-medium">Edit</a>` : ''}
-          ${canEdit ? `<button data-delete-user="${u.id}" class="text-red-600 hover:underline text-sm font-medium">Delete</button>` : ''}
-          ${assignAllowed ? `<button data-assign-toggle="${u.id}" class="text-indigo-600 hover:underline text-sm font-medium">Assign</button>` : ''}
-        </div>
+      <td class="admin-td text-right relative">
+        ${rowMenuHtml([
+          canEdit ? `<a href="/admin/users/${u.id}/edit" class="${ROW_MENU_ITEM}">Edit</a>` : '',
+          assignAllowed ? `<button type="button" data-assign-toggle="${u.id}" class="${ROW_MENU_ITEM}">Assign organization</button>` : '',
+          canEdit ? `<button type="button" data-delete-user="${u.id}" class="${ROW_MENU_ITEM} text-red-600">Delete</button>` : '',
+        ])}
         ${assignAllowed ? `<div class="assign-panel hidden w-full mt-2 flex flex-wrap justify-end items-center gap-2">
           <select class="assign-select form-input py-1.5 w-auto">
             <option value="">Select organization</option>
@@ -1140,6 +1160,81 @@ function initGatewaySurchargeForm() {
       showToast(err.errors?.[0]?.msg || err.message, 'error');
     }
   });
+}
+
+
+// --- Row action menus (the ... button in a table's Actions column) ---
+// The menu is positioned `fixed` rather than `absolute`: the table sits in an
+// overflow-x-auto wrapper, which would clip an absolutely positioned dropdown
+// at the cell edge. Fixed takes it out of that clipping context. The node stays
+// where it is in the DOM though — several existing handlers find their row with
+// closest('tr'), which would break if the menu were moved to document.body.
+//
+// Because fixed coordinates are computed once from the button's position, the
+// menu has to close on any scroll rather than drift away from its row. Wheel,
+// trackpad and touch scrolling all surface here: 'scroll' in the capture phase
+// catches scrolling inside the table wrapper as well as the page, and
+// touchmove covers a touch drag that hasn't produced a scroll event yet.
+function initRowActionMenus() {
+  let open = null;
+
+  function close() {
+    if (!open) return;
+    open.menu.classList.add('hidden');
+    open.menu.style.cssText = '';
+    open.button.setAttribute('aria-expanded', 'false');
+    open = null;
+  }
+
+  function place(button, menu) {
+    const r = button.getBoundingClientRect();
+    menu.classList.remove('hidden');
+    // Measure after unhiding, so width/height are real.
+    const w = menu.offsetWidth;
+    const h = menu.offsetHeight;
+    const gap = 4;
+    // Prefer below-right of the button; flip when it would leave the viewport,
+    // so a row near the bottom or the right edge stays fully readable.
+    let top = r.bottom + gap;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - gap);
+    let left = r.right - w;
+    if (left < 8) left = 8;
+    if (left + w > window.innerWidth - 8) left = Math.max(8, window.innerWidth - w - 8);
+    menu.style.position = 'fixed';
+    menu.style.top = top + 'px';
+    menu.style.left = left + 'px';
+    menu.style.zIndex = '60';
+  }
+
+  document.addEventListener('click', (e) => {
+    const toggle = e.target.closest('[data-actions-toggle]');
+    if (toggle) {
+      const menu = toggle.parentElement.querySelector('.row-menu');
+      if (!menu) return;
+      const wasOpen = open && open.menu === menu;
+      close();
+      if (!wasOpen) {
+        place(toggle, menu);
+        toggle.setAttribute('aria-expanded', 'true');
+        open = { button: toggle, menu };
+      }
+      return;
+    }
+    // A click on an item inside the menu still runs its own delegated handler;
+    // this only dismisses the menu afterwards. A click anywhere else closes it.
+    close();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') close();
+  });
+
+  ['wheel', 'touchmove'].forEach((evt) => {
+    document.addEventListener(evt, close, { passive: true });
+  });
+  // Capture phase: a scroll inside the table wrapper does not bubble.
+  document.addEventListener('scroll', close, true);
+  window.addEventListener('resize', close);
 }
 
 // --- Data export / import (admin/settings page) ---
