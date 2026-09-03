@@ -38,9 +38,14 @@
     @apply px-4 py-2.5;
   }
 
-  /* Buttons */
+  /* Buttons
+     focus-visible rather than focus: a ring should appear for keyboard
+     navigation without also outlining every button the moment it is clicked.
+     Offset so the ring reads as a halo rather than crowding the label. */
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2
+           disabled:opacity-50 disabled:pointer-events-none;
   }
   .btn-primary {
     @apply btn bg-indigo-600 text-white hover:bg-indigo-700;
@@ -58,6 +63,16 @@
   }
   .form-input {
     @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500;
+  }
+
+  /* Interactive elements that are neither .btn nor .form-input still need a
+     visible keyboard focus state — a row-menu item and the ... trigger are
+     reached by Tab like anything else. Scoped to the menu so it cannot leak
+     onto unrelated anchors. */
+  .row-menu a,
+  .row-menu button,
+  [data-actions-toggle] {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500;
   }
 
   /* Badges — soft pill with a subtle inset ring */

@@ -15,16 +15,65 @@
   <%- include('partials/footer') %>
   <script src="/js/api.js"></script>
   <style nonce="<%= cspNonce %>">
-    .public-main .bg-white, .public-main .bg-gray-50 { background-color:#111b3a !important; }
+    /*
+      The public site is dark, but its views are written with light-theme
+      utility classes that get remapped here. That means any class NOT listed
+      below keeps its light value and renders dark-on-dark — which is exactly
+      how the registration panel and the numbered section headings ended up
+      invisible. The lists were covering 11 of the 34 text colours the public
+      views actually use.
+
+      So these are now organised by role and cover the whole shade range of
+      each family, rather than the specific classes someone happened to write:
+
+        700-950  strong text        -> #fff
+        300-600  secondary text     -> #94a3bd
+        accents  keep their hue, lightened to read on the dark ground
+
+      Adding a new shade within these families now works without anyone having
+      to remember to update this block. Opacity modifiers (text-slate-900/60)
+      still escape it — Tailwind emits those as differently-named classes —
+      so avoid them in public views.
+    */
+
+    /* Surfaces */
+    .public-main .bg-white, .public-main .bg-gray-50, .public-main .bg-slate-50 { background-color:#111b3a !important; }
     .public-main .bg-indigo-950 { background-color:#101934 !important; }
-    .public-main .bg-indigo-50, .public-main .bg-amber-50, .public-main .bg-gray-100 { background-color:#0a1128 !important; }
-    .public-main .border-gray-100, .public-main .border-gray-200, .public-main .border-gray-300 { border-color:#263b70 !important; }
-    .public-main .text-gray-900, .public-main .text-indigo-950 { color:#fff !important; }
-    .public-main .text-gray-700, .public-main .text-gray-600, .public-main .text-gray-500, .public-main .text-gray-400, .public-main .text-indigo-100, .public-main .text-indigo-200 { color:#94a3bd !important; }
-    .public-main .text-indigo-600, .public-main .text-indigo-700, .public-main .text-amber-600 { color:#fbbf24 !important; }
+    .public-main .bg-indigo-50, .public-main .bg-amber-50, .public-main .bg-gray-100,
+    .public-main .bg-slate-100, .public-main .bg-green-50, .public-main .bg-red-50 { background-color:#0a1128 !important; }
+
+    /* Borders */
+    .public-main .border-gray-100, .public-main .border-gray-200, .public-main .border-gray-300,
+    .public-main .border-slate-100, .public-main .border-slate-200, .public-main .border-slate-300,
+    .public-main .border-indigo-200 { border-color:#263b70 !important; }
+
+    /* Strong text — headings and emphasised copy */
+    .public-main .text-gray-800, .public-main .text-gray-900,
+    .public-main .text-slate-800, .public-main .text-slate-900,
+    .public-main .text-indigo-900, .public-main .text-indigo-950 { color:#fff !important; }
+
+    /* Secondary text */
+    .public-main .text-gray-300, .public-main .text-gray-400, .public-main .text-gray-500,
+    .public-main .text-gray-600, .public-main .text-gray-700,
+    .public-main .text-slate-300, .public-main .text-slate-400, .public-main .text-slate-500,
+    .public-main .text-slate-600, .public-main .text-slate-700,
+    .public-main .text-indigo-100, .public-main .text-indigo-200 { color:#94a3bd !important; }
+
+    /* Accents — hue preserved, lightened enough to read on the dark ground */
+    .public-main .text-indigo-600, .public-main .text-indigo-700, .public-main .text-indigo-800,
+    .public-main .text-amber-600, .public-main .text-amber-700, .public-main .text-amber-800,
+    .public-main .text-amber-900 { color:#fbbf24 !important; }
+    .public-main .text-green-600, .public-main .text-green-700, .public-main .text-green-800,
+    .public-main .text-emerald-600, .public-main .text-emerald-700 { color:#4ade80 !important; }
+    .public-main .text-red-600, .public-main .text-red-700, .public-main .text-red-800 { color:#f87171 !important; }
+    .public-main .text-sky-600, .public-main .text-sky-700 { color:#38bdf8 !important; }
+
+    /* Form controls */
     .public-main input, .public-main select, .public-main textarea { background:#060b1d !important; border-color:#263b70 !important; color:#fff !important; }
     .public-main input::placeholder, .public-main textarea::placeholder { color:#71809d !important; }
-    .public-main .shadow-sm, .public-main .shadow-lg { box-shadow:none !important; }
+
+    /* Shadows read as smudges on a dark ground */
+    .public-main .shadow-sm, .public-main .shadow-lg, .public-main .shadow-md { box-shadow:none !important; }
   </style>
 </body>
 </html>
