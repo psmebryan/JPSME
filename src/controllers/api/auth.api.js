@@ -1,8 +1,10 @@
+const path = require('path');
 const { validationResult } = require('express-validator');
 const asyncHandler = require('../../utils/asyncHandler');
 const { success, error } = require('../../utils/apiResponse');
 const authService = require('../../services/auth.service');
 const emailVerificationService = require('../../services/emailVerification.service');
+const storageService = require('../../services/storage.service');
 
 function checkValidation(req, res) {
   const result = validationResult(req);
@@ -41,7 +43,7 @@ const login = asyncHandler(async (req, res) => {
 
 const logout = asyncHandler(async (req, res) => {
   req.session.destroy(() => {
-    res.clearCookie('connect.sid');
+    res.clearCookie('jpsme.sid');
     return success(res, null, 'Logged out');
   });
 });
@@ -64,7 +66,11 @@ const uploadProfileImage = asyncHandler(async (req, res) => {
     return error(res, 'No profile image uploaded', 400);
   }
 
-  const publicPath = `/uploads/profile/${req.file.filename}`;
+  const publicPath = await storageService.saveUpload(req.file.buffer, {
+    folder: 'profile',
+    prefix: 'profile',
+    extension: path.extname(req.file.originalname).toLowerCase(),
+  });
   const user = await authService.updateProfileImage(req.session.user.id, publicPath);
   req.session.user = user;
   return success(res, { user, profileImage: publicPath }, 'Profile image updated successfully');

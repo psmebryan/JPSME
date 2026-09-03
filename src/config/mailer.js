@@ -1,5 +1,6 @@
 const fs = require('fs/promises');
 const nodemailer = require('nodemailer');
+const config = require('./index');
 
 // Every caller in this app (mail.service.js, broadcastEmail.service.js) calls
 // transporter.sendMail({ from, to, subject, text, html, attachments }) using
@@ -37,10 +38,10 @@ async function buildBrevoAttachments(attachments) {
 }
 
 function buildBrevoTransport() {
-  const apiKey = process.env.BREVO_API_KEY;
+  const apiKey = config.email.brevoApiKey;
 
   return {
-    sendMail: async ({ from, to, subject, text, html, attachments }) => {
+    sendMail: async ({ from, to, subject, text, html, attachments, tags }) => {
       const payload = {
         sender: parseAddress(from),
         to: [parseAddress(to)],
@@ -50,6 +51,11 @@ function buildBrevoTransport() {
       };
       const brevoAttachments = await buildBrevoAttachments(attachments);
       if (brevoAttachments) payload.attachment = brevoAttachments;
+      // Echoed back verbatim on every delivery-event webhook Brevo sends for
+      // this message (sent/delivered/bounced/opened/clicked) — the only way
+      // this app can correlate a webhook event back to an internal record,
+      // since Brevo doesn't sign webhooks with a request body we control.
+      if (tags && tags.length) payload.tags = tags;
 
       let res;
       try {
@@ -100,17 +106,17 @@ function buildTransport() {
   // Brevo API takes priority when configured — this is the intended path now
   // that a Brevo key exists; SMTP stays available underneath purely as a
   // fallback for environments that haven't set BREVO_API_KEY, not removed.
-  if (process.env.BREVO_API_KEY) {
+  if (config.email.brevoApiKey) {
     return buildBrevoTransport();
   }
 
-  if (process.env.SMTP_HOST) {
+  if (config.email.smtp.host) {
     return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: process.env.SMTP_USER
-        ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+      host: config.email.smtp.host,
+      port: config.email.smtp.port,
+      secure: config.email.smtp.secure,
+      auth: config.email.smtp.user
+        ? { user: config.email.smtp.user, pass: config.email.smtp.pass }
         : undefined,
     });
   }
@@ -127,6 +133,6 @@ function buildTransport() {
 }
 
 const transporter = buildTransport();
-const MAIL_FROM = process.env.SMTP_FROM || process.env.BREVO_SENDER || 'JPSME <no-reply@jpsme.local>';
+const MAIL_FROM = config.email.from;
 
 module.exports = { transporter, MAIL_FROM };

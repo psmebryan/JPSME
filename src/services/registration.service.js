@@ -1,7 +1,65 @@
+const { Prisma } = require('@prisma/client');
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
-const mailService = require('./mail.service');
+const jobService = require('./job.service');
+const organizationService = require('./organization.service');
 const sheetsSyncService = require('./sheetsSync.service');
+const invitationService = require('./invitation.service');
+
+// Under real concurrent contention, a Serializable transaction can abort
+// with a write-conflict error instead of just queuing — confirmed by load
+// testing: firing 20 truly simultaneous registerForEvent calls at a
+// capacity-15 event correctly prevented any oversell, but 18 of the 20
+// failed with a raw, unhandled "Transaction failed due to a write conflict
+// or a deadlock" instead of either succeeding or getting a clean "this
+// event is full". That's Prisma's documented behavior for this isolation
+// level (error code P2034) — MySQL detects the conflict and forces the
+// losing side to retry rather than risk corrupting data — so retrying a
+// few times with a small randomized backoff is the correct response, not a
+// workaround for a bug in the transaction itself. Business-logic rejections
+// thrown inside the transaction (AppError — "already registered", "event is
+// full") are NOT write conflicts and propagate immediately, unretried.
+const MAX_TRANSACTION_ATTEMPTS = 5;
+
+function isWriteConflict(err) {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034';
+}
+
+async function runSerializableTransaction(fn) {
+  let attempt = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    attempt += 1;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      return await prisma.$transaction(fn, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (err) {
+      if (!isWriteConflict(err) || attempt >= MAX_TRANSACTION_ATTEMPTS) throw err;
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => setTimeout(resolve, 20 + Math.random() * 80 * attempt));
+    }
+  }
+}
+
+// Freezes the registrant's organization at registration time. Mirrors why
+// fullName/email/school are already snapshotted onto EventRegistration: a
+// member's affiliation can change later, and a past event's report must keep
+// reporting who they were affiliated with THEN. organizationId supports
+// aggregation; organizationPath is the rendered label, so the history
+// survives even a rename, reparent, or deletion of the organization itself.
+async function organizationSnapshot(user) {
+  if (!user.organizationId) return { organizationId: null, organizationPath: null };
+  try {
+    return {
+      organizationId: user.organizationId,
+      organizationPath: await organizationService.getOrganizationPathLabel(user.organizationId),
+    };
+  } catch (err) {
+    // A missing organization must never block a registration — record the id
+    // and leave the label empty rather than failing the whole action.
+    return { organizationId: user.organizationId, organizationPath: null };
+  }
+}
 
 // A capacity slot is held by both a confirmed registration and one still
 // awaiting fee payment — otherwise a paid event could be oversold during the
@@ -21,67 +79,87 @@ async function countActiveRegistrations(eventId, client = prisma) {
 // events go through upsertPendingPaymentRegistration + payment.service.js's
 // createEventCheckout instead — this function is the free-event path only,
 // called when Event.feeCentavos === 0.)
-async function registerForEvent(user, eventId) {
+async function registerForEvent(user, eventId, invitation = null) {
   const event = await prisma.event.findUnique({ where: { id: Number(eventId) } });
   if (!event) throw new AppError('Event not found', 404);
   if (!event.isPublished) throw new AppError('This event is not open for registration', 400);
 
-  const existing = await prisma.eventRegistration.findUnique({
-    where: { userId_eventId: { userId: user.id, eventId: event.id } },
-  });
+  const snapshot = await organizationSnapshot(user);
 
-  // If an existing registration exists, allow re-activation when status is CANCELLED
-  if (existing) {
-    if (existing.status === 'REGISTERED') {
-      throw new AppError('You are already registered for this event', 409);
-    }
-    if (existing.status === 'PENDING_PAYMENT') {
-      throw new AppError('You have a pending payment for this event. Please complete or cancel it first.', 409);
-    }
+  // Serializable isolation closes the same "two concurrent registrants take
+  // the last capacity slot" race that createCheckout/upsertPendingPaymentRegistration
+  // already guard against on the paid-event path — the existing-row check,
+  // capacity check, and create/reactivate must all happen atomically, or two
+  // requests can both pass the count check before either commits and oversell
+  // a capacity-limited free event.
+  const registration = await runSerializableTransaction(
+    async (tx) => {
+      const existing = await tx.eventRegistration.findUnique({
+        where: { userId_eventId: { userId: user.id, eventId: event.id } },
+      });
 
-    // existing but not currently registered (e.g., CANCELLED) -> try to reactivate
-    if (event.capacity) {
-      const registrationCount = await countActiveRegistrations(event.id);
-      if (registrationCount >= event.capacity) {
-        throw new AppError('This event is full', 400);
+      // If an existing registration exists, allow re-activation when status is CANCELLED
+      if (existing) {
+        if (existing.status === 'REGISTERED') {
+          throw new AppError('You are already registered for this event', 409);
+        }
+        if (existing.status === 'PENDING_PAYMENT') {
+          throw new AppError('You have a pending payment for this event. Please complete or cancel it first.', 409);
+        }
+
+        // existing but not currently registered (e.g., CANCELLED) -> try to reactivate
+        if (event.capacity) {
+          const registrationCount = await countActiveRegistrations(event.id, tx);
+          if (registrationCount >= event.capacity) {
+            throw new AppError('This event is full', 400);
+          }
+        }
+
+        return tx.eventRegistration.update({
+          where: { id: existing.id },
+          data: {
+            status: 'REGISTERED',
+            fullName: `${user.firstName} ${user.lastName}`,
+            email: user.email,
+            phone: user.phone || null,
+            school: user.school || null,
+            ...snapshot,
+            invitationId: invitation ? invitation.id : undefined,
+          },
+        });
       }
+
+      if (event.capacity) {
+        const registrationCount = await countActiveRegistrations(event.id, tx);
+        if (registrationCount >= event.capacity) {
+          throw new AppError('This event is full', 400);
+        }
+      }
+
+      return tx.eventRegistration.create({
+        data: {
+          userId: user.id,
+          eventId: event.id,
+          fullName: `${user.firstName} ${user.lastName}`,
+          email: user.email,
+          phone: user.phone || null,
+          school: user.school || null,
+          ...snapshot,
+          invitationId: invitation ? invitation.id : undefined,
+        },
+      });
     }
+  );
 
-    const reactivated = await prisma.eventRegistration.update({
-      where: { id: existing.id },
-      data: {
-        status: 'REGISTERED',
-        fullName: `${user.firstName} ${user.lastName}`,
-        email: user.email,
-        phone: user.phone || null,
-        school: user.school || null,
-      },
-    });
-    mailService.sendEventRegistrationEmail(user, event);
-    sheetsSyncService.syncEventRegistrations(event.id);
-    return reactivated;
-  }
-
-  if (event.capacity) {
-    const registrationCount = await countActiveRegistrations(event.id);
-    if (registrationCount >= event.capacity) {
-      throw new AppError('This event is full', 400);
-    }
-  }
-
-  const created = await prisma.eventRegistration.create({
-    data: {
-      userId: user.id,
-      eventId: event.id,
-      fullName: `${user.firstName} ${user.lastName}`,
-      email: user.email,
-      phone: user.phone || null,
-      school: user.school || null,
-    },
+  // Durable and retryable via the job queue (src/worker.js), instead of the
+  // previous fire-and-forget mailService call — a transient Brevo failure no
+  // longer just silently drops the confirmation email.
+  jobService.enqueue('SEND_EVENT_REGISTRATION_EMAIL', { userId: user.id, eventId: event.id }).catch((err) => {
+    console.error('registerForEvent: failed to enqueue confirmation email job:', err.message);
   });
-  mailService.sendEventRegistrationEmail(user, event);
   sheetsSyncService.syncEventRegistrations(event.id);
-  return created;
+  if (invitation) invitationService.markRegistered(invitation.id);
+  return registration;
 }
 
 // Holds the registrant's capacity slot for a PAID event as PENDING_PAYMENT —
@@ -99,7 +177,8 @@ async function registerForEvent(user, eventId) {
 // commit together, or neither does, closing the gap where a crash between
 // "create registration" and "create payment" could otherwise leave one
 // without the other.
-async function upsertPendingPaymentRegistration(client, user, event) {
+async function upsertPendingPaymentRegistration(client, user, event, invitation = null) {
+  const snapshot = await organizationSnapshot(user);
   const existing = await client.eventRegistration.findUnique({
     where: { userId_eventId: { userId: user.id, eventId: event.id } },
   });
@@ -125,6 +204,8 @@ async function upsertPendingPaymentRegistration(client, user, event) {
         email: user.email,
         phone: user.phone || null,
         school: user.school || null,
+        ...snapshot,
+        invitationId: invitation ? invitation.id : undefined,
       },
     });
   }
@@ -143,6 +224,8 @@ async function upsertPendingPaymentRegistration(client, user, event) {
       phone: user.phone || null,
       school: user.school || null,
       status: 'PENDING_PAYMENT',
+      ...snapshot,
+      invitationId: invitation ? invitation.id : undefined,
     },
   });
 }
@@ -151,8 +234,8 @@ async function upsertPendingPaymentRegistration(client, user, event) {
 // need the payment-row atomicity above; payment.service.js's
 // createEventCheckout uses upsertPendingPaymentRegistration(tx, ...) directly
 // instead, so the two writes land in the same transaction.
-async function createPendingPaymentRegistration(user, event) {
-  return upsertPendingPaymentRegistration(prisma, user, event);
+async function createPendingPaymentRegistration(user, event, invitation = null) {
+  return upsertPendingPaymentRegistration(prisma, user, event, invitation);
 }
 
 // No status gate here (never has been) — it unconditionally sets CANCELLED
@@ -191,6 +274,34 @@ async function getEventRegistrations(eventId) {
     orderBy: { createdAt: 'desc' },
   });
 }
+
+// Paginated + searchable — backs the admin per-event Registrations page.
+// getEventRegistrations above stays unbounded for its other callers
+// (certificate generation, Sheets sync, the registration-count API), which
+// each genuinely need every row for that event at once.
+async function getEventRegistrationsForAdmin(eventId, { search, status, page = 1, pageSize = 25 } = {}) {
+  const where = { eventId: Number(eventId) };
+  if (status) where.status = status;
+  const term = (search || '').trim();
+  if (term) {
+    where.OR = [
+      { fullName: { contains: term } },
+      { email: { contains: term } },
+    ];
+  }
+
+  const [total, registrations] = await Promise.all([
+    prisma.eventRegistration.count({ where }),
+    prisma.eventRegistration.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ]);
+
+  return { registrations, total, page, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
+}
 async function getRegisteredEventIds(userId) {
   const regs = await prisma.eventRegistration.findMany({
     where: { userId: Number(userId), status: 'REGISTERED' },
@@ -216,6 +327,7 @@ module.exports = {
   cancelRegistration,
   getUserRegistrations,
   getEventRegistrations,
+  getEventRegistrationsForAdmin,
   getRegisteredEventIds,
   getRegistrationStatus,
   countActiveRegistrations,

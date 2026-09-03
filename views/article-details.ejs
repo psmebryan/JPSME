@@ -1,0 +1,18 @@
+<div class="max-w-2xl mx-auto">
+  <a href="/articles" class="text-sm text-indigo-600 hover:underline">&larr; Back to articles</a>
+
+  <% if (article.category) { %>
+    <span class="inline-block text-xs font-medium px-2 py-0.5 rounded-full mt-4 bg-sky-100 text-sky-700"><%= article.category %></span>
+  <% } %>
+  <h1 class="text-3xl font-bold mt-3 mb-2"><%= article.title %></h1>
+  <p class="text-gray-500 mb-6">
+    <% if (article.authorName) { %><%= article.authorName %> &middot; <% } %>
+    <%= new Date(article.publishedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) %>
+  </p>
+
+  <% if (article.coverImage) { %>
+    <img src="<%= article.coverImage %>" alt="" class="w-full rounded-lg mb-6 object-cover max-h-96">
+  <% } %>
+
+  <p class="text-gray-700 whitespace-pre-line leading-relaxed"><%= article.body %></p>
+</div>

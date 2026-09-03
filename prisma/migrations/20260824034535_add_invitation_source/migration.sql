@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `event_invitations` ADD COLUMN `source` ENUM('ADMIN_SENT', 'SELF_REQUESTED') NOT NULL DEFAULT 'ADMIN_SENT';

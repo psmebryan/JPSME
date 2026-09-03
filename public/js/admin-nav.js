@@ -22,9 +22,10 @@ const openChapterSubmenu = makeSubmenuToggle('chapter-management-toggle', 'chapt
 const openUserSubmenu = makeSubmenuToggle('user-management-toggle', 'user-submenu', 'user-management-chevron');
 const openCertificateSubmenu = makeSubmenuToggle('certificate-management-toggle', 'certificate-submenu', 'certificate-management-chevron');
 const openEmailSubmenu = makeSubmenuToggle('email-management-toggle', 'email-submenu', 'email-management-chevron');
+const openInvitationSubmenu = makeSubmenuToggle('invitation-management-toggle', 'invitation-submenu', 'invitation-management-chevron');
 
 function openSubmenuForPath(path) {
-  if (path.startsWith('/admin/chapters') || path.startsWith('/admin/chapter-members')) {
+  if (path.startsWith('/admin/organizations') || path.startsWith('/admin/organization-members') || path.startsWith('/admin/organization-admins')) {
     openChapterSubmenu(true);
   }
   if (path.startsWith('/admin/users')) {
@@ -36,6 +37,9 @@ function openSubmenuForPath(path) {
   if (path.startsWith('/admin/emails') || path.startsWith('/admin/event-emails') || path.startsWith('/admin/broadcasts') || /^\/admin\/events\/\d+\/email$/.test(path)) {
     openEmailSubmenu(true);
   }
+  if (path.startsWith('/admin/invitations')) {
+    openInvitationSubmenu(true);
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -43,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const content = document.getElementById('admin-content');
   if (!nav || !content) return;
 
-  setActiveLink(nav, window.location.pathname);
+  setActiveLink(nav, window.location.pathname + window.location.search);
   openSubmenuForPath(window.location.pathname);
 
   document.getElementById('chapter-management-toggle')?.addEventListener('click', (e) => {
@@ -58,19 +62,31 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('email-management-toggle')?.addEventListener('click', (e) => {
     openEmailSubmenu(e.currentTarget.getAttribute('aria-expanded') !== 'true');
   });
+  document.getElementById('invitation-management-toggle')?.addEventListener('click', (e) => {
+    openInvitationSubmenu(e.currentTarget.getAttribute('aria-expanded') !== 'true');
+  });
 
   nav.addEventListener('click', (e) => {
     const link = e.target.closest('a[data-admin-link]');
     if (!link) return;
 
     e.preventDefault();
-    if (link.getAttribute('href') !== window.location.pathname) {
+    // Compare against pathname+search, not pathname alone — two different
+    // sidebar links can share a pathname and differ only by query string
+    // (e.g. "Manage Invitations" vs "Invitation Requests" both live at
+    // /admin/invitations), and pathname-only comparison treated those as the
+    // same page, silently no-op'ing the click.
+    const currentUrl = window.location.pathname + window.location.search;
+    if (link.getAttribute('href') !== currentUrl) {
       loadAdminPage(link.getAttribute('href'), true);
     }
   });
 
   window.addEventListener('popstate', () => {
-    loadAdminPage(window.location.pathname, false);
+    // pathname alone would drop a query-string-differentiated page (e.g.
+    // "Invitation Requests" at /admin/invitations?source=SELF_REQUESTED) when
+    // navigating back/forward to it — same bug as the click handler above.
+    loadAdminPage(window.location.pathname + window.location.search, false);
   });
 });
 
@@ -95,7 +111,10 @@ async function loadAdminPage(url, pushState) {
 
     const encodedTitle = response.headers.get('X-Page-Title');
     if (encodedTitle) {
-      document.title = `${decodeURIComponent(encodedTitle)} | JPSME Admin`;
+      const decodedTitle = decodeURIComponent(encodedTitle);
+      document.title = `${decodedTitle} | JPSME Admin`;
+      const pageTitleEl = document.getElementById('admin-page-title');
+      if (pageTitleEl) pageTitleEl.textContent = decodedTitle;
     }
 
     if (pushState) {

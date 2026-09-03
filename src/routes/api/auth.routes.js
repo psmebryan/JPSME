@@ -27,6 +27,18 @@ const resendVerificationLimiter = rateLimit({
   message: { success: false, message: 'Too many requests. Please try again later.' },
 });
 
+// Every other sensitive endpoint here has its own limiter beyond the global
+// baseline (login, resend-verification) — registration didn't, despite being
+// a classic target for mass fake-account creation and email-bombing (each
+// one triggers a real verification email send).
+const registerLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many registration attempts. Please try again later.' },
+});
+
 const registerValidators = [
   body('firstName').trim().notEmpty().withMessage('First name is required').isLength({ max: 100 }),
   body('lastName').trim().notEmpty().withMessage('Last name is required').isLength({ max: 100 }),
@@ -34,11 +46,16 @@ const registerValidators = [
   body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
   body('phone').optional({ checkFalsy: true }).trim().isLength({ max: 30 }),
   body('school').optional({ checkFalsy: true }).trim().isLength({ max: 150 }),
-  body('chapterId')
-    .notEmpty().withMessage('Please select a chapter')
+  body('yearLevel').optional({ checkFalsy: true }).isIn(['FIRST', 'SECOND', 'THIRD', 'FOURTH']).withMessage('Select a valid year level'),
+  body('organizationId')
+    .notEmpty().withMessage('Please select your organization')
     .bail()
     .custom((value) => Number.isInteger(Number(value)) && Number(value) > 0)
-    .withMessage('Please select a valid chapter'),
+    .withMessage('Please select a valid organization'),
+  // Where to send them once approved (e.g. an event they clicked "Create an
+  // account" from). Real safety (same-site-only) is enforced server-side in
+  // auth.service.js's sanitizeRedirectPath — this is just a length cap.
+  body('next').optional({ checkFalsy: true }).isLength({ max: 500 }),
 ];
 
 const loginValidators = [
@@ -54,13 +71,14 @@ const profileValidators = [
   body('middleInitial').optional({ checkFalsy: true }).trim().isLength({ max: 2 }).withMessage('Middle initial must be at most 2 characters'),
   body('phone').optional({ checkFalsy: true }).trim().isLength({ max: 30 }).withMessage('Phone number is too long'),
   body('school').optional({ checkFalsy: true }).trim().isLength({ max: 150 }).withMessage('School name is too long'),
-  body('chapterId').optional({ nullable: true }).custom((value) => {
+  body('yearLevel').optional({ checkFalsy: true }).isIn(['FIRST', 'SECOND', 'THIRD', 'FOURTH']).withMessage('Select a valid year level'),
+  body('organizationId').optional({ nullable: true }).custom((value) => {
     if (value === '' || value === null || value === undefined) return true;
     return Number.isInteger(Number(value));
-  }).withMessage('A valid chapter is required'),
+  }).withMessage('A valid organization is required'),
 ];
 
-router.post('/register', verifyCsrfToken, registerValidators, authApi.register);
+router.post('/register', verifyCsrfToken, registerLimiter, registerValidators, authApi.register);
 router.post('/login', verifyCsrfToken, loginLimiter, loginValidators, authApi.login);
 router.post('/logout', verifyCsrfToken, authApi.logout);
 router.get('/me', apiAuth, authApi.me);

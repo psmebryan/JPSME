@@ -1,71 +1,35 @@
 const multer = require('multer');
-const path = require('path');
-const crypto = require('crypto');
 
 const ALLOWED_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']);
 // pdfkit's doc.image() only supports PNG/JPEG, so certificate backgrounds
 // (which get composited into a PDF) can't accept WEBP/SVG like other uploads.
 const CERTIFICATE_MIME_TYPES = new Set(['image/png', 'image/jpeg']);
 
-function makeImageStorage(folderName, prefix) {
-  return multer.diskStorage({
-    destination: (req, file, cb) => {
-      cb(null, path.join(__dirname, '..', '..', 'public', 'uploads', folderName));
+// memoryStorage, not diskStorage — the file lands in req.file.buffer instead
+// of being written straight to disk by multer itself. Every controller then
+// calls storageService.saveUpload(req.file.buffer, ...) explicitly, so
+// storageService is the only thing that ever decides where a file actually
+// lives; multer's only job is receiving and validating the upload.
+function makeUpload(allowedMimeTypes, message, maxFileSize) {
+  return multer({
+    storage: multer.memoryStorage(),
+    fileFilter: (req, file, cb) => {
+      if (!allowedMimeTypes.has(file.mimetype)) {
+        return cb(new Error(message));
+      }
+      cb(null, true);
     },
-    filename: (req, file, cb) => {
-      const safeExt = path.extname(file.originalname).toLowerCase();
-      cb(null, `${prefix}-${Date.now()}-${crypto.randomBytes(6).toString('hex')}${safeExt}`);
-    },
+    limits: { fileSize: maxFileSize },
   });
 }
 
-function makeFileFilter(allowedMimeTypes, message) {
-  return (req, file, cb) => {
-    if (!allowedMimeTypes.has(file.mimetype)) {
-      return cb(new Error(message));
-    }
-    cb(null, true);
-  };
-}
-
-const fileFilter = makeFileFilter(ALLOWED_MIME_TYPES, 'Only PNG, JPEG, WEBP, or SVG images are allowed');
-const certificateFileFilter = makeFileFilter(CERTIFICATE_MIME_TYPES, 'Only PNG or JPEG images are allowed for certificate backgrounds');
-
-const uploadLogo = multer({
-  storage: makeImageStorage('logo', 'logo'),
-  fileFilter,
-  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
-});
-
-const uploadProfileImage = multer({
-  storage: makeImageStorage('profile', 'profile'),
-  fileFilter,
-  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
-});
-
-const uploadEventImage = multer({
-  storage: makeImageStorage('events', 'events'),
-  fileFilter,
-  limits: { fileSize: 3 * 1024 * 1024 }, // 3MB for event images
-});
-
-const uploadSponsorLogo = multer({
-  storage: makeImageStorage('sponsors', 'sponsors'),
-  fileFilter,
-  limits: { fileSize: 2 * 1024 * 1024 },
-});
-
-const uploadCertificateBackground = multer({
-  storage: makeImageStorage('certificates/backgrounds', 'certbg'),
-  fileFilter: certificateFileFilter,
-  limits: { fileSize: 3 * 1024 * 1024 }, // 3MB
-});
-
-const uploadEmailAttachment = multer({
-  storage: makeImageStorage('email-attachments', 'emailattach'),
-  fileFilter,
-  limits: { fileSize: 3 * 1024 * 1024 }, // 3MB
-});
+const uploadLogo = makeUpload(ALLOWED_MIME_TYPES, 'Only PNG, JPEG, WEBP, or SVG images are allowed', 2 * 1024 * 1024);
+const uploadProfileImage = makeUpload(ALLOWED_MIME_TYPES, 'Only PNG, JPEG, WEBP, or SVG images are allowed', 2 * 1024 * 1024);
+const uploadEventImage = makeUpload(ALLOWED_MIME_TYPES, 'Only PNG, JPEG, WEBP, or SVG images are allowed', 3 * 1024 * 1024);
+const uploadSponsorLogo = makeUpload(ALLOWED_MIME_TYPES, 'Only PNG, JPEG, WEBP, or SVG images are allowed', 2 * 1024 * 1024);
+const uploadArticleImage = makeUpload(ALLOWED_MIME_TYPES, 'Only PNG, JPEG, WEBP, or SVG images are allowed', 3 * 1024 * 1024);
+const uploadCertificateBackground = makeUpload(CERTIFICATE_MIME_TYPES, 'Only PNG or JPEG images are allowed for certificate backgrounds', 3 * 1024 * 1024);
+const uploadEmailAttachment = makeUpload(ALLOWED_MIME_TYPES, 'Only PNG, JPEG, WEBP, or SVG images are allowed', 3 * 1024 * 1024);
 
 module.exports = {
   uploadLogo,
@@ -74,4 +38,5 @@ module.exports = {
   uploadSponsorLogo,
   uploadCertificateBackground,
   uploadEmailAttachment,
+  uploadArticleImage,
 };

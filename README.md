@@ -19,7 +19,33 @@ Two sides: public/user pages and an admin panel (logo/content management, user a
 ## Setup
 
 1. Start XAMPP's MySQL service.
-2. Copy `.env.example` to `.env` and adjust `DATABASE_URL` / `SESSION_SECRET` if needed.
+2. Create a `.env` in the project root (it is gitignored — never commit it):
+
+   ```
+   DATABASE_URL="mysql://root:@localhost:3306/jpsme2_new"
+   SESSION_SECRET=<a long random string>
+   PORT=3000
+   NODE_ENV=development
+   APP_URL=http://localhost:3000
+   ```
+
+   - `DATABASE_URL` must point at a **dedicated** database, separate from the
+     legacy `jpsme2` used by the PHP app at `C:\xampp\htdocs\jpsme`. In
+     production append `?connection_limit=...`, kept comfortably under MySQL's
+     `max_connections` — see "Scaling & going live".
+   - `SESSION_SECRET` signs session cookies. Generate one per environment:
+     `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
+     Startup refuses in production if it is missing, under 32 characters, or a
+     known placeholder.
+   - Optional: `CLUSTER_WORKERS` (worker processes `npm start` forks, default 1)
+     and `TRUST_PROXY=true` — set the latter **only** when actually behind a
+     reverse proxy, since trusting `X-Forwarded-*` without one allows IP
+     spoofing and breaks rate limiting.
+   - Integrations are optional and stay disabled when unset: `PAYMONGO_SECRET_KEY`
+     and `PAYMONGO_WEBHOOK_SECRET` (payments), `BREVO_API_KEY` (email),
+     `GOOGLE_SHEETS_ID` with `GOOGLE_SERVICE_ACCOUNT_EMAIL` /
+     `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (report sync).
+
 3. Create the database (phpMyAdmin or CLI): `CREATE DATABASE jpsme2_new;`
 4. Install dependencies: `npm install`
 5. Apply the schema: `npm run prisma:migrate`
@@ -52,4 +78,4 @@ The app is built to run as multiple worker processes behind a shared, persistent
 - **Multiple processes:** `npm start` runs `src/cluster.js`, which forks `CLUSTER_WORKERS` worker processes (Node's built-in `cluster` module) and restarts any that crash. Defaults to 1 (identical to running a single process) until you set `CLUSTER_WORKERS` — a good starting value is one per CPU core. `npm run dev` intentionally stays single-process for simple hot-reloading.
 - **DB connections:** with N workers, make sure `N × Prisma's connection pool` stays under MySQL's `max_connections`. Add `?connection_limit=<small number>` to `DATABASE_URL` and raise `max_connections` in `my.ini` if needed.
 - **Trust proxy:** only set `TRUST_PROXY=true` once this sits behind a real reverse proxy — otherwise rate limiting and secure-cookie detection can be bypassed via spoofed headers.
-- **Before pointing the GoDaddy domain at this:** confirm what kind of Node hosting the plan actually gives you. Shared cPanel/Passenger-style Node hosting manages its own process lifecycle (in which case just point it at `src/server.js` directly and skip `cluster.js`); a VPS gives you full control and can use `CLUSTER_WORKERS` + a reverse proxy as described above. Also set a strong, unique `SESSION_SECRET` and make sure `NODE_ENV=production` so `cookie.secure` turns on (requires HTTPS).
+- **Before pointing the GoDaddy domain at this:** confirm what kind of Node hosting the plan actually gives you. Shared cPanel/Passenger-style Node hosting manages its own process lifecycle (in which case just point it at `src/server.js` directly and skip `cluster.js`); a VPS gives you full control and can use `CLUSTER_WORKERS` + a reverse proxy as described above. Also set a strong, unique `SESSION_SECRET` and make sure `NODE_ENV=production` so `cookie.secure` turns on (requires HTTPS) — the app now refuses to start in production with a missing, placeholder, or under-32-character `SESSION_SECRET`, so a mistake here surfaces immediately at boot rather than as a silent session-security gap.

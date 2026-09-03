@@ -1,5 +1,15 @@
 <div class="max-w-2xl mx-auto">
   <a href="/events" class="inline-block text-sm text-indigo-600 hover:underline py-2 -my-2">&larr; Back to events</a>
+
+  <% const invitation = locals.invitation; %>
+  <% const isGuestInvite = !!(invitation && !invitation.userId); %>
+  <% if (invitation) { %>
+    <div class="mt-4 mb-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
+      You're invited, <%= invitation.fullName %>!
+      <%= isGuestInvite ? "Let us know if you'll be attending, or register as a member below." : 'Confirm your registration below.' %>
+    </div>
+  <% } %>
+
   <h1 class="text-3xl font-bold mt-3 mb-2"><%= event.title %></h1>
   <p class="text-gray-500 mb-1"><%= new Date(event.startDate).toLocaleString() %></p>
   <% if (event.location) { %><p class="text-gray-500 mb-4"><%= event.location %></p><% } %>
@@ -10,11 +20,43 @@
   <% const registered = typeof isRegistered !== 'undefined' && isRegistered; %>
   <% const status = typeof registrationStatus !== 'undefined' ? registrationStatus : null; %>
   <% const hasFee = event.feeCentavos > 0; %>
+  <% const surchargeCentavos = locals.surchargeCentavos || 0; %>
   <% if (hasFee) { %>
-    <p class="text-lg font-semibold text-gray-900 mb-3">Registration Fee: &#8369;<%= (event.feeCentavos / 100).toFixed(2) %></p>
+    <p class="text-lg font-semibold text-gray-900 mb-3">
+      Registration Fee: &#8369;<%= ((event.feeCentavos + surchargeCentavos) / 100).toFixed(2) %>
+      <% if (surchargeCentavos > 0) { %>
+        <span class="block text-xs font-normal text-gray-400 mt-0.5">&#8369;<%= (event.feeCentavos / 100).toFixed(2) %> event fee + &#8369;<%= (surchargeCentavos / 100).toFixed(2) %> payment processing fee</span>
+      <% } %>
+    </p>
   <% } %>
 
-  <% if (status === 'PENDING_PAYMENT') { %>
+  <% if (isGuestInvite) { %>
+    <div id="invitation-rsvp-section" data-event-id="<%= event.id %>" data-invite-token="<%= invitation.token %>">
+      <% if (invitation.rsvpStatus === 'ATTENDING') { %>
+        <p class="text-green-700 font-medium mb-2">&#10003; You're marked as attending &mdash; see you there!</p>
+        <button type="button" data-rsvp-action="NOT_ATTENDING" class="text-sm text-slate-500 hover:underline">Can't make it after all?</button>
+      <% } else if (invitation.rsvpStatus === 'NOT_ATTENDING') { %>
+        <p class="text-slate-500 font-medium mb-2">You've let us know you can't make it. No worries!</p>
+        <button type="button" data-rsvp-action="ATTENDING" class="text-sm text-indigo-600 hover:underline">Changed your mind? I can attend</button>
+      <% } else { %>
+        <div class="flex gap-3">
+          <button type="button" data-rsvp-action="ATTENDING" class="bg-green-600 text-white px-5 py-3 rounded-md hover:bg-green-700">I'll be attending</button>
+          <button type="button" data-rsvp-action="NOT_ATTENDING" class="bg-slate-200 text-slate-700 px-5 py-3 rounded-md hover:bg-slate-300">Can't make it</button>
+        </div>
+      <% } %>
+      <p id="invitation-rsvp-message" class="hidden mt-2 text-sm"></p>
+    </div>
+
+    <p class="text-sm text-gray-500 mt-4">
+      Want to become a JPSME member and register properly for this and future events?
+      <a href="/register?next=<%= encodeURIComponent(`/events/${event.id}/invite/${invitation.token}`) %>" class="text-indigo-600 hover:underline">Create an account</a>
+      or
+      <a href="/login?next=<%= encodeURIComponent(`/events/${event.id}/invite/${invitation.token}`) %>" class="text-indigo-600 hover:underline">log in</a>.
+      Once your membership is approved, you'll be brought right back here.
+    </p>
+  <% } else if (invitation && locals.invitationMismatch) { %>
+    <p class="text-sm text-red-600 mb-2">This invitation was sent to <%= invitation.email %>. You're currently logged in as a different account — log out and log back in as that address to accept it.</p>
+  <% } else if (status === 'PENDING_PAYMENT') { %>
     <button data-pay-event="<%= event.id %>" class="bg-amber-500 text-white px-5 py-3 rounded-md hover:bg-amber-600">
       Payment Pending &mdash; Pay Now
     </button>
@@ -23,13 +65,53 @@
       data-register-event="<%= event.id %>"
       data-logged-in="<%= !!locals.currentUser %>"
       data-registered="<%= registered %>"
+      <% if (invitation) { %>data-invite-token="<%= invitation.token %>"<% } %>
       <%= registered ? 'disabled aria-disabled="true"' : '' %>
       class="bg-indigo-600 text-white px-5 py-3 rounded-md hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed">
       <%= registered ? 'Registered' : (hasFee ? 'Register & Pay' : 'Register for this event') %>
     </button>
   <% } %>
-  <% if (!locals.currentUser) { %>
+
+  <% if (!locals.currentUser && invitation && !isGuestInvite) { %>
+    <p class="text-sm text-gray-500 mt-2">
+      <a href="/login?next=<%= encodeURIComponent(`/events/${event.id}/invite/${invitation.token}`) %>" class="text-indigo-600 hover:underline">Log in</a>
+      if you already have an account, or
+      <a href="/register?next=<%= encodeURIComponent(`/events/${event.id}/invite/${invitation.token}`) %>" class="text-indigo-600 hover:underline">create one</a>
+      — after verifying your email, come back to this link to finish registering.
+    </p>
+  <% } else if (!locals.currentUser && !invitation) { %>
     <p class="text-sm text-gray-500 mt-2">You'll need to log in first — we'll use your saved profile to register you instantly.</p>
+  <% } %>
+
+  <% if (!locals.currentUser && !invitation) { %>
+    <div id="invitation-request-section" class="mt-8 border-t border-slate-200 pt-6" data-event-id="<%= event.id %>">
+      <h2 class="text-lg font-semibold text-slate-900 mb-1">Not a member? Request an invitation</h2>
+      <p class="text-sm text-slate-500 mb-4">Fill this out and we'll email you an invite link to register for this event — no account needed.</p>
+      <form id="invitation-request-form" class="space-y-3 max-w-sm">
+        <div>
+          <label for="inv-req-name" class="form-label">Full Name</label>
+          <input id="inv-req-name" name="fullName" required maxlength="150" class="form-input">
+        </div>
+        <div>
+          <label for="inv-req-email" class="form-label">Email</label>
+          <input id="inv-req-email" name="email" type="email" required maxlength="191" class="form-input">
+        </div>
+        <div>
+          <label for="inv-req-school" class="form-label">School (optional)</label>
+          <input id="inv-req-school" name="school" maxlength="150" class="form-input">
+        </div>
+        <div>
+          <label for="inv-req-chapter" class="form-label">Chapter (optional)</label>
+          <input id="inv-req-chapter" name="chapter" maxlength="150" class="form-input">
+        </div>
+        <div>
+          <label for="inv-req-company" class="form-label">Company (optional)</label>
+          <input id="inv-req-company" name="company" maxlength="150" class="form-input">
+        </div>
+        <button type="submit" class="bg-indigo-600 text-white px-5 py-2.5 rounded-md hover:bg-indigo-700">Request an Invitation</button>
+      </form>
+      <p id="invitation-request-message" class="hidden mt-3 text-sm"></p>
+    </div>
   <% } %>
 </div>
 

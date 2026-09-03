@@ -1,0 +1,66 @@
+<div class="max-w-3xl mx-auto">
+  <a href="/admin/articles" class="text-sm text-indigo-600 hover:underline">&larr; Back to articles</a>
+  <h1 class="admin-h1 mt-3 mb-4">Create Article</h1>
+
+  <div class="admin-card p-6">
+    <form id="article-form" class="space-y-4" enctype="multipart/form-data">
+      <div class="grid gap-4 md:grid-cols-2">
+        <div class="md:col-span-2">
+          <label for="title" class="form-label">Title</label>
+          <input id="title" name="title" required class="form-input" />
+        </div>
+
+        <div>
+          <label for="category" class="form-label">Category</label>
+          <input id="category" name="category" placeholder="e.g. Announcement, Chapter News" class="form-input" />
+        </div>
+
+        <div>
+          <label for="authorName" class="form-label">Author</label>
+          <input id="authorName" name="authorName" placeholder="e.g. JPSME National Board" class="form-input" />
+        </div>
+
+        <div class="md:col-span-2">
+          <label for="body" class="form-label">Content</label>
+          <textarea id="body" name="body" rows="10" required class="form-input"></textarea>
+        </div>
+
+        <div class="md:col-span-2">
+          <label for="image" class="form-label">Cover Image</label>
+          <input id="image" name="image" type="file" accept="image/*" class="form-input" />
+        </div>
+
+        <div class="flex items-center gap-3">
+          <input id="isPublished" name="isPublished" type="checkbox" />
+          <label for="isPublished" class="text-sm">Publish now</label>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button type="submit" class="btn-primary">Save Article</button>
+        <a href="/admin/articles" class="text-sm text-slate-500 hover:underline">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+  document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('article-form');
+    if (!form) return;
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const formData = new FormData(form);
+      formData.set('isPublished', form.isPublished.checked ? 'true' : 'false');
+
+      try {
+        await apiFetch('/api/articles', { method: 'POST', body: formData });
+        showToast('Article created');
+        window.location.href = '/admin/articles';
+      } catch (err) {
+        showToast(err.errors?.[0]?.msg || err.message, 'error');
+      }
+    });
+  });
+</script>

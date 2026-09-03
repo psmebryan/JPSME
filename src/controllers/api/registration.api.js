@@ -4,6 +4,7 @@ const registrationService = require('../../services/registration.service');
 const paymentService = require('../../services/payment.service');
 const eventService = require('../../services/event.service');
 const authService = require('../../services/auth.service');
+const invitationService = require('../../services/invitation.service');
 const AppError = require('../../utils/AppError');
 
 // Session only stores a lightweight user snapshot; pull the fresh profile so
@@ -26,12 +27,17 @@ const registerForEvent = asyncHandler(async (req, res) => {
 
   const event = await eventService.getEventById(req.params.id);
 
+  // Present only when this click came from an invitation link — validated
+  // against both this event and this exact user before it's trusted to link
+  // the resulting registration back to it (see resolveInvitationForUser).
+  const invitation = await invitationService.resolveInvitationForUser(req.body.inviteToken, event.id, user);
+
   if (event.feeCentavos > 0) {
-    const { checkoutUrl } = await paymentService.createEventCheckout(user.id, event.id);
+    const { checkoutUrl } = await paymentService.createEventCheckout(user.id, event.id, invitation);
     return success(res, { checkoutUrl }, 'Redirecting to payment', 201);
   }
 
-  const registration = await registrationService.registerForEvent(user, req.params.id);
+  const registration = await registrationService.registerForEvent(user, req.params.id, invitation);
   return success(res, { registration }, 'You are registered for this event', 201);
 });
 

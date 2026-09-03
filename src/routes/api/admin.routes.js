@@ -6,6 +6,8 @@ const certificateApi = require('../../controllers/api/certificate.api');
 const adminPaymentApi = require('../../controllers/api/adminPayment.api');
 const adminEmailApi = require('../../controllers/api/adminEmail.api');
 const adminBroadcastApi = require('../../controllers/api/adminBroadcast.api');
+const invitationApi = require('../../controllers/api/invitation.api');
+const jobApi = require('../../controllers/api/job.api');
 const { apiAdmin, apiAdminOrChapterAdmin } = require('../../middleware/auth.middleware');
 const { verifyCsrfToken } = require('../../middleware/csrf.middleware');
 const { uploadLogo, uploadSponsorLogo, uploadCertificateBackground, uploadEmailAttachment } = require('../../middleware/upload.middleware');
@@ -56,7 +58,7 @@ const broadcastLimiter = rateLimit({
 const router = Router();
 
 // Allow ADMIN and CHAPTER_ADMIN (scoped) for chapter member endpoints
-router.get('/chapter-members', apiAdminOrChapterAdmin, adminApi.listChapterMembers);
+router.get('/organization-members', apiAdminOrChapterAdmin, adminApi.listOrganizationMembers);
 router.put('/users/:id', apiAdminOrChapterAdmin, verifyCsrfToken, adminApi.updateUser);
 router.delete('/users/:id', apiAdminOrChapterAdmin, verifyCsrfToken, adminApi.deleteUser);
 
@@ -69,14 +71,29 @@ const paymentListValidators = [
 ];
 
 // Chapter admin assignment endpoints (ADMIN only)
-router.get('/chapter-admins', apiAdmin, adminApi.listChapterAdmins);
-router.post('/chapter-admins/assign', apiAdmin, adminApi.assignChapterAdmin);
-router.post('/chapter-admins/remove', apiAdmin, adminApi.removeChapterAdmin);
+// Organization tree: read one level at a time, and create directly under a node.
+router.get('/organization-tree', apiAdmin, adminApi.getOrganizationTreeLevel);
+router.post('/organizations/child', apiAdmin, verifyCsrfToken, adminApi.createChildOrganization);
+router.post('/organizations/:id/active', apiAdmin, verifyCsrfToken, adminApi.setOrganizationActiveApi);
+router.delete('/organizations/:id', apiAdmin, verifyCsrfToken, adminApi.deleteOrganizationApi);
+
+router.get('/organization-admins', apiAdmin, adminApi.listOrganizationAdmins);
+router.post('/organization-admins/assign', apiAdmin, verifyCsrfToken, adminApi.assignOrganizationAdmin);
+router.post('/organization-admins/remove', apiAdmin, verifyCsrfToken, adminApi.removeOrganizationAdmin);
 
 // Remaining routes require full ADMIN
 router.use(apiAdmin);
 
 router.get('/users', adminApi.listUsers);
+router.get(
+  '/members',
+  query('page').optional({ checkFalsy: true }).isInt({ min: 1 }).withMessage('Invalid page'),
+  query('organizationId').optional({ checkFalsy: true }).isInt().withMessage('Invalid organizationId filter'),
+  query('status').optional({ checkFalsy: true }).isIn(['PENDING', 'APPROVED', 'REJECTED']).withMessage('Invalid status filter'),
+  query('membership').optional({ checkFalsy: true }).isIn(['MEMBER', 'NON_MEMBER', 'LAPSED', 'NEVER']).withMessage('Invalid membership filter'),
+  query('paymentStatus').optional({ checkFalsy: true }).isIn(['UNPAID', 'PAID', 'PENDING', 'PROCESSING', 'FAILED', 'EXPIRED', 'CANCELLED', 'REFUNDED']).withMessage('Invalid payment filter'),
+  adminApi.listMembers
+);
 router.post('/users/:id/approve', verifyCsrfToken, param('id').isInt(), adminApi.approveUser);
 router.post('/users/:id/reject', verifyCsrfToken, param('id').isInt(), adminApi.rejectUser);
 
@@ -88,12 +105,25 @@ router.put(
   body('feePhp').isFloat({ min: 0, max: 1000000 }).withMessage('Enter a valid fee amount'),
   adminApi.updateMembershipFee
 );
+router.put(
+  '/settings/gateway-surcharge-percent',
+  verifyCsrfToken,
+  body('percent').isFloat({ min: 0, max: 100 }).withMessage('Enter a valid percentage'),
+  adminApi.updateGatewaySurchargePercent
+);
 router.get('/settings/payments-enabled', adminApi.getPaymentsEnabled);
 router.put(
   '/settings/payments-enabled',
   verifyCsrfToken,
   body('enabled').isBoolean().withMessage('enabled must be true or false'),
   adminApi.updatePaymentsEnabled
+);
+router.get('/settings/membership-payment-required', adminApi.getMembershipPaymentRequired);
+router.put(
+  '/settings/membership-payment-required',
+  verifyCsrfToken,
+  body('required').isBoolean().withMessage('required must be true or false'),
+  adminApi.updateMembershipPaymentRequired
 );
 router.get('/sponsors', adminApi.listSponsors);
 router.post('/sponsors', verifyCsrfToken, uploadSponsorLogo.single('logo'), verifyImageSignature, adminApi.createSponsor);
@@ -171,6 +201,7 @@ router.get(
   param('eventId').isInt(),
   certificateApi.exportEventCertificatesExcel
 );
+router.get('/jobs/:jobId', param('jobId').isInt(), jobApi.getJobStatus);
 router.get(
   '/certificates/events/:eventId/registrants/:userId/download',
   param('eventId').isInt(),
@@ -211,6 +242,27 @@ router.post(
   uploadEmailAttachment.single('attachment'),
   verifyImageSignature,
   adminEmailApi.uploadEventAttachment
+);
+
+router.get('/emails/events/:eventId/invitation-template', param('eventId').isInt(), adminEmailApi.getEventInvitationTemplate);
+router.put(
+  '/emails/events/:eventId/invitation-template',
+  verifyCsrfToken,
+  param('eventId').isInt(),
+  emailTemplateValidators,
+  adminEmailApi.updateEventInvitationTemplate
+);
+
+router.get('/invitations/export', invitationApi.exportAllInvitationsExcel);
+router.get('/invitations/import-contacts', invitationApi.fetchContactsToInvite);
+router.get(
+  '/invitations',
+  query('page').optional({ checkFalsy: true }).isInt({ min: 1 }).withMessage('Invalid page'),
+  query('eventId').optional({ checkFalsy: true }).isInt().withMessage('Invalid eventId filter'),
+  query('type').optional({ checkFalsy: true }).isIn(['Member', 'Guest']).withMessage('Invalid type filter'),
+  query('source').optional({ checkFalsy: true }).isIn(['ADMIN_SENT', 'SELF_REQUESTED']).withMessage('Invalid source filter'),
+  query('status').optional({ checkFalsy: true }).isIn(['PENDING', 'SENT', 'DELIVERED', 'BOUNCED', 'FAILED']).withMessage('Invalid status filter'),
+  invitationApi.listInvitationsReport
 );
 
 // Broadcasts — main ADMIN only (inherited from router.use(apiAdmin) above).

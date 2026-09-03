@@ -48,10 +48,10 @@ function broadcastStatusBadge(status) {
         </div>
 
         <div id="audience-all-panel">
-          <label for="audience-chapter" class="block text-xs font-medium text-slate-500 mb-1">Limit to chapter (optional)</label>
-          <select id="audience-chapter" class="form-input max-w-xs">
-            <option value="">All chapters</option>
-            <% chapters.forEach(c => { %>
+          <label for="audience-organization" class="block text-xs font-medium text-slate-500 mb-1">Limit to organization (optional)</label>
+          <select id="audience-organization" class="form-input max-w-xs">
+            <option value="">All organizations</option>
+            <% (organizations || []).forEach(c => { %>
               <option value="<%= c.id %>"><%= c.name %></option>
             <% }) %>
           </select>
@@ -68,7 +68,7 @@ function broadcastStatusBadge(status) {
                   <th class="admin-th w-8"><input type="checkbox" id="broadcast-select-all" aria-label="Select all"></th>
                   <th class="admin-th">Name</th>
                   <th class="admin-th">Email</th>
-                  <th class="admin-th">Chapter</th>
+                  <th class="admin-th">Organization</th>
                 </tr>
               </thead>
               <tbody class="admin-tbody">
@@ -77,7 +77,7 @@ function broadcastStatusBadge(status) {
                     <td class="admin-td"><input type="checkbox" class="broadcast-row-checkbox" value="<%= m.id %>"></td>
                     <td class="admin-td"><%= m.firstName %> <%= m.lastName %></td>
                     <td class="admin-td max-w-[220px] truncate"><%= m.email %></td>
-                    <td class="admin-td max-w-[140px] truncate"><%= (m.chapter && m.chapter.name) || '-' %></td>
+                    <td class="admin-td max-w-[140px] truncate"><%= (m.organization && m.organization.name) || '-' %></td>
                   </tr>
                 <% }) %>
               </tbody>

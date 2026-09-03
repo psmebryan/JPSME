@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE `event_invitations` ADD COLUMN `rsvpAt` DATETIME(3) NULL,
+    ADD COLUMN `rsvpStatus` ENUM('PENDING', 'ATTENDING', 'NOT_ATTENDING') NOT NULL DEFAULT 'PENDING';

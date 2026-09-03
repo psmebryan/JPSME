@@ -10,14 +10,35 @@ function regStatusBadge(status) {
   <div class="mt-3 mb-4 flex flex-wrap items-center justify-between gap-3">
     <h1 class="admin-h1">Registrations for "<%= event.title %>"</h1>
     <div class="flex gap-4 text-sm">
+      <% if (isMainAdmin) { %>
+        <a href="/admin/invitations?eventId=<%= event.id %>" class="text-purple-600 hover:underline">Manage Invitations &rarr;</a>
+      <% } %>
       <a href="/admin/events/<%= event.id %>/certificate" class="text-emerald-600 hover:underline">Manage Certificates &rarr;</a>
       <a href="/admin/events/<%= event.id %>/email" class="text-sky-600 hover:underline">Manage Email &rarr;</a>
     </div>
   </div>
 
+  <form method="GET" action="/admin/events/<%= event.id %>/registrations" class="mb-4 admin-card p-4">
+    <div class="grid gap-3 sm:grid-cols-[1.5fr_180px_auto]">
+      <input
+        type="search"
+        name="search"
+        value="<%= search || '' %>"
+        placeholder="Search name or email"
+        class="form-input" />
+      <select name="status" class="form-input">
+        <option value="">All status</option>
+        <option value="REGISTERED" <%= status === 'REGISTERED' ? 'selected' : '' %>>Registered</option>
+        <option value="PENDING_PAYMENT" <%= status === 'PENDING_PAYMENT' ? 'selected' : '' %>>Awaiting Payment</option>
+        <option value="CANCELLED" <%= status === 'CANCELLED' ? 'selected' : '' %>>Cancelled</option>
+      </select>
+      <button type="submit" class="btn-primary">Apply</button>
+    </div>
+  </form>
+
   <% if (!registrations || registrations.length === 0) { %>
     <div class="admin-card p-4">
-      <p class="empty-state">No registrations yet.</p>
+      <p class="empty-state">No registrations found.</p>
     </div>
   <% } else { %>
     <div class="admin-table-wrap">
@@ -29,6 +50,7 @@ function regStatusBadge(status) {
             <th class="admin-th">Phone</th>
             <th class="admin-th">School</th>
             <th class="admin-th">Status</th>
+            <th class="admin-th">Source</th>
             <th class="admin-th">Registered At</th>
           </tr>
         </thead>
@@ -40,11 +62,18 @@ function regStatusBadge(status) {
               <td class="admin-td"><%= r.phone || '-' %></td>
               <td class="admin-td max-w-[160px] truncate"><%= r.school || '-' %></td>
               <td class="admin-td"><%- regStatusBadge(r.status) %></td>
+              <td class="admin-td"><%- r.invitationId ? '<span class="badge-purple">Invited</span>' : '-' %></td>
               <td class="admin-td"><%= new Date(r.createdAt).toLocaleString() %></td>
             </tr>
           <% }) %>
         </tbody>
       </table>
     </div>
+    <%- include('../partials/pagination', {
+      currentPage: page,
+      totalPages: totalPages,
+      baseQuery: { search, status },
+      pageParam: 'page'
+    }) %>
   <% } %>
 </div>

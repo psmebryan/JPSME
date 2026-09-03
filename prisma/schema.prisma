@@ -16,6 +16,16 @@ enum Role {
   CHAPTER_ADMIN
 }
 
+// Stored as named levels rather than a number so the value can't drift into
+// something meaningless (year 0, year 7) and reads correctly wherever it's
+// displayed. Deliberately stops at fourth year.
+enum YearLevel {
+  FIRST
+  SECOND
+  THIRD
+  FOURTH
+}
+
 enum UserStatus {
   PENDING
   APPROVED
@@ -26,6 +36,33 @@ enum RegistrationStatus {
   REGISTERED
   PENDING_PAYMENT
   CANCELLED
+}
+
+// Pure delivery lifecycle — engagement (opened/clicked) is tracked as
+// separate nullable timestamps on EventInvitation instead of folded into
+// this enum, since a delivered email may or may not ever be opened; those
+// are two independent facts, not mutually exclusive states.
+enum InvitationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  BOUNCED
+  FAILED
+}
+
+enum InvitationSource {
+  ADMIN_SENT
+  SELF_REQUESTED
+}
+
+// A guest (no account) invitee's lightweight yes/no on attending — separate
+// from registeredAt, which only ever gets set by an actual EventRegistration
+// (which requires an account). PENDING covers both "hasn't answered yet" and
+// "ignored the email entirely" — there's no forced choice, per design.
+enum InvitationRsvpStatus {
+  PENDING
+  ATTENDING
+  NOT_ATTENDING
 }
 
 enum Modality {
@@ -82,6 +119,11 @@ enum AuditAction {
   SUSPICIOUS_PAYMENT_MISMATCH
   PAYMENT_RECONCILED
   USER_STATUS_CHANGED
+  // Payment confirmed but the membership auto-approve step itself threw —
+  // previously only console.error'd (invisible outside server logs); this
+  // makes it show up on the admin audit log so a stuck PENDING-despite-PAID
+  // account actually gets noticed and manually approved.
+  AUTO_APPROVAL_FAILED
 }
 
 model User {
@@ -93,22 +135,40 @@ model User {
   password        String
   phone           String?
   school          String?
+  // Optional: a member attached at province level (an officer, say) is not
+  // studying a year at all, so this is never required.
+  yearLevel       YearLevel?
   profileImage    String?
-  chapterId       Int?
+  // A member attaches to whichever organization is actually appropriate — a
+  // student unit, or a province directly where no unit applies. Ancestors are
+  // derived from Organization.path, never stored redundantly here.
+  organizationId  Int?
   role            Role     @default(USER)
   status          UserStatus @default(PENDING)
   emailVerifiedAt DateTime?
+  // When the current paid membership lapses — set to one year from the moment
+  // a membership payment is confirmed (payment.service.js's applyPaymentPaid).
+  // Null means no membership has ever been paid for, which is a normal state
+  // now that payment is optional; it is NOT the same as expired. Renewing
+  // extends from whichever is later, the existing expiry or today, so paying
+  // early never costs the member the remainder of their current year.
+  membershipExpiresAt DateTime?
+  // Where to send them on their first login after finally clearing payment +
+  // admin approval — e.g. the event they originally clicked "Create an
+  // account" from. Set at registration, read + cleared (one-time) by
+  // auth.service.js's login once status is APPROVED. Null the rest of the time.
+  postApprovalRedirectUrl String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  chapter         Chapter? @relation("UserChapter", fields: [chapterId], references: [id], onDelete: SetNull)
+  organization    Organization? @relation("UserOrganization", fields: [organizationId], references: [id], onDelete: SetNull)
   registrations   EventRegistration[]
   emailVerificationToken EmailVerificationToken?
 
-  chapterAdmin            ChapterAdmin?
-  chapterAdminAuditsOld   ChapterAdminAudit[] @relation("old_user")
-  chapterAdminAuditsNew   ChapterAdminAudit[] @relation("new_user")
-  chapterAdminAuditsMade  ChapterAdminAudit[] @relation("changed_by")
+  organizationAdmin       OrganizationAdmin?
+  orgAdminAuditsOld       OrganizationAdminAudit[] @relation("old_org_user")
+  orgAdminAuditsNew       OrganizationAdminAudit[] @relation("new_org_user")
+  orgAdminAuditsMade      OrganizationAdminAudit[] @relation("org_changed_by")
 
   eventCertificates EventCertificate[]
 
@@ -117,9 +177,11 @@ model User {
   auditLogsAsActor  AuditLog[] @relation("audit_actor")
   auditLogsAsTarget AuditLog[] @relation("audit_target")
   broadcastsCreated EmailBroadcast[]
+  eventInvitations  EventInvitation[]
 
   @@index([status])
-  @@index([chapterId])
+  @@index([organizationId])
+  @@index([membershipExpiresAt])
 }
 
 // Single active token per user; a new verification request replaces the previous one.
@@ -155,25 +217,87 @@ model Event {
   registrations EventRegistration[]
   certificateTemplate CertificateTemplate?
   certificates        EventCertificate[]
-  emailTemplate       EmailTemplate?
+  emailTemplates      EmailTemplate[]
   payments            Payment[]
+  invitations         EventInvitation[]
 }
 
 model EventRegistration {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  eventId   Int
-  fullName  String
-  email     String
-  phone     String?
-  school    String?
-  status    RegistrationStatus @default(REGISTERED)
-  createdAt DateTime @default(now())
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  eventId      Int
+  fullName     String
+  email        String
+  phone        String?
+  school       String?
+  // Organization snapshot, captured at registration time for the same reason
+  // fullName/email/school above are: a member's affiliation can change, and a
+  // past event's report must keep reporting who they were affiliated with
+  // THEN. organizationId supports aggregation/joins; organizationPath is the
+  // rendered label ("JPSME National › Luzon › Cavite Chapter") so the history
+  // survives a later rename, reparent, or deletion of the organization.
+  organizationId   Int?
+  organizationPath String?
+  status       RegistrationStatus @default(REGISTERED)
+  // Set only when this registration was completed by clicking through an
+  // event invitation (see EventInvitation.registeredAt) — lets the admin
+  // registrations list show "invited" registrants distinctly from ones who
+  // found the event and registered on their own.
+  invitationId Int?     @unique
+  createdAt    DateTime @default(now())
 
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event        Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  invitation   EventInvitation? @relation(fields: [invitationId], references: [id], onDelete: SetNull)
+  // SetNull, not Cascade — deleting an organization must never delete the
+  // historical registration; organizationPath still preserves the label.
+  organization Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   @@unique([userId, eventId])
+  @@index([organizationId])
+  // countActiveRegistrations() (the capacity check on every registration
+  // attempt) and the admin registrations list both filter by eventId+status
+  // alone — the (userId, eventId) unique index above can't serve that
+  // (userId isn't a filter there), so without this it's a full table scan.
+  @@index([eventId, status])
+}
+
+// Admin-initiated invite for a specific event, sent by email. `userId` is set
+// when the admin picked an existing member; left null for a manually-typed
+// external contact — either way fullName/email/chapter/school are snapshotted
+// onto the row itself so the invite (and the report of it) don't depend on
+// the invitee ever having/keeping an account. `token` is the unguessable
+// value embedded in the email link; clicking it is how registeredAt/the
+// linked EventRegistration ever get set — nothing here auto-registers anyone.
+model EventInvitation {
+  id            Int              @id @default(autoincrement())
+  eventId       Int
+  userId        Int?
+  fullName      String
+  email         String
+  chapter       String?
+  school        String?
+  company       String?
+  source        InvitationSource @default(ADMIN_SENT)
+  token         String           @unique
+  status        InvitationStatus @default(PENDING)
+  failureReason String?
+  sentAt        DateTime?
+  openedAt      DateTime?
+  clickedAt     DateTime?
+  registeredAt  DateTime?
+  rsvpStatus    InvitationRsvpStatus @default(PENDING)
+  rsvpAt        DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  event        Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user         User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  registration EventRegistration?
+
+  @@unique([eventId, email])
+  @@index([eventId])
+  @@map("event_invitations")
 }
 
 model Sponsor {
@@ -189,6 +313,25 @@ model Sponsor {
   @@map("sponsors")
 }
 
+// MAIN_ADMIN-managed public news/articles (see article.service.js). Body is
+// plain text (whitespace-pre-line on render), matching the rest of the site's
+// content pages — no rich-text editor dependency.
+model Article {
+  id          Int       @id @default(autoincrement())
+  title       String
+  category    String?
+  authorName  String?
+  coverImage  String?
+  body        String    @db.Text
+  isPublished Boolean   @default(false)
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([isPublished, publishedAt])
+  @@map("articles")
+}
+
 // Key/value store for site-wide content the admin can change, e.g. site_logo path.
 model SiteSetting {
   id        Int      @id @default(autoincrement())
@@ -197,81 +340,117 @@ model SiteSetting {
   updatedAt DateTime @updatedAt
 }
 
-model ChapterRegion {
-  id        Int           @id @default(autoincrement())
-  name      String        @unique
-  slug      String        @unique
-  order     Int           @default(0)
-  areas     ChapterArea[]
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-
-  @@map("chapter_regions")
+// The five organization levels PSME actually uses (taken from the official
+// workbook's own LEGEND, not invented here). Deliberately NOT used to enforce
+// an ordering: any type may parent any other type, which is what makes a
+// variable-depth tree possible. National → Region → Chapter (no cluster) and
+// National → Region → Cluster (no chapter) are both valid, and neither needs
+// a placeholder row to fill the "missing" level.
+// The levels PSME actually uses, taken from the official workbook's own LEGEND
+// (MOTHER ORG / REGION / CLUSTER / CHAPTER / STUDENT UNIT) with NATIONAL as the
+// single root above them.
+//
+// National → Province → Student Unit. The tree itself is still parent-driven
+// and variable-depth — nothing enforces this order, and a student unit may
+// attach straight to National where no province is recorded — but these are
+// the only levels PSME uses, so no other type exists to create.
+enum OrganizationType {
+  NATIONAL
+  PROVINCE
+  STUDENT_UNIT
 }
 
-model ChapterArea {
-  id        Int           @id @default(autoincrement())
-  name      String
-  slug      String        @unique
-  order     Int           @default(0)
-  region    ChapterRegion @relation(fields: [regionId], references: [id], onDelete: Cascade)
-  regionId  Int
-  chapters  Chapter[]
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-
-  @@index([regionId])
-  @@map("chapter_areas")
-}
-
-model Chapter {
-  id          Int         @id @default(autoincrement())
+// One self-referencing table replaces the old fixed ChapterRegion →
+// ChapterArea → Chapter chain. Depth is a property of each branch (data),
+// not of the schema.
+//
+// `path` is a materialized path ("/1/4/9/") maintained alongside parentId by
+// organization.service.js. It exists for performance: descendant lookups
+// become a single indexed `path LIKE '/1/4/%'` and ancestor lookups a single
+// `id IN (...)` parsed from the path, instead of a recursive per-level walk.
+// That matters because RBAC resolves a subtree on every scoped admin request
+// — an N-query walk there would undo the 5K-readiness work. The tradeoff is
+// that reparenting must rewrite a subtree's paths, done inside a transaction
+// (a rare admin action).
+model Organization {
+  id          Int              @id @default(autoincrement())
   name        String
-  yearFounded Int
-  isActive    Boolean     @default(true)
-  order       Int         @default(0)
-  area        ChapterArea @relation(fields: [areaId], references: [id], onDelete: Cascade)
-  areaId      Int
-  users       User[]      @relation("UserChapter")
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  slug        String           @unique
+  code        String?
+  type        OrganizationType
+  // NULL only for the single NATIONAL root. Restrict (not Cascade) so an
+  // organization with children can never be deleted out from under them —
+  // same defensive convention as Payment.event elsewhere in this schema.
+  parentId    Int?
+  path        String           @default("/")
+  depth       Int              @default(0)
 
-  chapterAdmin       ChapterAdmin?
-  chapterAdminAudits ChapterAdminAudit[]
+  // Import provenance. The official workbook establishes a parent for only 1
+  // of its 176 organization rows, so the importer attaches what it can
+  // actually derive (the mother region) and flags the rest for an admin to
+  // resolve — rather than silently guessing a cluster/chapter relationship.
+  needsReview Boolean          @default(false)
+  importNote  String?          @db.Text
+  sourceSheet String?
 
-  @@index([areaId])
-  @@map("chapters")
+  institution String?
+  email       String?
+  facebookUrl String?
+  subRegion   String?
+  yearFounded Int?
+  isActive    Boolean          @default(true)
+  order       Int              @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  parent        Organization?       @relation("OrgTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children      Organization[]      @relation("OrgTree")
+  users         User[]              @relation("UserOrganization")
+  admins        OrganizationAdmin[]
+  registrations EventRegistration[]
+  adminAudits   OrganizationAdminAudit[]
+
+  @@index([parentId])
+  @@index([type])
+  @@index([path])
+  @@index([needsReview])
+  @@index([parentId, isActive])
+  @@map("organizations")
 }
 
-model ChapterAdmin {
-  id         Int      @id @default(autoincrement())
-  chapterId  Int      @unique
-  userId     Int      @unique
-  assignedAt DateTime @default(now())
+// Replaces ChapterAdmin. userId stays @unique (a user administers at most one
+// organization) but organizationId is deliberately NOT unique — unlike the old
+// one-admin-per-chapter rule, an organization may have more than one admin.
+model OrganizationAdmin {
+  id             Int      @id @default(autoincrement())
+  organizationId Int
+  userId         Int      @unique
+  assignedAt     DateTime @default(now())
 
-  chapter Chapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([chapterId])
-  @@index([userId])
-  @@map("chapter_admins")
+  @@index([organizationId])
+  @@map("organization_admins")
 }
 
-model ChapterAdminAudit {
-  id         Int      @id @default(autoincrement())
-  chapterId  Int
-  oldUserId  Int?
-  newUserId  Int?
-  changedBy  Int
-  changedAt  DateTime @default(now())
-  note       String?
+// Assignment history, same purpose as the old ChapterAdminAudit.
+model OrganizationAdminAudit {
+  id             Int      @id @default(autoincrement())
+  organizationId Int
+  oldUserId      Int?
+  newUserId      Int?
+  changedBy      Int
+  changedAt      DateTime @default(now())
+  note           String?
 
-  chapter Chapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
-  oldUser  User?   @relation("old_user", fields: [oldUserId], references: [id], onDelete: SetNull)
-  newUser  User?   @relation("new_user", fields: [newUserId], references: [id], onDelete: SetNull)
-  changedByUser User @relation("changed_by", fields: [changedBy], references: [id], onDelete: Cascade)
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  oldUser       User?        @relation("old_org_user", fields: [oldUserId], references: [id], onDelete: SetNull)
+  newUser       User?        @relation("new_org_user", fields: [newUserId], references: [id], onDelete: SetNull)
+  changedByUser User         @relation("org_changed_by", fields: [changedBy], references: [id], onDelete: Cascade)
 
-  @@map("chapter_admin_audit")
+  @@index([organizationId])
+  @@map("organization_admin_audit")
 }
 
 // One global row (eventId null) for the membership certificate; one row per
@@ -332,7 +511,15 @@ model Payment {
   gateway           String         @default("paymongo")
   gatewayCheckoutId String?        @unique
   gatewayPaymentId  String?        @unique
+  // The actual fee/membership amount charged to the payer — JPSME absorbs
+  // PayMongo's own transaction fee out of this, it's never added on top.
   amount            Int
+  // What PayMongo actually deducted from `amount` before crediting JPSME —
+  // populated from the Payment resource's own `fee` field once the payment
+  // settles (see applyPaymentPaid), not estimated in advance. 0 until then,
+  // and stays 0 for a payment that never reaches PAID. `amount - gatewayFeeCentavos`
+  // is what JPSME actually received net.
+  gatewayFeeCentavos Int           @default(0)
   currency          String         @default("PHP")
   status            PaymentStatus  @default(PENDING)
   expiresAt         DateTime?
@@ -408,8 +595,8 @@ model Refund {
   @@map("refunds")
 }
 
-// General-purpose audit trail (distinct from ChapterAdminAudit, which only
-// covers chapter-admin reassignment). metadata is a JSON string of plain
+// General-purpose audit trail (distinct from OrganizationAdminAudit, which
+// only covers org-admin reassignment). metadata is a JSON string of plain
 // values only — amounts, IDs, reasons — never secrets or credentials.
 model AuditLog {
   id           Int         @id @default(autoincrement())
@@ -427,12 +614,17 @@ model AuditLog {
   @@index([action])
   @@index([actorId])
   @@index([targetUserId])
+  // The admin payment detail page's audit-trail lookup filters by paymentId;
+  // audit_logs grows continuously (every webhook is logged), so this scans
+  // the whole table without an index.
+  @@index([paymentId])
   @@map("audit_logs")
 }
 
 enum EmailTemplatePurpose {
   MEMBER_APPROVED
   EVENT_REGISTRATION
+  EVENT_INVITATION
 }
 
 // One global row (eventId null, purpose=MEMBER_APPROVED) for the "you're
@@ -442,7 +634,7 @@ enum EmailTemplatePurpose {
 model EmailTemplate {
   id              Int                  @id @default(autoincrement())
   purpose         EmailTemplatePurpose
-  eventId         Int?                 @unique
+  eventId         Int?
   subject         String
   bodyHtml        String               @db.Text
   attachmentImage String?
@@ -451,6 +643,13 @@ model EmailTemplate {
 
   event Event? @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
+  // Was a plain @unique on eventId — widened to a composite so one event can
+  // now hold two template rows (EVENT_REGISTRATION and EVENT_INVITATION)
+  // instead of colliding on the same eventId. MEMBER_APPROVED's single
+  // global row (eventId always null) stays unique in practice via its own
+  // find-or-create logic, not this constraint — MySQL permits multiple NULLs
+  // in a unique index anyway.
+  @@unique([eventId, purpose])
   @@map("email_templates")
 }
 
@@ -459,6 +658,45 @@ enum BroadcastStatus {
   SENDING
   COMPLETED
   FAILED
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// The "local" JOB_DRIVER (config.jobs.driver) — a durable, DB-backed queue so
+// a crash between "enqueue" and "process" never silently loses the job, the
+// way a plain in-memory queue or an un-awaited fire-and-forget call would. A
+// future SQS-backed driver would replace job.service.js's implementation
+// without this row shape needing to change (a worker process still needs a
+// place to record attempts/failures for observability).
+model Job {
+  id          Int       @id @default(autoincrement())
+  type        String
+  // JSON-serialized — must be plain IDs/values a handler can rehydrate from
+  // the DB, never a live object reference, since a job can be processed by a
+  // worker process restarted long after it was enqueued.
+  payload     String    @db.Text
+  status      JobStatus @default(PENDING)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  // Retry backoff: a failed job becomes claimable again only once this time
+  // has passed, instead of a worker hot-looping on a job that just failed.
+  availableAt DateTime  @default(now())
+  lastError   String?   @db.Text
+  // JSON-serialized, set on successful completion only — a small summary a
+  // caller can poll for (e.g. { generatedCount, skippedCount }), never a
+  // large payload. Optional: most job types have nothing worth reporting
+  // back beyond "it finished."
+  result      String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, availableAt])
+  @@map("jobs")
 }
 
 // An admin-composed one-off email blast to all members or a hand-picked

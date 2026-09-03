@@ -1,0 +1,128 @@
+<%
+const root = locals.root || null;
+const children = locals.children || [];
+const reviewCount = locals.reviewCount || 0;
+const TYPE_LABEL = locals.typeLabels || {};
+const TYPE_BADGE = {
+  NATIONAL: 'badge-purple', PROVINCE: 'badge-blue', STUDENT_UNIT: 'badge-slate',
+};
+const CREATABLE = ['PROVINCE', 'STUDENT_UNIT'];
+%>
+
+<div class="flex items-start justify-between gap-4 mb-2">
+  <div>
+    <h1 class="admin-h1">Organization Structure</h1>
+    <p class="admin-subtitle">
+      The hierarchy as it actually is. A branch only has the levels it really has &mdash;
+      a chapter may sit directly under a region with no cluster between them, and a
+      cluster may have nothing beneath it at all.
+    </p>
+  </div>
+  <a href="/admin/organizations" data-admin-link class="btn-secondary shrink-0">Table view</a>
+</div>
+
+<% if (reviewCount > 0) { %>
+  <div class="mt-4 mb-2 rounded-lg border border-amber-300 bg-amber-50 p-4">
+    <p class="text-sm text-amber-900">
+      <strong><%= reviewCount %></strong> organization<%= reviewCount === 1 ? '' : 's' %>
+      still need a real parent confirmed. They sit at their best-known level until then.
+      <a href="/admin/organizations?needsReview=1" data-admin-link class="ml-1 font-semibold underline">Review them</a>
+    </p>
+  </div>
+<% } %>
+
+<section class="admin-card p-5 mt-4">
+  <% if (!root) { %>
+    <!-- Bootstrap. Nothing can be created until one root exists, since every
+         other organization is defined by its parent — so this is the one form
+         that takes no parent, and it disappears once the root is in place. -->
+    <div class="max-w-md mx-auto py-6 text-center">
+      <h2 class="text-lg font-semibold text-slate-900 mb-1">Start your organization structure</h2>
+      <p class="admin-subtitle mb-5">
+        Create the national organization first. Everything else &mdash; regions, clusters,
+        chapters, student units &mdash; is then added beneath it using <strong>+ Child</strong>.
+      </p>
+      <form id="create-root-form" class="space-y-3 text-left">
+        <div>
+          <label class="form-label" for="root-name">National organization name</label>
+          <input id="root-name" class="form-input" required placeholder="e.g. JPSME National" value="JPSME National">
+        </div>
+        <button type="submit" class="btn-primary w-full">Create national organization</button>
+      </form>
+    </div>
+  <% } else { %>
+    <div class="flex items-center justify-between gap-3 pb-3 mb-2 border-b border-slate-200">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="<%= TYPE_BADGE[root.type] || 'badge-slate' %>"><%= TYPE_LABEL[root.type] || root.type %></span>
+        <span class="font-semibold text-slate-900 truncate"><%= root.name %></span>
+      </div>
+      <button type="button" class="btn-primary text-sm px-3 py-1.5"
+              data-add-child="<%= root.id %>" data-parent-name="<%= root.name %>">+ Add child</button>
+    </div>
+
+    <ul id="org-tree" class="text-sm" data-root-id="<%= root.id %>">
+      <% children.forEach(c => { %>
+        <li class="org-node" data-node-id="<%= c.id %>">
+          <div class="flex items-center gap-2 py-1.5 border-b border-slate-100">
+            <button type="button" class="org-toggle w-5 h-5 shrink-0 text-slate-400 hover:text-slate-700 <%= c.childCount ? '' : 'invisible' %>"
+                    data-node-toggle="<%= c.id %>" aria-expanded="false" aria-label="Expand">&#9656;</button>
+            <span class="<%= TYPE_BADGE[c.type] || 'badge-slate' %>"><%= TYPE_LABEL[c.type] || c.type %></span>
+            <span class="font-medium text-slate-800 truncate flex-1"><%= c.name %></span>
+            <% if (c.needsReview) { %><span class="badge-amber shrink-0">Needs review</span><% } %>
+            <% if (!c.isActive) { %><span class="badge-slate shrink-0">Inactive</span><% } %>
+            <span class="text-xs text-slate-400 shrink-0 tabular-nums">
+              <%= c.childCount %> child<%= c.childCount === 1 ? '' : 'ren' %> &middot; <%= c.memberCount %> member<%= c.memberCount === 1 ? '' : 's' %>
+            </span>
+            <span class="shrink-0 flex items-center gap-2">
+              <button type="button" class="text-indigo-600 hover:underline text-xs font-medium"
+                      data-add-child="<%= c.id %>" data-parent-name="<%= c.name %>">+ Child</button>
+              <a href="/admin/organizations/<%= c.id %>/edit" data-admin-link class="text-slate-500 hover:underline text-xs">Edit</a>
+              <button type="button" class="text-amber-600 hover:underline text-xs"
+                      data-toggle-active="<%= c.id %>" data-active="<%= c.isActive ? '1' : '0' %>"
+                      data-org-name="<%= c.name %>"><%= c.isActive ? 'Deactivate' : 'Reactivate' %></button>
+              <button type="button" class="text-red-600 hover:underline text-xs"
+                      data-delete-org="<%= c.id %>" data-org-name="<%= c.name %>">Delete</button>
+            </span>
+          </div>
+          <ul class="org-children hidden pl-6 border-l border-slate-200 ml-2.5"></ul>
+        </li>
+      <% }) %>
+    </ul>
+  <% } %>
+</section>
+
+<!-- Add-child dialog. The parent is fixed by whichever node was clicked, so the
+     admin never has to find it in a list of hundreds. -->
+<div id="add-child-modal" class="hidden fixed inset-0 z-50 items-center justify-center bg-slate-900/50 p-4">
+  <div class="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+    <h2 class="text-lg font-semibold text-slate-900 mb-1">Add organization</h2>
+    <p class="admin-subtitle mb-4">Adding under <strong id="add-child-parent-name"></strong></p>
+
+    <form id="add-child-form" class="space-y-3">
+      <input type="hidden" id="add-child-parent-id">
+      <div>
+        <label class="form-label" for="add-child-type">Type</label>
+        <select id="add-child-type" class="form-input" required>
+          <% CREATABLE.forEach(t => { %>
+            <option value="<%= t %>"><%= TYPE_LABEL[t] || t %></option>
+          <% }) %>
+        </select>
+        <p class="mt-1 text-xs text-slate-400">
+          Levels may be skipped &mdash; a chapter directly under a region is valid.
+        </p>
+      </div>
+      <div>
+        <label class="form-label" for="add-child-name">Name</label>
+        <input id="add-child-name" class="form-input" required placeholder="e.g. JPSME Cavite Chapter">
+      </div>
+      <div>
+        <label class="form-label" for="add-child-code">Code (optional)</label>
+        <input id="add-child-code" class="form-input" placeholder="e.g. CAV-001">
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" id="add-child-cancel" class="btn-secondary">Cancel</button>
+        <button type="submit" class="btn-primary">Create</button>
+      </div>
+    </form>
+  </div>
+</div>

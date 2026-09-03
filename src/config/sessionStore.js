@@ -1,10 +1,14 @@
 const MySQLStore = require('express-mysql-session')(require('express-session'));
+const config = require('./index');
 
 // Reuses the same DATABASE_URL as Prisma so there's no separate connection
 // config to keep in sync. Auto-creates its own `sessions` table on first run
 // (an operational table, not a Prisma-tracked domain model).
+//
+// SESSION_STORE currently only supports 'mysql' (config.session.store already
+// validates this at startup) — a second store would branch here.
 function buildSessionStore() {
-  const url = new URL(process.env.DATABASE_URL);
+  const url = new URL(config.database.url);
 
   return new MySQLStore({
     host: url.hostname,

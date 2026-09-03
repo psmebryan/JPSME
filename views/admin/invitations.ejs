@@ -1,0 +1,397 @@
+<%
+function invStatusBadge(status) {
+  const styles = { PENDING: 'badge-slate', SENT: 'badge-blue', DELIVERED: 'badge-green', BOUNCED: 'badge-red', FAILED: 'badge-red' };
+  return `<span class="${styles[status] || 'badge-slate'}">${status}</span>`;
+}
+function fmt(date) {
+  return date ? new Date(date).toLocaleString() : '-';
+}
+// Keyed on lowercased email so the member picker can flag anyone already
+// invited to the currently-selected event — the server already refuses to
+// double-send (EventInvitation is unique per event+email), but silently
+// no-op'ing on a re-select is confusing without this in the UI too. Built
+// from invitedEmailStatuses (every invitation for this event, email+status
+// only) rather than the report table's paginated `invitations`, so a member
+// invited on page 2+ still correctly shows as already invited here.
+const invitationsList = typeof invitations !== 'undefined' ? invitations : [];
+const invitedStatusRows = typeof invitedEmailStatuses !== 'undefined' ? invitedEmailStatuses : [];
+const invitedEmails = new Map(invitedStatusRows.map((inv) => [inv.email.toLowerCase(), inv.status]));
+const distinctChapters = [...new Set(members.map((m) => (m.organization && m.organization.name) || '').filter(Boolean))].sort();
+const distinctSchools = [...new Set(members.map((m) => m.school || '').filter(Boolean))].sort();
+const opts = typeof filterOptions !== 'undefined' ? filterOptions : { chapters: [], schools: [], events: [] };
+function memberOrGuestBadge(inv) {
+  // Three-way, matching how the org classifies people:
+  //   Guest      — no account; invited to this one event only
+  //   Member     — has an account and a membership inside its validity year
+  //   Non-Member — has an account but never paid, or has lapsed
+  if (!inv.userId) return '<span class="badge-slate">Guest</span>';
+  const expiry = inv.user && inv.user.membershipExpiresAt;
+  const active = expiry && new Date(expiry).getTime() > Date.now();
+  return active
+    ? '<span class="badge-green">Member</span>'
+    : '<span class="badge-amber">Non-Member</span>';
+}
+// Answers "who requested an invitation themselves?" — SELF_REQUESTED rows
+// came from the public form on the event page; everything else was sent by
+// an admin (member picker or External Contact).
+function sourceBadge(source) {
+  return source === 'SELF_REQUESTED' ? '<span class="badge-green">Requested</span>' : '<span class="badge-slate">Admin-Sent</span>';
+}
+// Guest-only yes/no on attending (see recordRsvp in invitation.service.js) —
+// members don't use this; they show '-' since registeredAt is their real signal.
+function rsvpBadge(inv) {
+  if (inv.userId) return '<span class="text-slate-300">&mdash;</span>';
+  const styles = { ATTENDING: 'badge-green', NOT_ATTENDING: 'badge-red', PENDING: 'badge-slate' };
+  const labels = { ATTENDING: 'Attending', NOT_ATTENDING: 'Not Attending', PENDING: 'No response' };
+  return `<span class="${styles[inv.rsvpStatus] || 'badge-slate'}">${labels[inv.rsvpStatus] || inv.rsvpStatus}</span>`;
+}
+// This builds raw HTML via string concatenation, rendered unescaped below,
+// so the exact same row-template can be shared with admin.js for the
+// AJAX-refreshed rows — every user-controlled field (fullName/email/chapter/
+// school/company/event title, all admin- or visitor-entered free text) MUST
+// go through esc() here, unlike a plain auto-escaping EJS output tag.
+function esc(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+  ));
+}
+function invitationRowHtml(inv, includeEventColumn) {
+  const eventCell = includeEventColumn
+    ? `<td class="admin-td max-w-[180px] truncate"><a href="/admin/invitations?eventId=${inv.event.id}" class="text-indigo-600 hover:underline">${esc(inv.event.title)}</a></td>`
+    : '';
+  const actionsCell = includeEventColumn ? '' : `
+    <td class="admin-td text-right">
+      ${(inv.status === 'FAILED' || inv.status === 'BOUNCED') && !inv.registeredAt
+        ? `<button type="button" data-resend-invitation="${inv.id}" class="text-indigo-600 hover:underline text-sm font-medium">Resend</button>`
+        : ''}
+    </td>`;
+  return `
+    <tr class="admin-tr" data-invitation-row="${inv.id}">
+      ${eventCell}
+      <td class="admin-td">${esc(inv.fullName)}</td>
+      <td class="admin-td max-w-[180px] truncate">${esc(inv.email)}</td>
+      <td class="admin-td">${esc(inv.chapter) || '-'}</td>
+      <td class="admin-td">${esc(inv.school) || '-'}</td>
+      <td class="admin-td">${esc(inv.company) || '-'}</td>
+      <td class="admin-td">${memberOrGuestBadge(inv)}</td>
+      <td class="admin-td">${sourceBadge(inv.source)}</td>
+      <td class="admin-td">${rsvpBadge(inv)}</td>
+      <td class="admin-td invitation-status-cell">${invStatusBadge(inv.status)}</td>
+      <td class="admin-td whitespace-nowrap text-xs">${fmt(inv.sentAt)}</td>
+      <td class="admin-td whitespace-nowrap text-xs">${fmt(inv.openedAt)}</td>
+      <td class="admin-td whitespace-nowrap text-xs">${fmt(inv.clickedAt)}</td>
+      <td class="admin-td whitespace-nowrap text-xs">${fmt(inv.registeredAt)}</td>
+      ${actionsCell}
+    </tr>`;
+}
+function sortArrowHeader(label, key) {
+  return `<button type="button" class="inline-flex items-center gap-1 hover:text-slate-900" data-sort-key="${key}">${label}<span class="sort-arrow text-slate-300">&#9650;&#9660;</span></button>`;
+}
+%>
+<div class="max-w-5xl mx-auto">
+  <div class="mb-6">
+    <h1 class="admin-h1">Invitations</h1>
+    <p class="admin-subtitle">Invite members or outside contacts to a specific event, and track delivery/opens/clicks/registrations.</p>
+  </div>
+
+  <div class="admin-card p-4 mb-6">
+    <label class="form-label">Event</label>
+    <select id="invitation-event-select" class="form-input max-w-lg">
+      <option value="">Select an event&hellip;</option>
+      <% events.forEach(e => { %>
+        <option value="<%= e.id %>" <%= selectedEvent && selectedEvent.id === e.id ? 'selected' : '' %>>
+          <%= e.title %> &mdash; <%= new Date(e.startDate).toLocaleDateString() %> (<%= e._count.registrations %> registered)
+        </option>
+      <% }) %>
+    </select>
+  </div>
+
+  <% if (!selectedEvent) { %>
+    <div class="admin-card p-5 mb-6">
+      <p class="text-sm text-slate-500">Showing invitations across every event. Pick a specific event above to invite more people to it.</p>
+    </div>
+
+    <div class="admin-card p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-semibold text-slate-900">All Invitations</h2>
+        <% if (total > 0) { %>
+          <a href="/api/admin/invitations/export" class="text-xs text-indigo-600 hover:underline">Export to Excel &#8595;</a>
+        <% } %>
+      </div>
+      <% if (total === 0) { %>
+        <p class="empty-state">No invitations sent yet.</p>
+      <% } else { %>
+        <div id="all-invitations-module" data-event-id="">
+          <form id="all-invitations-filter-form" class="grid gap-2 sm:grid-cols-6 mb-3">
+            <select name="eventId" class="form-input">
+              <option value="">All Events</option>
+              <% opts.events.forEach(e => { %><option value="<%= e.id %>"><%= e.title %></option><% }) %>
+            </select>
+            <select name="chapter" class="form-input">
+              <option value="">All Chapters</option>
+              <% opts.chapters.forEach(c => { %><option value="<%= c %>"><%= c %></option><% }) %>
+            </select>
+            <select name="school" class="form-input">
+              <option value="">All Schools</option>
+              <% opts.schools.forEach(s => { %><option value="<%= s %>"><%= s %></option><% }) %>
+            </select>
+            <select name="type" class="form-input">
+              <option value="">Members &amp; Guests</option>
+              <option value="Member">Members Only</option>
+              <option value="Guest">Guests Only</option>
+            </select>
+            <select name="status" class="form-input">
+              <option value="">All Statuses</option>
+              <option value="PENDING">Pending</option>
+              <option value="SENT">Sent</option>
+              <option value="DELIVERED">Delivered</option>
+              <option value="BOUNCED">Bounced</option>
+              <option value="FAILED">Failed</option>
+            </select>
+            <select name="source" class="form-input">
+              <option value="" <%= sourceFilter === 'SELF_REQUESTED' ? '' : 'selected' %>>Admin-Sent &amp; Requested</option>
+              <option value="SELF_REQUESTED" <%= sourceFilter === 'SELF_REQUESTED' ? 'selected' : '' %>>Requested Only</option>
+              <option value="ADMIN_SENT">Admin-Sent Only</option>
+            </select>
+          </form>
+          <div class="admin-table-wrap">
+            <table id="all-invitations-table" class="admin-table">
+              <thead class="admin-table-head">
+                <tr>
+                  <th class="admin-th">Event</th>
+                  <th class="admin-th"><%- sortArrowHeader('Name', 'name') %></th>
+                  <th class="admin-th">Email</th>
+                  <th class="admin-th">Chapter</th>
+                  <th class="admin-th">School</th>
+                  <th class="admin-th">Company</th>
+                  <th class="admin-th">Type</th>
+                  <th class="admin-th">Requested?</th>
+                  <th class="admin-th">RSVP</th>
+                  <th class="admin-th">Status</th>
+                  <th class="admin-th"><%- sortArrowHeader('Sent', 'sent') %></th>
+                  <th class="admin-th"><%- sortArrowHeader('Opened', 'opened') %></th>
+                  <th class="admin-th"><%- sortArrowHeader('Clicked', 'clicked') %></th>
+                  <th class="admin-th"><%- sortArrowHeader('Registered', 'registered') %></th>
+                </tr>
+              </thead>
+              <tbody class="admin-tbody">
+                <%- invitationsList.map(inv => invitationRowHtml(inv, true)).join('') %>
+              </tbody>
+            </table>
+            <p id="all-inv-empty" class="empty-state hidden">No invitations match these filters.</p>
+          </div>
+          <div id="all-inv-pagination" class="flex items-center justify-between mt-3 text-sm text-slate-500" data-page="<%= page %>" data-total-pages="<%= totalPages %>"></div>
+        </div>
+      <% } %>
+    </div>
+  <% } else { %>
+    <div id="invitations-module" class="admin-card p-5 mb-8" data-event-id="<%= selectedEvent.id %>" data-invited-emails="<%= JSON.stringify([...invitedEmails.keys()]) %>">
+      <h2 class="font-semibold text-slate-900 mb-1">Invite People to "<%= selectedEvent.title %>"</h2>
+      <p class="admin-subtitle mb-4">Pick a registered member or type in someone new — each gets an emailed invite link that lands them on this event's page to confirm registration.</p>
+
+      <div class="border border-slate-200 rounded-lg p-4 mb-4">
+        <label class="form-label">Existing Members</label>
+        <div class="mb-2 space-y-2">
+          <input id="invite-member-search" type="text" placeholder="Search by name, email, chapter, or school&hellip;" class="form-input w-full" />
+          <div class="grid gap-2 sm:grid-cols-3">
+            <select id="invite-member-filter" class="form-input">
+              <option value="all">All Members</option>
+              <option value="not-invited">Not Yet Invited</option>
+              <option value="invited">Already Invited</option>
+            </select>
+            <select id="invite-member-chapter-filter" class="form-input">
+              <option value="">All Chapters</option>
+              <% distinctChapters.forEach(c => { %><option value="<%= c %>"><%= c %></option><% }) %>
+            </select>
+            <select id="invite-member-school-filter" class="form-input">
+              <option value="">All Schools</option>
+              <% distinctSchools.forEach(s => { %><option value="<%= s %>"><%= s %></option><% }) %>
+            </select>
+          </div>
+        </div>
+        <div class="border border-slate-200 rounded-md max-h-64 overflow-y-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 sticky top-0">
+              <tr>
+                <th class="p-2 text-left w-8"><input type="checkbox" id="invite-select-all" /></th>
+                <th class="p-2 text-left">Name</th>
+                <th class="p-2 text-left">Email</th>
+                <th class="p-2 text-left">Chapter</th>
+                <th class="p-2 text-left">School</th>
+                <th class="p-2 text-left">Status</th>
+              </tr>
+            </thead>
+            <tbody id="invite-member-tbody">
+              <% members.forEach(m => { %>
+                <% const chapterName = (m.organization && m.organization.name) || ''; %>
+                <% const invitedStatus = invitedEmails.get(m.email.toLowerCase()); %>
+                <tr class="invite-member-row border-t border-slate-100 <%= invitedStatus ? 'bg-slate-50' : '' %>"
+                    data-search="<%= `${m.firstName} ${m.lastName} ${m.email} ${chapterName} ${m.school || ''}`.toLowerCase() %>"
+                    data-invited="<%= invitedStatus ? 'true' : 'false' %>"
+                    data-chapter="<%= chapterName %>"
+                    data-school="<%= m.school || '' %>">
+                  <td class="p-2">
+                    <input type="checkbox" class="invite-member-checkbox"
+                      value="<%= m.id %>"
+                      data-name="<%= m.firstName %> <%= m.lastName %>"
+                      data-email="<%= m.email %>"
+                      data-chapter="<%= chapterName %>"
+                      data-school="<%= m.school || '' %>"
+                      <%= invitedStatus ? 'disabled title="Already invited to this event"' : '' %> />
+                  </td>
+                  <td class="p-2"><%= m.firstName %> <%= m.lastName %></td>
+                  <td class="p-2 text-slate-500 max-w-[180px] truncate"><%= m.email %></td>
+                  <td class="p-2"><%= chapterName || '-' %></td>
+                  <td class="p-2"><%= m.school || '-' %></td>
+                  <td class="p-2"><%- invitedStatus ? invStatusBadge(invitedStatus) : '<span class="text-xs text-slate-400">Not invited</span>' %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+          <% if (members.length === 0) { %><p class="p-3 text-sm text-slate-400">No approved members yet.</p><% } %>
+          <p id="invite-member-empty" class="p-3 text-sm text-slate-400 hidden">No members match your search.</p>
+        </div>
+        <button type="button" id="invite-add-selected" class="btn-secondary text-sm mt-2">Add Selected to List</button>
+      </div>
+
+      <div class="border border-slate-200 rounded-lg p-4 mb-4">
+        <label class="form-label">External Contact</label>
+        <div class="grid gap-2 sm:grid-cols-2">
+          <input id="invite-ext-name" placeholder="Full name" class="form-input" />
+          <input id="invite-ext-email" type="email" placeholder="Email address" class="form-input" />
+          <input id="invite-ext-chapter" placeholder="Chapter (optional)" class="form-input" />
+          <input id="invite-ext-school" placeholder="School (optional)" class="form-input" />
+          <input id="invite-ext-company" placeholder="Company (optional)" class="form-input" />
+        </div>
+        <div class="flex items-center gap-3 mt-2">
+          <button type="button" id="invite-add-external" class="btn-secondary text-sm">Add to List</button>
+          <button type="button" id="invite-fetch-sheet" class="text-sm text-indigo-600 hover:underline">Fetch from Google Sheet &#8595;</button>
+        </div>
+        <p class="mt-1 text-xs text-slate-400">
+          Pulls every row from the "Contacts to Invite" tab in the live Google Sheet straight into the list below —
+          bulk-add non-members without typing each one in here.
+        </p>
+      </div>
+
+      <div id="invite-pending-list" class="mb-4"></div>
+
+      <button type="button" id="invite-send-btn" class="btn-primary" disabled>Send Invitations</button>
+    </div>
+
+    <div class="admin-card p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-semibold text-slate-900">Invitation Report</h2>
+        <div class="flex items-center gap-4 text-xs">
+          <% if (total > 0) { %>
+            <a href="/api/events/<%= selectedEvent.id %>/invitations/export" class="text-indigo-600 hover:underline">Export to Excel &#8595;</a>
+          <% } %>
+          <a href="/admin/events/<%= selectedEvent.id %>/registrations" class="text-indigo-600 hover:underline">View registrants &rarr;</a>
+        </div>
+      </div>
+      <% if (total === 0) { %>
+        <p class="empty-state">No invitations sent yet.</p>
+      <% } else { %>
+        <p class="text-sm text-slate-500 mb-4">
+          <strong class="text-slate-900"><%= summary.total %></strong> invited &middot;
+          <strong class="text-slate-900"><%= summary.registered %></strong> registered members (<%= summary.registeredPct %>%) &middot;
+          <strong class="text-slate-900"><%= summary.attendingGuests %></strong> guests attending &middot;
+          <strong class="text-slate-900"><%= summary.requested %></strong> self-requested
+        </p>
+
+        <div class="mb-4 overflow-hidden rounded-lg border border-slate-200">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50">
+              <tr>
+                <th class="p-2 text-left font-medium text-slate-500">Source</th>
+                <th class="p-2 text-right font-medium text-slate-500">Sent To</th>
+                <th class="p-2 text-right font-medium text-slate-500">Registered</th>
+                <th class="p-2 text-right font-medium text-slate-500">Conversion</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-t border-slate-100">
+                <td class="p-2">Admin-Sent (picked from members or added manually)</td>
+                <td class="p-2 text-right"><%= summary.adminSent.total %></td>
+                <td class="p-2 text-right"><%= summary.adminSent.registered %></td>
+                <td class="p-2 text-right font-medium"><%= summary.adminSent.pct %>%</td>
+              </tr>
+              <tr class="border-t border-slate-100">
+                <td class="p-2">Self-Requested (public form on the event page)</td>
+                <td class="p-2 text-right"><%= summary.selfRequested.total %></td>
+                <td class="p-2 text-right"><%= summary.selfRequested.registered %></td>
+                <td class="p-2 text-right font-medium"><%= summary.selfRequested.pct %>%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="event-invitations-module" data-event-id="<%= selectedEvent.id %>">
+          <form id="event-invitations-filter-form" class="grid gap-2 sm:grid-cols-5 mb-3">
+            <select name="chapter" class="form-input">
+              <option value="">All Chapters</option>
+              <% opts.chapters.forEach(c => { %><option value="<%= c %>"><%= c %></option><% }) %>
+            </select>
+            <select name="school" class="form-input">
+              <option value="">All Schools</option>
+              <% opts.schools.forEach(s => { %><option value="<%= s %>"><%= s %></option><% }) %>
+            </select>
+            <select name="type" class="form-input">
+              <option value="">Members &amp; Guests</option>
+              <option value="Member">Members Only</option>
+              <option value="Guest">Guests Only</option>
+            </select>
+            <select name="status" class="form-input">
+              <option value="">All Statuses</option>
+              <option value="PENDING">Pending</option>
+              <option value="SENT">Sent</option>
+              <option value="DELIVERED">Delivered</option>
+              <option value="BOUNCED">Bounced</option>
+              <option value="FAILED">Failed</option>
+            </select>
+            <select name="source" class="form-input">
+              <option value="">Admin-Sent &amp; Requested</option>
+              <option value="SELF_REQUESTED">Requested Only</option>
+              <option value="ADMIN_SENT">Admin-Sent Only</option>
+            </select>
+          </form>
+          <div class="admin-table-wrap">
+            <table id="invitations-table" class="admin-table">
+              <thead class="admin-table-head">
+                <tr>
+                  <th class="admin-th"><%- sortArrowHeader('Name', 'name') %></th>
+                  <th class="admin-th">Email</th>
+                  <th class="admin-th">Chapter</th>
+                  <th class="admin-th">School</th>
+                  <th class="admin-th">Company</th>
+                  <th class="admin-th">Type</th>
+                  <th class="admin-th">Requested?</th>
+                  <th class="admin-th">RSVP</th>
+                  <th class="admin-th">Status</th>
+                  <th class="admin-th"><%- sortArrowHeader('Sent', 'sent') %></th>
+                  <th class="admin-th"><%- sortArrowHeader('Opened', 'opened') %></th>
+                  <th class="admin-th"><%- sortArrowHeader('Clicked', 'clicked') %></th>
+                  <th class="admin-th"><%- sortArrowHeader('Registered', 'registered') %></th>
+                  <th class="admin-th text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="admin-tbody">
+                <%- invitationsList.map(inv => invitationRowHtml(inv, false)).join('') %>
+              </tbody>
+            </table>
+            <p id="event-inv-empty" class="empty-state hidden">No invitations match these filters.</p>
+          </div>
+          <div id="event-inv-pagination" class="flex items-center justify-between mt-3 text-sm text-slate-500" data-page="<%= page %>" data-total-pages="<%= totalPages %>"></div>
+        </div>
+      <% } %>
+    </div>
+  <% } %>
+</div>
+
+<script nonce="<%= cspNonce %>">
+  document.getElementById('invitation-event-select')?.addEventListener('change', function () {
+    if (this.value) {
+      window.location.href = `/admin/invitations?eventId=${this.value}`;
+    } else {
+      window.location.href = '/admin/invitations';
+    }
+  });
+</script>

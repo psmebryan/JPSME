@@ -7,6 +7,8 @@ const registrationRoutes = require('./registration.routes');
 const certificateRoutes = require('./certificate.routes');
 const paymentRoutes = require('./payment.routes');
 const webhookRoutes = require('./webhook.routes');
+const articleRoutes = require('./article.routes');
+const organizationRoutes = require('./organization.routes');
 const { success } = require('../../utils/apiResponse');
 
 const router = Router();
@@ -33,5 +35,7 @@ router.use('/registrations', registrationRoutes);
 router.use('/certificates', certificateRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/webhooks', webhookRoutes);
+router.use('/articles', articleRoutes);
+router.use('/organizations', organizationRoutes);
 
 module.exports = router;
