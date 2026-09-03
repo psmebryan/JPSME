@@ -10,4 +10,19 @@ storage/certificates/events/*
 *.log
 .DS_Store
 CLAUDE.md
-org-backup-before-wipe.json
+
+# Database snapshots written before destructive operations (see the backup and
+# restore steps in the organization scripts). Local safety nets, often large,
+# and stale the moment anything changes — never useful to anyone else.
+# Supersedes the narrower org-backup-before-wipe.json entry.
+org-backup*.json
+
+# Generated documents. Produced on demand from the data or the source
+# documents, so committing them means carrying a binary that silently goes out
+# of date against whatever it was generated from.
+JPSME-2.0-Blueprint.pdf
+JPSME-Organization-*.pdf
+
+# .vscode/ is deliberately NOT ignored — launch.json is committed on purpose so
+# the debug configuration is shared. Ignoring the folder here would contradict
+# that without untracking it, which is the confusing half-state.
