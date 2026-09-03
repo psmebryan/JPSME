@@ -9,3 +9,16 @@ storage/certificates/events/*
 !storage/certificates/events/.gitkeep
 *.log
 .DS_Store
+
+# Editor/workspace settings — personal to whoever is working, not the project's.
+.vscode/
+
+# Database snapshots written before destructive operations (see the org
+# backup/restore steps in the organization scripts). Local safety nets, often
+# large, and stale the moment anything changes — never useful to anyone else.
+org-backup*.json
+
+# Generated documents. Produced on demand from the data or the source docs, so
+# committing them means carrying a binary that silently goes out of date.
+JPSME-2.0-Blueprint.pdf
+JPSME-Organization-*.pdf
