@@ -31,12 +31,11 @@
             <td class="admin-td"><%= article.authorName || '-' %></td>
             <td class="admin-td"><span class="<%= article.isPublished ? 'badge-green' : 'badge-slate' %>"><%= article.isPublished ? 'Published' : 'Draft' %></span></td>
             <td class="admin-td whitespace-nowrap"><%= new Date(article.publishedAt || article.createdAt).toLocaleDateString() %></td>
-            <td class="admin-td text-right">
-              <a href="/admin/articles/<%= article.id %>/edit" class="text-indigo-600 hover:underline text-sm font-medium mr-3">Edit</a>
-              <button
-                data-delete-article="<%= article.id %>"
-                data-article-title="<%= article.title %>"
-                class="text-red-600 hover:underline text-sm font-medium">Delete</button>
+            <td class="admin-td text-right relative">
+              <%- include('../partials/row-menu', { items: [
+                `<a href="/admin/articles/${article.id}/edit" class="${MENU_ITEM}">Edit</a>`,
+                `<button type="button" class="${MENU_ITEM} text-red-600" data-delete-article="${article.id}" data-article-title="${esc(article.title)}">Delete</button>`,
+              ] }) %>
             </td>
           </tr>
         <% }) %>

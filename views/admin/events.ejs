@@ -224,17 +224,14 @@ function modalityBadgeClass(m) {
             <td class="admin-td"><%= event._count ? event._count.registrations : 0 %></td>
             <td class="admin-td"><span class="<%= event.isPublished ? 'badge-green' : 'badge-slate' %>"><%= event.isPublished ? 'Yes' : 'No' %></span></td>
             <td class="admin-td"><span class="<%= event.featured ? 'badge-amber' : 'badge-slate' %>"><%= event.featured ? 'Yes' : 'No' %></span></td>
-            <td class="admin-td text-right">
-              <div class="flex flex-wrap justify-end items-center gap-2">
-                <a href="/admin/events/<%= event.id %>/edit" class="text-indigo-600 hover:underline text-sm font-medium">Edit</a>
-                <a href="/admin/events/<%= event.id %>/registrations" class="text-slate-600 hover:underline text-sm font-medium">Registrations</a>
-                <a href="/admin/events/<%= event.id %>/certificate" class="text-emerald-600 hover:underline text-sm font-medium">Certificate</a>
-                <a href="/admin/events/<%= event.id %>/email" class="text-sky-600 hover:underline text-sm font-medium">Email</a>
-                <button type="button"
-                  data-delete-event="<%= event.id %>"
-                  data-event-title="<%= event.title %>"
-                  class="text-red-600 hover:underline text-sm font-medium">Delete</button>
-              </div>
+            <td class="admin-td text-right relative">
+              <%- include('../partials/row-menu', { items: [
+                `<a href="/admin/events/${event.id}/edit" class="${MENU_ITEM}">Edit</a>`,
+                `<a href="/admin/events/${event.id}/registrations" class="${MENU_ITEM}">Registrations</a>`,
+                `<a href="/admin/events/${event.id}/certificate" class="${MENU_ITEM}">Certificate</a>`,
+                `<a href="/admin/events/${event.id}/email" class="${MENU_ITEM}">Email</a>`,
+                `<button type="button" class="${MENU_ITEM} text-red-600" data-delete-event="${event.id}" data-event-title="${esc(event.title)}">Delete</button>`,
+              ] }) %>
             </td>
           </tr>
         <% }) %>

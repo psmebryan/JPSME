@@ -322,15 +322,19 @@ function initPaymentsModule() {
     const chapter = (p.user.chapter && p.user.chapter.name) || '-';
     const reference = p.gatewayPaymentId || p.gatewayCheckoutId || '-';
     const eventLabel = p.event ? p.event.title : 'Membership';
-    let actions = '';
+    const payMenu = [];
     if (isMainAdmin && p.status === 'PAID' && !p.refund) {
-      actions = `<button type="button" data-refund="${p.id}" class="text-red-600 hover:underline text-sm font-medium">Refund</button>`;
-    } else if (p.refund) {
-      actions = `<span class="text-xs text-slate-400">Refund: ${escapeHtml(p.refund.status)}</span>`;
+      payMenu.push(`<button type="button" data-refund="${p.id}" class="${ROW_MENU_ITEM} text-red-600">Refund</button>`);
     }
     if (isMainAdmin && (p.status === 'PENDING' || p.status === 'PROCESSING')) {
-      actions += `<button type="button" data-reconcile="${p.id}" class="text-sky-600 hover:underline text-sm font-medium ml-2">Reconcile</button>`;
+      payMenu.push(`<button type="button" data-reconcile="${p.id}" class="${ROW_MENU_ITEM}">Reconcile</button>`);
     }
+    // A refund's outcome is a fact about the row, not something to do to it,
+    // so it is rendered alongside the trigger instead of inside the menu.
+    const refundNote = p.refund
+      ? `<span class="text-xs text-slate-400 mr-2">Refund: ${escapeHtml(p.refund.status)}</span>`
+      : '';
+    const actions = refundNote + rowMenuHtml(payMenu);
     return `
       <tr data-payment-id="${p.id}" class="admin-tr align-top">
         <td class="admin-td">${escapeHtml(p.user.firstName)} ${escapeHtml(p.user.lastName)}<br><span class="text-xs text-slate-400">${escapeHtml(p.user.email)}</span></td>
@@ -342,7 +346,7 @@ function initPaymentsModule() {
         <td class="admin-td payment-status-cell">${paymentStatusBadgeHtml(p.status)}</td>
         <td class="admin-td">${new Date(p.createdAt).toLocaleDateString()}</td>
         <td class="admin-td text-xs text-slate-500 max-w-[160px] truncate">${escapeHtml(reference)}</td>
-        <td class="admin-td text-right payment-actions-cell">${actions}</td>
+        <td class="admin-td text-right relative payment-actions-cell">${actions}</td>
       </tr>`;
   }
 
@@ -492,16 +496,18 @@ function certStatusBadgeHtml(r) {
 }
 
 function certActionsHtml(eventId, r) {
-  if (r.generated) {
-    const releaseBtn = r.released
-      ? `<button type="button" data-revoke-cert="${r.userId}" class="text-slate-600 hover:underline text-sm font-medium">Revoke</button>`
-      : `<button type="button" data-allow-cert="${r.userId}" class="text-emerald-600 hover:underline text-sm font-medium">Allow Download</button>`;
-    return `
-      <a href="/api/admin/certificates/events/${eventId}/registrants/${r.userId}/download" class="text-indigo-600 hover:underline text-sm font-medium">Download</a>
-      ${releaseBtn}
-      <button type="button" data-regenerate-cert="${r.userId}" class="text-amber-600 hover:underline text-sm font-medium">Regenerate</button>`;
+  if (!r.generated) {
+    // A single action: left as a plain button, since putting one item behind a
+    // menu only adds a click to reach the only thing you can do here.
+    return `<button type="button" data-generate-cert="${r.userId}" class="text-emerald-600 hover:underline text-sm font-medium">Generate</button>`;
   }
-  return `<button type="button" data-generate-cert="${r.userId}" class="text-emerald-600 hover:underline text-sm font-medium">Generate</button>`;
+  return rowMenuHtml([
+    `<a href="/api/admin/certificates/events/${eventId}/registrants/${r.userId}/download" class="${ROW_MENU_ITEM}">Download</a>`,
+    r.released
+      ? `<button type="button" data-revoke-cert="${r.userId}" class="${ROW_MENU_ITEM}">Revoke access</button>`
+      : `<button type="button" data-allow-cert="${r.userId}" class="${ROW_MENU_ITEM} text-emerald-700">Allow download</button>`,
+    `<button type="button" data-regenerate-cert="${r.userId}" class="${ROW_MENU_ITEM} text-amber-700">Regenerate</button>`,
+  ]);
 }
 
 function initEventCertificateModule() {
@@ -569,7 +575,7 @@ function initEventCertificateModule() {
           <td class="admin-td">${escapeHtml(r.fullName)}</td>
           <td class="admin-td max-w-[220px] truncate">${escapeHtml(r.email)}</td>
           <td class="admin-td cert-status-cell">${certStatusBadgeHtml(r)}</td>
-          <td class="admin-td text-right cert-actions-cell"><div class="flex flex-wrap justify-end items-center gap-2">${certActionsHtml(eventId, r)}</div></td>
+          <td class="admin-td text-right relative cert-actions-cell">${certActionsHtml(eventId, r)}</td>
         </tr>`).join('');
       document.getElementById('cert-registrants-empty')?.classList.toggle('hidden', registrants.length > 0);
       updateCertSelectionUI();
@@ -1858,15 +1864,13 @@ function initOrganizationTree() {
           <span class="text-xs text-slate-400 shrink-0 tabular-nums">
             ${c.childCount} child${c.childCount === 1 ? '' : 'ren'} &middot; ${c.memberCount} member${c.memberCount === 1 ? '' : 's'}
           </span>
-          <span class="shrink-0 flex items-center gap-2">
-            <button type="button" class="text-indigo-600 hover:underline text-xs font-medium"
-                    data-add-child="${c.id}" data-parent-name="${escapeHtml(c.name)}">+ Child</button>
-            <a href="/admin/organizations/${c.id}/edit" data-admin-link class="text-slate-500 hover:underline text-xs">Edit</a>
-            <button type="button" class="text-amber-600 hover:underline text-xs"
-                    data-toggle-active="${c.id}" data-active="${c.isActive ? '1' : '0'}"
-                    data-org-name="${escapeHtml(c.name)}">${c.isActive ? 'Deactivate' : 'Reactivate'}</button>
-            <button type="button" class="text-red-600 hover:underline text-xs"
-                    data-delete-org="${c.id}" data-org-name="${escapeHtml(c.name)}">Delete</button>
+          <span class="shrink-0 relative">
+            ${rowMenuHtml([
+              `<button type="button" class="${ROW_MENU_ITEM}" data-add-child="${c.id}" data-parent-name="${escapeHtml(c.name)}">+ Add child</button>`,
+              `<a href="/admin/organizations/${c.id}/edit" data-admin-link class="${ROW_MENU_ITEM}">Edit</a>`,
+              `<button type="button" class="${ROW_MENU_ITEM} text-amber-700" data-toggle-active="${c.id}" data-active="${c.isActive ? '1' : '0'}" data-org-name="${escapeHtml(c.name)}">${c.isActive ? 'Deactivate' : 'Reactivate'}</button>`,
+              `<button type="button" class="${ROW_MENU_ITEM} text-red-600" data-delete-org="${c.id}" data-org-name="${escapeHtml(c.name)}">Delete</button>`,
+            ])}
           </span>
         </div>
         <ul class="org-children hidden pl-6 border-l border-slate-200 ml-2.5"></ul>

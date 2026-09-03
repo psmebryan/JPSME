@@ -180,6 +180,17 @@ app.use(express.static(path.join(__dirname, '..', 'public'), { etag: true }));
 app.use((req, res, next) => {
   res.locals.currentUser = req.session.user || null;
   res.locals.csrfToken = req.session.csrfToken;
+
+  // Shared by every view that builds row-menu items (see
+  // views/partials/row-menu.ejs). Those items are assembled as HTML strings
+  // and emitted with <%- %>, so anything interpolated into them has to be
+  // escaped explicitly — an event or organization title is admin-entered free
+  // text. Defined once here rather than repeated in each view, so a view
+  // cannot quietly omit the escaping.
+  res.locals.MENU_ITEM = 'block w-full text-left px-3 py-2 text-sm hover:bg-slate-50';
+  res.locals.esc = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+  ));
   next();
 });
 

@@ -1,0 +1,33 @@
+<%
+/*
+  Kebab action menu for a table row, server-rendered counterpart to
+  rowMenuHtml() in public/js/admin.js. Both produce the same structure so
+  initRowActionMenus() drives them identically — a trigger, and a sibling
+  .row-menu that the handler finds via the trigger's parent element.
+
+  Include from a view one level below views/ as `partials/row-menu`, or from
+  views/admin/* as `../partials/row-menu`, passing:
+
+    items — array of HTML strings, one per action. Falsy entries are dropped,
+            so a caller can write `canDelete ? '<button…>' : ''` inline.
+            Use the `rowMenuItem` class on each for consistent styling.
+
+  Renders nothing at all when no item survives, rather than a trigger that
+  opens onto an empty menu.
+
+  The containing cell needs `relative` so nothing else is affected, though the
+  menu itself is positioned fixed at open time to escape the table's
+  overflow-x-auto clipping — see initRowActionMenus.
+*/
+const rowMenuItems = (locals.items || []).filter(Boolean);
+%>
+<% if (rowMenuItems.length) { %>
+  <button type="button" data-actions-toggle aria-haspopup="true" aria-expanded="false"
+          aria-label="Actions"
+          class="inline-flex items-center justify-center w-8 h-8 rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800">
+    <span class="text-lg leading-none tracking-widest">&#8943;</span>
+  </button>
+  <div class="row-menu hidden min-w-[190px] rounded-md border border-slate-200 bg-white py-1 shadow-lg" role="menu">
+    <%- rowMenuItems.join('') %>
+  </div>
+<% } %>
