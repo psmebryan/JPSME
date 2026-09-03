@@ -23,6 +23,13 @@ org-backup*.json
 JPSME-2.0-Blueprint.pdf
 JPSME-Organization-*.pdf
 
+# Local test-data seeder. Creates accounts with a shared, hardcoded password,
+# which is fine on a development machine and not something to publish. Kept out
+# of the repository so it can never be run against a real deployment.
+prisma/seedDummyUsers.js
+seed.js
+seedDummyUsers.js
+
 # .vscode/ is deliberately NOT ignored — launch.json is committed on purpose so
 # the debug configuration is shared. Ignoring the folder here would contradict
 # that without untracking it, which is the confusing half-state.

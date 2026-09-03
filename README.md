@@ -53,7 +53,6 @@ Engineers. Node.js, Express, Prisma/MySQL, server-rendered EJS.
 | `npm run prisma:migrate` | Create and apply a migration |
 | `npm run prisma:generate` | Regenerate the Prisma client |
 | `npm run db:seed` | Create the first administrator |
-| `npm run seed:dummy` | Test members (`-- --clean` removes them) |
 | `npm run test:organizations` | Organization hierarchy tests |
 | `npm run test:attachment` | Member/organization attachment tests |
 | `npm run test:paymongo` | Payment error-handling tests |
