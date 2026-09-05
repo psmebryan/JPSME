@@ -543,7 +543,26 @@ async function markWebhookProcessed(webhookRecordId, paymentId) {
 // audit-logs + marks the webhook (when applicable) on a mismatch, exactly as
 // before, just no longer hand-copied in two places.
 async function verifyGatewayAmountMatches(localPayment, gatewayAmount, gatewayCurrency, { webhookId, webhookRecordId, ipAddress } = {}) {
-  if (gatewayAmount !== undefined && gatewayAmount !== localPayment.amount) {
+  // An amount is required, not merely checked when present. Previously an
+  // event that simply omitted it skipped the comparison entirely and went on
+  // to mark the payment PAID on the strength of its type alone — so the one
+  // field that says how much money arrived was also the one field that could
+  // be left out to avoid being checked. Reaching here still requires a valid
+  // signature, so this is depth rather than a hole being closed; but a
+  // confirmation that never states an amount should not confirm anything, and
+  // every real PayMongo payload carries one.
+  if (gatewayAmount === undefined || gatewayAmount === null) {
+    await auditService.log({
+      action: 'SUSPICIOUS_PAYMENT_MISMATCH',
+      paymentId: localPayment.id,
+      targetUserId: localPayment.userId,
+      metadata: { reason: 'gateway reported no amount', expectedAmount: localPayment.amount, webhookId },
+      ipAddress,
+    });
+    if (webhookRecordId) await markWebhookProcessed(webhookRecordId, localPayment.id);
+    throw new AppError('Payment amount missing', 400);
+  }
+  if (gatewayAmount !== localPayment.amount) {
     await auditService.log({
       action: 'SUSPICIOUS_PAYMENT_MISMATCH',
       paymentId: localPayment.id,
