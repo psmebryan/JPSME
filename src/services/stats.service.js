@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma');
 const auditService = require('./audit.service');
+const eventService = require('./event.service');
 const organizationService = require('./organization.service');
 
 // Real counts for the homepage stats bar (no invented marketing numbers).
@@ -82,7 +83,7 @@ async function getMainAdminDashboard() {
     }),
     auditService.listAuditLogs({ page: 1 }),
     prisma.event.findMany({
-      where: { isPublished: true, startDate: { gte: new Date() } },
+      where: { AND: [{ isPublished: true }, eventService.notEndedWhere(new Date())] },
       orderBy: { startDate: 'asc' },
       take: 5,
       include: { _count: { select: { registrations: { where: { status: { in: ['REGISTERED', 'PENDING_PAYMENT'] } } } } } },
@@ -130,7 +131,7 @@ async function getOrganizationAdminDashboard(organizationId) {
     prisma.user.count({ where: { role: 'USER', status: 'APPROVED', organizationId: { in: scopeIds } } }),
     prisma.user.count({ where: { role: 'USER', status: 'PENDING', organizationId: { in: scopeIds } } }),
     prisma.event.findMany({
-      where: { isPublished: true, startDate: { gte: new Date() } },
+      where: { AND: [{ isPublished: true }, eventService.notEndedWhere(new Date())] },
       orderBy: { startDate: 'asc' },
       take: 5,
       include: { _count: { select: { registrations: { where: { status: { in: ['REGISTERED', 'PENDING_PAYMENT'] } } } } } },

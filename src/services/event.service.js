@@ -131,6 +131,23 @@ async function deleteEvent(id) {
   sheetsSyncService.deleteEventInvitationsTab(id);
 }
 
+// An event is over when it has ENDED, not when it has started. A convention
+// running 5–12 September is still on on the 8th, and listing it under "past
+// events" on its second morning — while people are literally at it — is what
+// this pair of helpers exists to prevent.
+//
+// endDate is optional, so both fall back to startDate when there isn't one.
+// That leaves a single-day event with no end time counted as over the moment
+// its start time passes, which is the behaviour this project has always had;
+// see the note in the git history if that ever needs revisiting.
+function notEndedWhere(now) {
+  return { OR: [{ endDate: { gte: now } }, { endDate: null, startDate: { gte: now } }] };
+}
+
+function hasEndedWhere(now) {
+  return { OR: [{ endDate: { lt: now } }, { endDate: null, startDate: { lt: now } }] };
+}
+
 /**
  * Public /events page listing.
  * Only published events, split by date into upcoming/ended, each independently
@@ -151,24 +168,24 @@ async function getPublicEventsListing({
     endedEvents,
   ] = await Promise.all([
     prisma.event.findMany({
-      where: { isPublished: true, featured: true, startDate: { gte: now } },
+      where: { AND: [{ isPublished: true, featured: true }, notEndedWhere(now)] },
       orderBy: { startDate: 'asc' },
       take: 2,
     }),
     prisma.event.count({
-      where: { isPublished: true, startDate: { gte: now } },
+      where: { AND: [{ isPublished: true }, notEndedWhere(now)] },
     }),
     prisma.event.findMany({
-      where: { isPublished: true, startDate: { gte: now } },
+      where: { AND: [{ isPublished: true }, notEndedWhere(now)] },
       orderBy: { startDate: 'asc' },
       skip: (upcomingPage - 1) * pageSize,
       take: pageSize,
     }),
     prisma.event.count({
-      where: { isPublished: true, startDate: { lt: now } },
+      where: { AND: [{ isPublished: true }, hasEndedWhere(now)] },
     }),
     prisma.event.findMany({
-      where: { isPublished: true, startDate: { lt: now } },
+      where: { AND: [{ isPublished: true }, hasEndedWhere(now)] },
       orderBy: { startDate: 'desc' },
       skip: (endedPage - 1) * pageSize,
       take: pageSize,
@@ -220,8 +237,8 @@ async function getAdminEventsListing({
 } = {}) {
   const now = new Date();
   const baseWhere = buildAdminEventsWhere({ search, modality, published });
-  const upcomingWhere = { ...baseWhere, startDate: { gte: now } };
-  const endedWhere = { ...baseWhere, startDate: { lt: now } };
+  const upcomingWhere = { AND: [baseWhere, notEndedWhere(now)] };
+  const endedWhere = { AND: [baseWhere, hasEndedWhere(now)] };
 
   const [
     featuredEvents,
@@ -233,7 +250,7 @@ async function getAdminEventsListing({
     tableEvents,
   ] = await Promise.all([
     prisma.event.findMany({
-      where: { ...baseWhere, featured: true, startDate: { gte: now } },
+      where: { AND: [baseWhere, { featured: true }, notEndedWhere(now)] },
       orderBy: { startDate: 'asc' },
       take: 2,
     }),
@@ -276,6 +293,8 @@ async function getAdminEventsListing({
 }
 
 module.exports = {
+  notEndedWhere,
+  hasEndedWhere,
   listActiveEvents,
   listPublishedEvents,
   listAllEvents,
