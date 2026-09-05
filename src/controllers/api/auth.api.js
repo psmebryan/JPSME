@@ -81,7 +81,20 @@ const resendVerification = asyncHandler(async (req, res) => {
 
   await emailVerificationService.resendVerification(req.body.email);
   // Same response whether or not the email exists/is already verified, to prevent enumeration.
-  return success(res, null, 'If that email exists and needs verification, a new link has been sent.');
+  return success(res, null, 'If that email needs verifying, a new code is on its way.');
 });
 
-module.exports = { register, login, logout, me, updateProfile, uploadProfileImage, resendVerification };
+// Confirms an address from the six-digit code that was emailed. Takes the
+// email too: that is what makes a short code workable, since a guess has to be
+// aimed at one named account rather than sprayed across every account at once.
+//
+// Every failure inside the service returns the same message, so this endpoint
+// cannot be used to find out whether an address is registered.
+const verifyEmailCode = asyncHandler(async (req, res) => {
+  if (!checkValidation(req, res)) return;
+
+  await emailVerificationService.verifyEmailCode(req.body.email, req.body.code);
+  return success(res, null, 'Your email is verified. You can log in now.');
+});
+
+module.exports = { register, login, logout, me, updateProfile, uploadProfileImage, resendVerification, verifyEmailCode };

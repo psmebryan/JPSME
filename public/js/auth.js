@@ -377,6 +377,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         showToast(res.message);
         registerForm.classList.add('hidden');
+        // Carry the address forward so they are not retyping something they
+        // entered thirty seconds ago; the code is still what actually verifies.
+        const verifyLink = document.getElementById('register-verify-link');
+        const registeredEmail = formData.get('email');
+        if (verifyLink && registeredEmail) {
+          verifyLink.href = '/verify-email?email=' + encodeURIComponent(registeredEmail);
+        }
         document.getElementById('register-success')?.classList.remove('hidden');
       } catch (err) {
         showToast(err.errors?.[0]?.msg || err.message, 'error');

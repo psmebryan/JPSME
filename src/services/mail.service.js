@@ -32,20 +32,36 @@ function textToHtml(text) {
 // had no try/catch, so a provider error (e.g. a misconfigured API key)
 // surfaced as a raw registration failure even though the account had already
 // been created — found via a real failed send during Brevo setup.
-async function sendVerificationEmail(user, rawToken) {
-  const verifyUrl = `${getAppUrl()}/verify-email?token=${rawToken}`;
+// Carries a code to type, not a link to click. A link has to embed this
+// deployment's own URL, so an email is only as good as that URL being right at
+// the moment it was sent — and by the time anyone notices it was wrong, the
+// mail is already in somebody's inbox and permanently useless. A code has no
+// such dependency: it works from any device, survives moving domain, and can
+// be read out loud to someone who cannot get the mail open.
+//
+// The code is still shown in the subject line as well, because most mail
+// clients preview it there — which spares the reader opening the message at
+// all on a phone.
+async function sendVerificationEmail(user, code) {
+  const url = `${getAppUrl()}/verify-email`;
 
   try {
     await transporter.sendMail({
       from: MAIL_FROM,
       to: user.email,
-      subject: 'Verify your JPSME account',
-      text: `Hi ${user.firstName},\n\nPlease verify your email by visiting:\n${verifyUrl}\n\nThis link expires in 24 hours.`,
+      subject: `${code} is your JPSME verification code`,
+      text: `Hi ${user.firstName},\n\n`
+        + `Your JPSME verification code is: ${code}\n\n`
+        + `Enter it on the verification page to confirm your email address.\n`
+        + `The code expires in 30 minutes and can be entered five times.\n\n`
+        + `If you did not create a JPSME account, you can ignore this email.`,
       html: `
         <p>Hi ${user.firstName},</p>
-        <p>Thanks for registering with JPSME. Please confirm your email address:</p>
-        <p><a href="${verifyUrl}">${verifyUrl}</a></p>
-        <p>This link expires in 24 hours.</p>
+        <p>Thanks for registering with JPSME. Your verification code is:</p>
+        <p style="font-size:32px;font-weight:bold;letter-spacing:8px;font-family:monospace;margin:24px 0;">${code}</p>
+        <p>Enter it on the <a href="${url}">verification page</a> to confirm your email address.</p>
+        <p style="color:#666;font-size:13px;">The code expires in 30 minutes and can be entered five times.<br>
+        If you did not create a JPSME account, you can ignore this email.</p>
       `,
     });
   } catch (err) {

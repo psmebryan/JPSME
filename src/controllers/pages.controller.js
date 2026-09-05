@@ -67,37 +67,20 @@ const registerPage = asyncHandler(async (req, res) => {
   res.render('register', { title: 'Create Account', organizations: seed.organizations, next });
 });
 
+// Now a form rather than a landing page for a link. Verification happens when
+// the person types the code, so this renders the same whether they arrived
+// straight from registering or came back to it hours later.
+//
+// ?email= only prefills the field as a convenience after registering. It
+// confirms nothing on its own — the code is still required, and an address
+// that is not registered is answered exactly like a wrong code.
 const verifyEmailPage = asyncHandler(async (req, res) => {
-  try {
-    const user = await emailVerificationService.verifyEmailToken(req.query.token);
-    // This screen is the last thing a new member reads before their first
-    // login, so it has to state the real position on payment rather than the
-    // one-size-fits-all "log in to complete your membership payment" it used
-    // to carry. When membership payment is optional (the default), that
-    // sentence was simply untrue, and it set people up to expect a bill
-    // standing between them and their account.
-    //
-    // Falls back to the optional wording if the settings lookup fails — the
-    // same permissive default app.js's pending-user gate uses, for the same
-    // reason: a settings hiccup must not invent an obligation.
-    const paymentRequired = await settingsService.getMembershipPaymentRequired().catch(() => false);
-    // Mentioned here, not just saved silently, so they know their original
-    // intent (e.g. the event they wanted to attend) wasn't lost — it'll
-    // resurface automatically once approval clears and they log in for the
-    // first time (see auth.service.js's login).
-    const comingBack = user.postApprovalRedirectUrl
-      ? ' Once your account is approved, logging in will take you straight back to the event you wanted to join.'
-      : '';
-    const message = paymentRequired
-      ? `Your email is verified. Log in to complete your membership payment — an admin will review and approve your account once it's received.${comingBack}`
-      : `Your email is verified. You can log in now. Paying the membership fee is optional — you'll find it on your profile whenever you're ready, and an admin will review your account in the meantime.${comingBack}`;
-    res.render('verify-email', { title: 'Email Verified', success: true, message });
-  } catch (err) {
-    if (err instanceof AppError) {
-      return res.render('verify-email', { title: 'Verification Failed', success: false, message: err.message });
-    }
-    throw err;
-  }
+  const paymentRequired = await settingsService.getMembershipPaymentRequired().catch(() => false);
+  res.render('verify-email', {
+    title: 'Verify your email',
+    email: typeof req.query.email === 'string' ? req.query.email.slice(0, 200) : '',
+    paymentRequired,
+  });
 });
 
 const eventsPage = asyncHandler(async (req, res) => {

@@ -1,7 +1,115 @@
-<div class="max-w-md mx-auto bg-white border border-gray-200 rounded-lg p-8 shadow-sm text-center">
-  <h1 class="text-2xl font-bold mb-3 <%= success ? 'text-green-700' : 'text-red-700' %>">
-    <%= success ? 'Email Verified' : 'Verification Failed' %>
-  </h1>
-  <p class="text-gray-600 mb-6"><%= message %></p>
-  <a href="/login" class="text-indigo-600 hover:underline">Go to login</a>
+<div class="max-w-md mx-auto">
+  <div class="bg-white border border-gray-200 rounded-lg p-8 shadow-sm">
+    <h1 class="text-2xl font-bold mb-2">Verify your email</h1>
+    <p class="text-sm text-gray-600 mb-6">
+      We emailed you a 6-digit code. Enter it below to confirm your address.
+    </p>
+
+    <form id="verify-code-form" class="space-y-4">
+      <div>
+        <label for="verify-email-input" class="block text-sm font-medium text-gray-700 mb-1">Email address</label>
+        <input id="verify-email-input" name="email" type="email" required
+               value="<%= locals.email || '' %>"
+               autocomplete="email"
+               class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500">
+      </div>
+
+      <div>
+        <label for="verify-code-input" class="block text-sm font-medium text-gray-700 mb-1">6-digit code</label>
+        <%
+          /*
+            inputmode="numeric" brings up the number pad on a phone, and
+            autocomplete="one-time-code" lets iOS and Android offer the code
+            straight from the notification — the whole point of using a code
+            rather than a link is that it is quick to enter, and on a phone that
+            is the difference between one tap and switching apps to copy it.
+            maxlength is 7 rather than 6 so a pasted code with a stray space
+            still lands; the server strips whitespace before checking.
+          */
+        %>
+        <input id="verify-code-input" name="code" type="text" required
+               inputmode="numeric" autocomplete="one-time-code"
+               maxlength="7" placeholder="000000"
+               class="w-full rounded-lg border border-gray-300 px-3 py-3 text-center text-2xl font-mono tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500">
+        <p class="mt-1 text-xs text-gray-500">The code expires 30 minutes after it is sent.</p>
+      </div>
+
+      <button type="submit" class="w-full bg-indigo-600 text-white px-5 py-2.5 rounded-md hover:bg-indigo-700 font-medium">
+        Verify my email
+      </button>
+    </form>
+
+    <div id="verify-success" class="hidden text-center py-4">
+      <p class="text-lg font-semibold text-green-700">Email verified</p>
+      <p class="text-sm text-gray-600 mt-1">
+        <% if (locals.paymentRequired) { %>
+          Log in to complete your membership payment — an admin will review and approve your account once it's received.
+        <% } else { %>
+          You can log in now. Paying the membership fee is optional &mdash; you'll find it on your profile whenever you're ready.
+        <% } %>
+      </p>
+      <a href="/login" class="inline-block mt-4 bg-indigo-600 text-white px-5 py-2.5 rounded-md hover:bg-indigo-700 font-medium">Go to login</a>
+    </div>
+  </div>
+
+  <div class="mt-4 bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+    <h2 class="text-sm font-semibold text-gray-900">Didn't get the code?</h2>
+    <p class="text-xs text-gray-500 mt-1 mb-3">
+      Check your spam folder first. Requesting a new code replaces the old one.
+    </p>
+    <form id="resend-verification-form" class="flex flex-wrap gap-2">
+      <input name="email" type="email" required placeholder="you@example.com"
+             value="<%= locals.email || '' %>"
+             class="flex-1 min-w-[200px] rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500">
+      <button type="submit" class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50 text-sm font-medium">
+        Send a new code
+      </button>
+    </form>
+  </div>
 </div>
+
+<script src="/js/auth.js"></script>
+<script nonce="<%= cspNonce %>">
+  document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('verify-code-form');
+    if (!form) return;
+    const codeInput = document.getElementById('verify-code-input');
+
+    // Straight to the code when the email is already known — the common case
+    // after registering, where retyping an address they just entered is pure
+    // friction.
+    if (document.getElementById('verify-email-input').value) codeInput.focus();
+
+    // Strip anything that is not a digit as it is typed, so a code pasted with
+    // spaces or a stray character does not fail on a technicality.
+    codeInput.addEventListener('input', () => {
+      const cleaned = codeInput.value.replace(/\D/g, '').slice(0, 6);
+      if (cleaned !== codeInput.value) codeInput.value = cleaned;
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = form.email.value.trim();
+      const code = codeInput.value.trim();
+
+      await withPending(form, 'Verifying...', async () => {
+        try {
+          const res = await apiFetch('/api/auth/verify-code', {
+            method: 'POST',
+            body: JSON.stringify({ email, code }),
+          });
+          showToast(res.message);
+          form.classList.add('hidden');
+          document.getElementById('verify-success').classList.remove('hidden');
+        } catch (err) {
+          showToast(err.message, 'error');
+          // Cleared rather than left in place: the next attempt is a fresh
+          // reading of the email, and a wrong code sitting in the box invites
+          // resubmitting the same wrong thing.
+          codeInput.value = '';
+          codeInput.focus();
+        }
+      });
+    });
+  });
+</script>

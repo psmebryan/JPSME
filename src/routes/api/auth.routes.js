@@ -99,4 +99,33 @@ router.post(
   authApi.resendVerification
 );
 
+// Tight on purpose, and tighter than anything else here. The code being
+// checked is six digits, so this is the one endpoint in the app where
+// unlimited requests would actually be worth an attacker's time: a million
+// guesses is nothing over a fast connection. The per-code attempt counter in
+// emailVerification.service is the real defence — five wrong guesses destroy
+// the code — and this caps how quickly someone can burn through codes across
+// many accounts to find one that is guessable.
+const verifyCodeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many attempts. Please wait a few minutes and try again.' },
+});
+
+router.post(
+  '/verify-code',
+  verifyCsrfToken,
+  verifyCodeLimiter,
+  [
+    body('email').isEmail().withMessage('Enter the email address you registered with').normalizeEmail(),
+    // Digits only, exact length, whitespace stripped first — people paste codes
+    // with a stray space from the email far more often than they mistype them.
+    body('code').customSanitizer((v) => String(v || '').replace(/\s+/g, ''))
+      .matches(/^\d{6}$/).withMessage('Enter the 6-digit code from your email'),
+  ],
+  authApi.verifyEmailCode
+);
+
 module.exports = router;

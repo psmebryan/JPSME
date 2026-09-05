@@ -231,11 +231,31 @@ model User {
   @@index([membershipExpiresAt])
 }
 
-// Single active token per user; a new verification request replaces the previous one.
+// One active verification code per user; requesting a new one replaces it.
+//
+// Holds a short numeric code rather than a long random link token. A code is
+// typed rather than clicked, so it does not depend on the deployment's own URL
+// being reachable — the reason a link is fragile here — but it is also only six
+// digits, which changes what the storage has to defend against: guessing is now
+// feasible in a way it never was for 256 bits. Hence the attempt counter, and a
+// far shorter life than the old 24-hour link.
 model EmailVerificationToken {
   id        Int      @id @default(autoincrement())
   userId    Int      @unique
-  tokenHash String   @unique
+  // sha256 of "<userId>:<code>", never the code itself. The user id is mixed in
+  // for two reasons: two people can legitimately be issued the same six digits,
+  // which would collide as a bare hash, and it means a stolen hash cannot be
+  // matched against a precomputed table of a million codes without also knowing
+  // which account it belongs to.
+  //
+  // Deliberately not unique — lookup is by userId, since verification always
+  // knows which account is being confirmed.
+  codeHash  String
+  // Wrong guesses against the current code. The code is destroyed once this is
+  // exhausted, so a million-guess search cannot be run against a live code; the
+  // attacker has to request a new one each time, which is rate-limited and
+  // mails the real owner every round.
+  attempts  Int      @default(0)
   expiresAt DateTime
   createdAt DateTime @default(now())
 

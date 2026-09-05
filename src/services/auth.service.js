@@ -1,7 +1,7 @@
 const bcrypt = require("bcryptjs");
 const prisma = require("../config/prisma");
 const AppError = require("../utils/AppError");
-const { issueVerificationToken } = require("./emailVerification.service");
+const { issueVerificationCode } = require("./emailVerification.service");
 const sheetsSyncService = require("./sheetsSync.service");
 
 const SALT_ROUNDS = 12;
@@ -86,7 +86,7 @@ async function registerUser({
     include: userInclude,
   });
 
-  await issueVerificationToken(user);
+  await issueVerificationCode(user);
 
   // Fire-and-forget, same as the email sends elsewhere in this app — must
   // never block or fail registration if the sheet sync has trouble.
