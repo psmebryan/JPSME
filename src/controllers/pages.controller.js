@@ -7,6 +7,8 @@ const organizationService = require('../services/organization.service');
 const organizationAdminService = require('../services/organizationAdmin.service');
 const settingsService = require('../services/settings.service');
 const checkinService = require('../services/checkin.service');
+const ticketService = require('../services/ticket.service');
+const qrService = require('../services/qr.service');
 const checkinReportService = require('../services/checkinReport.service');
 const registrationService = require('../services/registration.service');
 const invitationService = require('../services/invitation.service');
@@ -135,6 +137,22 @@ const eventDetailPage = asyncHandler(async (req, res) => {
     // Computed from the same helper registration.service enforces with, so the
     // page and the server can never disagree about whether this is still open.
     hasEnded: eventService.hasEventEnded(event),
+  });
+});
+
+// A member's own ticket, on screen. The PDF is for printing and for keeping;
+// this is for the thirty seconds at an entrance where someone holds up a phone.
+// The code is inlined as a data URI rather than loaded from the PNG endpoint so
+// it is already painted when the page appears — a door is exactly where a
+// second request has the worst chance of completing.
+const eventTicketPage = asyncHandler(async (req, res) => {
+  const registration = await ticketService.getTicket(req.session.user.id, req.params.id);
+  const qrDataUrl = await qrService.renderQrDataUrl(registration.qrToken, { width: 600 });
+  res.render('event-ticket', {
+    title: 'My Ticket',
+    registration,
+    event: registration.event,
+    qrDataUrl,
   });
 });
 
@@ -905,6 +923,7 @@ module.exports = {
   verifyEmailPage,
   eventsPage,
   eventDetailPage,
+  eventTicketPage,
   eventInvitePage,
   submitRsvpFromEmailPage,
   articlesPage,

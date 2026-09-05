@@ -191,10 +191,10 @@
                 <button data-pay-event="<%= reg.eventId %>" class="text-sm text-amber-600 hover:underline font-medium px-2 py-2 -mx-2">Pay Now</button>
               <% } %>
               <% if (reg.status === 'REGISTERED' && reg.qrToken) { %>
-                <a href="/api/events/<%= reg.eventId %>/ticket/qr.png"
-                   class="text-sm text-indigo-600 hover:underline px-2 py-2 -mx-2">Download QR</a>
                 <a href="/api/events/<%= reg.eventId %>/ticket.pdf" target="_blank" rel="noopener"
-                   class="text-sm font-semibold bg-amber-400 text-indigo-950 px-3 py-1.5 rounded-md hover:bg-amber-300">View ticket</a>
+                   class="text-sm text-indigo-600 hover:underline px-2 py-2 -mx-2">Download PDF</a>
+                <a href="/events/<%= reg.eventId %>/ticket"
+                   class="text-sm font-semibold bg-amber-400 text-indigo-950 px-3 py-1.5 rounded-md hover:bg-amber-300">Show QR</a>
               <% } %>
               <% if (reg.status === 'REGISTERED' || reg.status === 'PENDING_PAYMENT') { %>
                 <button data-cancel-registration="<%= reg.eventId %>" class="text-sm text-red-600 hover:underline px-2 py-2 -mx-2">Cancel</button>

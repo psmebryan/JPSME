@@ -82,6 +82,10 @@
       class="bg-indigo-600 text-white px-5 py-3 rounded-md hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed">
       <%= registered ? 'Registered' : (hasFee ? 'Register & Pay' : 'Register for this event') %>
     </button>
+    <% if (registered) { %>
+      <a href="/events/<%= event.id %>/ticket"
+         class="ml-2 bg-amber-400 text-indigo-950 px-5 py-3 rounded-md hover:bg-amber-300 font-semibold inline-block">Show my QR</a>
+    <% } %>
   <% } %>
 
   <% if (!eventOver && !locals.currentUser && invitation && !isGuestInvite) { %>

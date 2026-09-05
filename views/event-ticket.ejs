@@ -1,0 +1,82 @@
+<%
+/*
+  The member's ticket as they will actually use it: held up at an entrance.
+
+  The public site is dark, but this page puts the QR on a deliberately white
+  card. That is not a style slip — a scanner reads dark-on-light, and a code
+  inverted or sitting on a tinted ground is the classic reason a phone ticket
+  will not scan. The white block also gives the code its quiet zone regardless
+  of what surrounds it.
+*/
+function when(e) {
+  const start = new Date(e.startDate);
+  const opts = { weekday: 'short', year: 'numeric', month: 'long', day: 'numeric' };
+  const startStr = start.toLocaleDateString([], opts);
+  if (!e.endDate) return startStr;
+  const end = new Date(e.endDate);
+  const endStr = end.toLocaleDateString([], opts);
+  return startStr === endStr ? startStr : `${startStr} — ${endStr}`;
+}
+%>
+<div class="max-w-md mx-auto">
+  <a href="/profile" class="text-sm text-indigo-600 hover:underline">&larr; Back to my profile</a>
+
+  <div class="mt-3 ticket-card">
+    <div class="px-6 pt-6 pb-4 text-center ticket-divider">
+      <p class="ticket-eyebrow">PSME Event</p>
+      <h1 class="mt-2 ticket-title"><%= event.title %></h1>
+      <p class="mt-1 ticket-muted"><%= when(event) %></p>
+      <p class="ticket-muted">
+        <%= event.modality === 'ONLINE' ? 'Online' : (event.location || 'Venue to be announced') %>
+      </p>
+    </div>
+
+    <!-- No background of its own: it sits on .ticket-card, which is white on
+         both themes. An inline style here would be blocked anyway — styleSrc
+         carries a nonce and no 'unsafe-inline'. -->
+    <div class="px-6 py-6 flex justify-center">
+      <img src="<%= qrDataUrl %>" alt="Your check-in QR code"
+           width="280" height="280"
+           class="w-[280px] h-[280px] max-w-full">
+    </div>
+
+    <div class="px-6 pb-6 text-center">
+      <p class="ticket-eyebrow">Registration Number</p>
+      <p class="mt-0.5 ticket-mono"><%= registration.registrationNumber || '—' %></p>
+
+      <p class="mt-3 ticket-strong"><%= registration.fullName %></p>
+      <% if (registration.organizationPath) { %>
+        <p class="ticket-muted-xs"><%= registration.organizationPath %></p>
+      <% } %>
+
+      <div class="mt-4">
+        <% if (registration.checkedInAt) { %>
+          <span class="ticket-badge">
+            Checked in <%= new Date(registration.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) %>
+          </span>
+        <% } else { %>
+          <span class="ticket-badge">Confirmed</span>
+        <% } %>
+      </div>
+    </div>
+  </div>
+
+  <p class="mt-4 text-center text-sm text-gray-500">
+    Show this code at the entrance. It belongs to this registration only.
+  </p>
+
+  <div class="mt-4 flex flex-wrap justify-center gap-3">
+    <a href="/api/events/<%= event.id %>/ticket.pdf" target="_blank" rel="noopener"
+       class="bg-amber-400 text-indigo-950 px-5 py-2.5 rounded-md hover:bg-amber-300 font-semibold text-sm">
+      Download e-ticket (PDF)
+    </a>
+    <a href="/api/events/<%= event.id %>/ticket/qr.png"
+       class="bg-white border border-slate-300 text-slate-700 px-5 py-2.5 rounded-md hover:bg-slate-50 text-sm">
+      Save QR image
+    </a>
+  </div>
+
+  <p class="mt-5 text-center text-xs text-gray-500">
+    Screen too dim to scan? Turn your brightness up, or bring the printed PDF.
+  </p>
+</div>

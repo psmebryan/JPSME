@@ -22,6 +22,7 @@ router.get('/events/:id/invite/:token', pages.eventInvitePage);
 // changed-your-mind option) is identical to arriving there manually.
 router.get('/events/:id/invite/:token/rsvp/:status(attending|not-attending)', pages.submitRsvpFromEmailPage);
 router.get('/events/:id/payment-return', ensureAuth, pages.eventPaymentReturnPage);
+router.get('/events/:id/ticket', ensureAuth, pages.eventTicketPage);
 router.get('/articles', pages.articlesPage);
 router.get('/articles/:id', pages.articleDetailPage);
 // URLs kept as /chapters/* so any existing external links still resolve;

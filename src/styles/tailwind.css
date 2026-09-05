@@ -104,6 +104,53 @@
     @apply badge bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/10;
   }
 
+  /* Event ticket.
+     Its own classes rather than bg-white / text-gray-*, because layout.ejs
+     remaps those inside .public-main for the dark public theme — a ticket built
+     from them would come out as a dark card with white-on-white text. That is
+     not merely ugly here: a QR has to be dark-on-light to scan at all, so this
+     card stays white on both themes deliberately, and the colours are stated
+     outright instead of inherited from a palette that flips underneath it. */
+  .ticket-card {
+    @apply rounded-2xl overflow-hidden shadow-sm;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+  }
+  .ticket-divider {
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .ticket-eyebrow {
+    @apply text-xs font-semibold uppercase tracking-widest;
+    color: #64748b;
+  }
+  .ticket-title {
+    @apply text-xl font-bold break-words;
+    color: #0f172a;
+  }
+  .ticket-strong {
+    @apply text-base font-semibold;
+    color: #0f172a;
+  }
+  .ticket-mono {
+    @apply font-mono text-lg font-semibold;
+    color: #0f172a;
+  }
+  .ticket-muted {
+    @apply text-sm;
+    color: #64748b;
+  }
+  .ticket-muted-xs {
+    @apply text-xs break-words;
+    color: #64748b;
+  }
+  /* Stated in full rather than reusing .badge-green, whose bg-green-50 is one
+     of the classes the public theme repaints to a near-black. */
+  .ticket-badge {
+    @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold;
+    background: #dcfce7;
+    color: #15803d;
+  }
+
   /* Empty states */
   /* Empty states.
      .empty-state stays a plain centred line for the many places a one-liner is
