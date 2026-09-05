@@ -192,6 +192,43 @@ document.addEventListener('DOMContentLoaded', () => {
     submitScan(input.value);
   });
 
+  // --- making the scanner's suffix irrelevant ---------------------------------
+  //
+  // A form only submits on Enter, and a gun scanner's suffix is configurable —
+  // Enter, Tab, or nothing at all, depending on how it was set up. On a scanner
+  // sending Tab or nothing, the code would land in the box and absolutely
+  // nothing would happen, which at a door reads as "the scanner is broken"
+  // rather than "the scanner is configured differently".
+  //
+  // So the page stops waiting to be told the scan finished and works it out: a
+  // complete, well-formed code is submitted the moment it appears. Enter still
+  // works, Tab now works, and no suffix at all works.
+  const COMPLETE = /^(?:PSME-EVENT:)?[0-9a-fA-F]{64}$/;
+  let settleTimer = null;
+
+  input.addEventListener('input', () => {
+    const value = input.value.trim();
+    if (settleTimer) clearTimeout(settleTimer);
+    if (!COMPLETE.test(value)) return;
+
+    // A short settle before firing. A scanner types its characters in a burst
+    // of keystrokes, and this waits for the burst to stop rather than racing a
+    // suffix that may still be on its way — otherwise a trailing Enter would
+    // submit a second time.
+    settleTimer = setTimeout(() => submitScan(input.value), 80);
+  });
+
+  // Tab would move focus off the input, which is the one thing this screen
+  // cannot afford: the next scan would be typed into nothing. Swallowed here so
+  // a Tab-suffixed scanner behaves exactly like an Enter-suffixed one.
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab' && COMPLETE.test(input.value.trim())) {
+      e.preventDefault();
+      if (settleTimer) clearTimeout(settleTimer);
+      submitScan(input.value);
+    }
+  });
+
   // --- stats and recent list -------------------------------------------------
   async function refreshStats() {
     try {
