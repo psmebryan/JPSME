@@ -97,13 +97,20 @@ function isUniqueViolationOn(err, field) {
 // REGISTERED — which is how phase 3 will use it, so a row can never commit as
 // valid-but-unticketed.
 //
-// Idempotent: a registration that already has a token keeps it. A retried
-// webhook or a double-submitted free registration must not silently invalidate
-// a ticket the member may already have saved to their phone.
-async function assignRegistrationIdentity(client, registrationId) {
+// Idempotent by default: a registration that already has a token keeps it. A
+// retried webhook or a double-submitted free registration must not silently
+// invalidate a ticket the member may already have saved to their phone.
+//
+// `reissue: true` is the one case that overrides that — reviving a CANCELLED
+// registration. The member's previous ticket must not come back to life along
+// with the registration, so a fresh token is minted and the old value is gone.
+// Anyone holding a printout or screenshot from before the cancellation is
+// holding a dead code, permanently.
+async function assignRegistrationIdentity(client, registrationId, options) {
+  const reissue = Boolean(options && options.reissue);
   const registration = await client.eventRegistration.findUnique({ where: { id: Number(registrationId) } });
   if (!registration) throw new AppError('Registration not found', 404);
-  if (registration.qrToken) return registration;
+  if (registration.qrToken && !reissue) return registration;
 
   const registrationNumber = registration.registrationNumber || buildRegistrationNumber(registration);
 

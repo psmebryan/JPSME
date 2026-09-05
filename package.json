@@ -19,7 +19,9 @@
     "test:organizations": "node tests/organization.service.test.js",
     "seed:dummy": "node prisma/seedDummyUsers.js",
     "test:attachment": "node tests/organization.attachment.test.js",
-    "test:qr": "node tests/qr.service.test.js"
+    "test:qr": "node tests/qr.service.test.js",
+    "test:registration-qr": "node tests/registration.qr.test.js",
+    "backfill:qr": "node prisma/backfillRegistrationQr.js"
   },
   "license": "UNLICENSED",
   "dependencies": {

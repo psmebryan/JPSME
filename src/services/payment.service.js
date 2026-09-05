@@ -10,6 +10,7 @@ const userService = require('./user.service');
 const mailService = require('./mail.service');
 const sheetsSyncService = require('./sheetsSync.service');
 const invitationService = require('./invitation.service');
+const qrService = require('./qr.service');
 
 // Grosses up baseCentavos so that after PayMongo deducts its own percentage
 // cut from the TOTAL charged, JPSME still nets baseCentavos — i.e. the payer
@@ -612,6 +613,14 @@ async function applyPaymentPaid(localPayment, { gatewayPaymentId, gatewayFeeCent
       });
       if (registration && registration.status === 'PENDING_PAYMENT') {
         await tx.eventRegistration.update({ where: { id: registration.id }, data: { status: 'REGISTERED' } });
+        // The ticket is minted here and nowhere else on the paid path — in the
+        // same transaction as the status flip, so a paid registration can never
+        // commit as REGISTERED-but-unticketed, and an unpaid one can never hold
+        // a working QR. Creating a checkout does not mint; only money landing
+        // does. Idempotent, so a webhook redelivery or a later reconciliation
+        // returns the same token rather than invalidating a ticket the member
+        // has already saved.
+        await qrService.assignRegistrationIdentity(tx, registration.id);
         registrationFlipped = true;
         flippedInvitationId = registration.invitationId;
       } else {

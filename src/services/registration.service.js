@@ -5,6 +5,7 @@ const jobService = require('./job.service');
 const organizationService = require('./organization.service');
 const sheetsSyncService = require('./sheetsSync.service');
 const invitationService = require('./invitation.service');
+const qrService = require('./qr.service');
 
 // Under real concurrent contention, a Serializable transaction can abort
 // with a write-conflict error instead of just queuing — confirmed by load
@@ -115,7 +116,7 @@ async function registerForEvent(user, eventId, invitation = null) {
           }
         }
 
-        return tx.eventRegistration.update({
+        const reactivated = await tx.eventRegistration.update({
           where: { id: existing.id },
           data: {
             status: 'REGISTERED',
@@ -127,6 +128,11 @@ async function registerForEvent(user, eventId, invitation = null) {
             invitationId: invitation ? invitation.id : undefined,
           },
         });
+        // reissue: the registration comes back, the old ticket does not. A
+        // screenshot or printout taken before the cancellation stays dead
+        // forever, which is the entire reason cancelling is worth anything at
+        // the door.
+        return qrService.assignRegistrationIdentity(tx, reactivated.id, { reissue: true });
       }
 
       if (event.capacity) {
@@ -136,7 +142,7 @@ async function registerForEvent(user, eventId, invitation = null) {
         }
       }
 
-      return tx.eventRegistration.create({
+      const created = await tx.eventRegistration.create({
         data: {
           userId: user.id,
           eventId: event.id,
@@ -148,6 +154,13 @@ async function registerForEvent(user, eventId, invitation = null) {
           invitationId: invitation ? invitation.id : undefined,
         },
       });
+      // Minted inside the same transaction that creates the registration, so a
+      // free-event registration can never commit as REGISTERED-but-unticketed:
+      // the confirmation email enqueued below would otherwise go out promising
+      // a ticket that does not exist. Paid events mint in the equivalent spot —
+      // payment.service.js's applyPaymentPaid, where the row actually becomes
+      // REGISTERED — never here and never at checkout creation.
+      return qrService.assignRegistrationIdentity(tx, created.id);
     }
   );
 
@@ -204,6 +217,14 @@ async function upsertPendingPaymentRegistration(client, user, event, invitation 
         email: user.email,
         phone: user.phone || null,
         school: user.school || null,
+        // Drop the ticket this registration held before it was cancelled.
+        // Without this, applyPaymentPaid's mint is idempotent and would find a
+        // token already present, handing back the pre-cancellation QR — the one
+        // the member may have printed and the one cancelling was supposed to
+        // kill. A PENDING_PAYMENT hold has no valid ticket by definition; the
+        // new one is minted when payment actually confirms.
+        qrToken: null,
+        qrGeneratedAt: null,
         ...snapshot,
         invitationId: invitation ? invitation.id : undefined,
       },
