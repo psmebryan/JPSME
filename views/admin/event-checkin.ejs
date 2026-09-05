@@ -1,0 +1,104 @@
+<%
+/*
+  The door screen. Designed to be operated by someone standing up, holding a
+  scanner, with a queue in front of them — so it is built around one rule: after
+  a scan, the operator must never have to touch anything to be ready for the
+  next one. The input refocuses itself, the result is readable from arm's
+  length, and nothing here needs a mouse.
+
+  Everything that decides admission happens on the server; this page posts the
+  scanned string and renders the verdict it is given.
+*/
+function timeOnly(d) {
+  return new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+%>
+<div class="max-w-5xl mx-auto" data-checkin-root data-event-id="<%= event.id %>">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="min-w-0">
+      <a href="/admin/events/<%= event.id %>/registrations" class="text-sm text-indigo-600 hover:underline">&larr; Back to registrations</a>
+      <h1 class="admin-h1 mt-1 truncate">Check-in</h1>
+      <p class="admin-subtitle truncate"><%= event.title %></p>
+    </div>
+    <label class="text-sm">
+      <span class="form-label">Station</span>
+      <input type="text" data-station maxlength="64" placeholder="ENTRANCE-01"
+             class="form-input w-44 font-mono uppercase" autocomplete="off">
+    </label>
+  </div>
+
+  <!-- Live counts. Server-rendered so the screen is right the moment it opens. -->
+  <div class="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div class="admin-card p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Registered</p>
+      <p class="mt-1 text-2xl font-semibold text-slate-900 tabular-nums" data-stat="registered"><%= stats.registered %></p>
+    </div>
+    <div class="admin-card p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Checked in</p>
+      <p class="mt-1 text-2xl font-semibold text-green-700 tabular-nums" data-stat="checkedIn"><%= stats.checkedIn %></p>
+    </div>
+    <div class="admin-card p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Remaining</p>
+      <p class="mt-1 text-2xl font-semibold text-slate-900 tabular-nums" data-stat="remaining"><%= stats.remaining %></p>
+    </div>
+    <div class="admin-card p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Rate</p>
+      <p class="mt-1 text-2xl font-semibold text-slate-900 tabular-nums"><span data-stat="rate"><%= stats.rate %></span>%</p>
+    </div>
+  </div>
+
+  <!-- The scanner input. A gun scanner types into whatever has focus and sends
+       Enter, so this is a plain form field kept focused; no driver, no pairing,
+       nothing to configure. It stays visible rather than hidden so a phone
+       camera app or a keyboard can be used as a fallback. -->
+  <form data-scan-form class="mt-4 admin-card p-4">
+    <label for="scan-input" class="form-label">Scan or type a code</label>
+    <div class="flex gap-2">
+      <input id="scan-input" data-scan-input type="text" inputmode="text" autocomplete="off"
+             autocapitalize="off" spellcheck="false"
+             placeholder="Waiting for scan…"
+             class="form-input flex-1 font-mono text-lg py-3">
+      <button type="submit" class="btn-primary px-6">Check in</button>
+    </div>
+    <p class="mt-2 text-xs text-slate-500" data-focus-hint>
+      Ready. The scanner does not need a button &mdash; scanning submits automatically.
+    </p>
+  </form>
+
+  <!-- The verdict. Big, colour-coded, and the only thing on screen that
+       changes between scans, so an operator glancing down knows the answer
+       without reading. -->
+  <div data-result class="mt-4 rounded-xl border-2 border-dashed border-slate-200 bg-white p-8 text-center">
+    <p class="text-slate-400 text-sm">Scan a ticket to begin.</p>
+  </div>
+
+  <!-- Manual fallback for a damaged code or a flat phone battery. Collapsed by
+       default so it never competes with the scanner for the operator's
+       attention, and it applies exactly the same rules. -->
+  <details class="mt-4 admin-card p-4" data-manual>
+    <summary class="cursor-pointer text-sm font-medium text-slate-700">Can't scan? Look someone up</summary>
+    <div class="mt-3">
+      <input type="search" data-manual-search placeholder="Name, email, or REG-2026-000123"
+             class="form-input" autocomplete="off">
+      <div data-manual-results class="mt-3 divide-y divide-slate-100"></div>
+    </div>
+  </details>
+
+  <div class="mt-4 admin-card p-4">
+    <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Recent check-ins</p>
+    <ul data-recent class="mt-2 divide-y divide-slate-100 text-sm">
+      <% if (!recent.length) { %>
+        <li class="py-2 text-slate-400" data-recent-empty>Nobody has been checked in yet.</li>
+      <% } else { %>
+        <% recent.forEach(function (r) { %>
+          <li class="py-2 flex items-center justify-between gap-3">
+            <span class="truncate"><%= r.eventRegistration ? r.eventRegistration.fullName : 'Unknown' %></span>
+            <span class="text-slate-500 tabular-nums shrink-0"><%= timeOnly(r.scannedAt) %></span>
+          </li>
+        <% }) %>
+      <% } %>
+    </ul>
+  </div>
+</div>
+
+<script src="/js/checkin.js"></script>

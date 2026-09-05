@@ -13,6 +13,7 @@ function regStatusBadge(status) {
       <% if (isMainAdmin) { %>
         <a href="/admin/invitations?eventId=<%= event.id %>" class="text-purple-600 hover:underline">Manage Invitations &rarr;</a>
       <% } %>
+      <a href="/admin/events/<%= event.id %>/check-in" class="text-amber-600 hover:underline font-medium">Check-in &rarr;</a>
       <a href="/admin/events/<%= event.id %>/certificate" class="text-emerald-600 hover:underline">Manage Certificates &rarr;</a>
       <a href="/admin/events/<%= event.id %>/email" class="text-sky-600 hover:underline">Manage Email &rarr;</a>
     </div>

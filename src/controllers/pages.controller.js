@@ -6,6 +6,7 @@ const authService = require('../services/auth.service');
 const organizationService = require('../services/organization.service');
 const organizationAdminService = require('../services/organizationAdmin.service');
 const settingsService = require('../services/settings.service');
+const checkinService = require('../services/checkin.service');
 const registrationService = require('../services/registration.service');
 const invitationService = require('../services/invitation.service');
 const emailVerificationService = require('../services/emailVerification.service');
@@ -697,6 +698,33 @@ const adminEditEventPage = asyncHandler(async (req, res) => {
 });
 
 // Admin view registrations page
+// The door screen. Reachable by any admin-role session (ensureAdmin), then
+// narrowed here to the people actually allowed to run THIS door — a chapter
+// admin without a grant gets 403 rather than a working scanner that fails on
+// every scan, which would be a far more confusing thing to hand someone at an
+// entrance.
+const adminEventCheckInPage = asyncHandler(async (req, res) => {
+  const event = await eventService.getEventById(req.params.id);
+  if (!(await checkinService.canCheckIn(req.session.user, event.id))) {
+    throw new AppError('You do not have check-in access for this event', 403);
+  }
+
+  // Rendered server-side so the screen is useful the instant it loads, before
+  // any polling — someone opening this at the start of a shift should see the
+  // real numbers, not zeros that fill in a moment later.
+  const [stats, recent] = await Promise.all([
+    checkinService.getEventCheckInStats(event.id),
+    checkinService.getRecentCheckIns(event.id, 8),
+  ]);
+
+  renderAdmin(req, res, 'admin/event-checkin', {
+    title: `Check-in — ${event.title}`,
+    event,
+    stats,
+    recent,
+  });
+});
+
 const adminEventRegistrationsPage = asyncHandler(async (req, res) => {
   const isMainAdmin = req.session.user.role === 'ADMIN';
   const search = (req.query.search || '').toString().trim();
@@ -814,6 +842,7 @@ module.exports = {
   adminCreateEventPage,
   adminEditEventPage,
   adminEventRegistrationsPage,
+  adminEventCheckInPage,
   adminInvitationsPage,
   adminArticlesPage,
   adminCreateArticlePage,
