@@ -57,6 +57,10 @@ router.get('/admin/events/new', ensureAdmin, pages.adminCreateEventPage);
 router.get('/admin/events', ensureAdmin, pages.adminEventsPage);
 router.get('/admin/events/:id/edit', ensureAdmin, pages.adminEditEventPage);
 router.get('/admin/events/:id/registrations', ensureAdmin, pages.adminEventRegistrationsPage);
+// The check-in module's own pages, listed before the per-event ones they lead
+// to so the module reads as a unit rather than as an appendix to events.
+router.get('/admin/check-in', ensureAdmin, pages.adminCheckInHubPage);
+router.get('/admin/check-in/staff', ensureMainAdminOnly, pages.adminCheckInStaffPage);
 router.get('/admin/events/:id/check-in', ensureAdmin, pages.adminEventCheckInPage);
 router.get('/admin/events/:id/check-in/report', ensureAdmin, pages.adminEventCheckInReportPage);
 

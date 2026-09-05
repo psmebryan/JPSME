@@ -707,6 +707,41 @@ const adminEditEventPage = asyncHandler(async (req, res) => {
 });
 
 // Admin view registrations page
+// The module's landing page: which doors this person can run, and how each is
+// doing. A chapter admin sees only the events granted to them, so this is never
+// a list of doors they cannot open.
+const adminCheckInHubPage = asyncHandler(async (req, res) => {
+  const scope = ['current', 'past', 'all'].includes(req.query.scope) ? req.query.scope : 'current';
+  const rows = await checkinService.listCheckInEvents(req.session.user, { scope });
+  renderAdmin(req, res, 'admin/checkin-hub', { title: 'Event Check-in', rows, scope });
+});
+
+// Who may run which door. Main admin only — being trusted to scan at an event
+// is not the same as being able to hand that trust to someone else.
+const adminCheckInStaffPage = asyncHandler(async (req, res) => {
+  const events = await eventService.getAdminEventsListing({ tablePage: 1, pageSize: 100 });
+  const eventId = req.query.eventId ? Number(req.query.eventId) : null;
+
+  let event = null;
+  let staff = [];
+  let grantable = [];
+  if (eventId) {
+    event = await eventService.getEventById(eventId);
+    [staff, grantable] = await Promise.all([
+      checkinService.listCheckInStaff(eventId),
+      checkinService.listGrantableUsers(),
+    ]);
+  }
+
+  renderAdmin(req, res, 'admin/checkin-staff', {
+    title: 'Check-in Staff',
+    events: events.tableEvents,
+    event,
+    staff,
+    grantable,
+  });
+});
+
 // The door screen. Reachable by any admin-role session (ensureAdmin), then
 // narrowed here to the people actually allowed to run THIS door — a chapter
 // admin without a grant gets 403 rather than a working scanner that fails on
@@ -885,6 +920,8 @@ module.exports = {
   adminCreateEventPage,
   adminEditEventPage,
   adminEventRegistrationsPage,
+  adminCheckInHubPage,
+  adminCheckInStaffPage,
   adminEventCheckInPage,
   adminEventCheckInReportPage,
   adminInvitationsPage,

@@ -1,0 +1,98 @@
+<%
+/*
+  The check-in module's landing page: which doors this account can run, and how
+  each one is going. Defaults to events that have not finished, because someone
+  opening this is nearly always looking for the one happening today.
+*/
+function when(e) {
+  const start = new Date(e.startDate).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+  if (!e.endDate) return start;
+  const end = new Date(e.endDate).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+  return start === end ? start : `${start} – ${end}`;
+}
+function isRunning(e) {
+  const now = new Date();
+  return new Date(e.startDate) <= now && new Date(e.endDate || e.startDate) >= now;
+}
+const SCOPES = [
+  { key: 'current', label: 'Current & upcoming' },
+  { key: 'past', label: 'Past' },
+  { key: 'all', label: 'All' },
+];
+%>
+<div class="max-w-5xl mx-auto">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="admin-h1">Event Check-in</h1>
+      <p class="admin-subtitle">Open a scanner station, or read what happened at one.</p>
+    </div>
+    <% if (currentUser && currentUser.role === 'ADMIN') { %>
+      <a href="/admin/check-in/staff" class="btn-secondary">Manage check-in staff</a>
+    <% } %>
+  </div>
+
+  <div class="mt-4 flex gap-2">
+    <% SCOPES.forEach(function (s) { %>
+      <a href="/admin/check-in?scope=<%= s.key %>"
+         class="<%= scope === s.key ? 'btn-primary' : 'btn-secondary' %> text-sm"><%= s.label %></a>
+    <% }) %>
+  </div>
+
+  <% if (!rows.length) { %>
+    <div class="admin-card mt-4">
+      <%- include('../partials/empty-state', {
+        title: scope === 'past' ? 'No past events' : 'No events to check in at',
+        hint: (currentUser && currentUser.role === 'ADMIN')
+          ? 'Check-in opens automatically for every published event. Create one and it will appear here.'
+          : 'A main admin has to grant you check-in access for an event before it shows up here.',
+        action: (currentUser && currentUser.role === 'ADMIN') ? { href: '/admin/events/new', label: 'Create an event' } : null,
+      }) %>
+    </div>
+  <% } else { %>
+    <div class="mt-4 space-y-3">
+      <% rows.forEach(function (row) { %>
+        <div class="admin-card p-4">
+          <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <p class="font-semibold text-slate-900 truncate"><%= row.event.title %></p>
+                <% if (isRunning(row.event)) { %>
+                  <span class="badge-green">Happening now</span>
+                <% } %>
+                <% if (!row.event.isPublished) { %>
+                  <span class="badge-slate">Draft</span>
+                <% } %>
+              </div>
+              <p class="text-sm text-slate-500 mt-0.5">
+                <%= when(row.event) %>
+                <% if (row.event.location) { %> &middot; <%= row.event.location %><% } %>
+              </p>
+
+              <!-- The three numbers that matter at a door, inline rather than in
+                   cards: this is a list to scan down, not a dashboard. -->
+              <div class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                <span class="text-slate-600"><span class="font-semibold tabular-nums text-slate-900"><%= row.stats.registered %></span> registered</span>
+                <span class="text-slate-600"><span class="font-semibold tabular-nums text-green-700"><%= row.stats.checkedIn %></span> checked in</span>
+                <span class="text-slate-600"><span class="font-semibold tabular-nums text-slate-900"><%= row.stats.remaining %></span> remaining</span>
+                <% if (row.stats.pendingPayment > 0) { %>
+                  <span class="text-amber-700"><span class="font-semibold tabular-nums"><%= row.stats.pendingPayment %></span> awaiting payment</span>
+                <% } %>
+              </div>
+
+              <% if (row.stats.registered > 0) { %>
+                <div class="mt-2 h-1.5 w-full max-w-sm rounded-full bg-slate-100 overflow-hidden">
+                  <div class="h-full rounded-full bg-green-500" style="width: <%= Math.min(100, row.stats.rate) %>%"></div>
+                </div>
+              <% } %>
+            </div>
+
+            <div class="flex flex-wrap gap-2 shrink-0">
+              <a href="/admin/events/<%= row.event.id %>/check-in" class="btn-primary">Open scanner</a>
+              <a href="/admin/events/<%= row.event.id %>/check-in/report" class="btn-secondary">Report</a>
+            </div>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  <% } %>
+</div>

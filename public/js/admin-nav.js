@@ -23,6 +23,7 @@ const openUserSubmenu = makeSubmenuToggle('user-management-toggle', 'user-submen
 const openCertificateSubmenu = makeSubmenuToggle('certificate-management-toggle', 'certificate-submenu', 'certificate-management-chevron');
 const openEmailSubmenu = makeSubmenuToggle('email-management-toggle', 'email-submenu', 'email-management-chevron');
 const openInvitationSubmenu = makeSubmenuToggle('invitation-management-toggle', 'invitation-submenu', 'invitation-management-chevron');
+const openCheckinSubmenu = makeSubmenuToggle('checkin-management-toggle', 'checkin-submenu', 'checkin-management-chevron');
 
 function openSubmenuForPath(path) {
   if (path.startsWith('/admin/organizations') || path.startsWith('/admin/organization-members') || path.startsWith('/admin/organization-admins')) {
@@ -40,6 +41,12 @@ function openSubmenuForPath(path) {
   if (path.startsWith('/admin/invitations')) {
     openInvitationSubmenu(true);
   }
+  // Also opens on the per-event scanner and report pages, which live under
+  // /admin/events/:id/ but belong to this module as far as a reader is
+  // concerned — the sidebar should show where they actually are.
+  if (path.startsWith('/admin/check-in') || /^\/admin\/events\/\d+\/check-in/.test(path)) {
+    openCheckinSubmenu(true);
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -50,6 +57,9 @@ document.addEventListener('DOMContentLoaded', () => {
   setActiveLink(nav, window.location.pathname + window.location.search);
   openSubmenuForPath(window.location.pathname);
 
+  document.getElementById('checkin-management-toggle')?.addEventListener('click', (e) => {
+    openCheckinSubmenu(e.currentTarget.getAttribute('aria-expanded') !== 'true');
+  });
   document.getElementById('chapter-management-toggle')?.addEventListener('click', (e) => {
     openChapterSubmenu(e.currentTarget.getAttribute('aria-expanded') !== 'true');
   });

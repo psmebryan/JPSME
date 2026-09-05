@@ -1,6 +1,7 @@
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
 const qrService = require('./qr.service');
+const eventService = require('./event.service');
 const auditService = require('./audit.service');
 
 // Everything the door does. The rule this file exists to enforce is that the
@@ -102,6 +103,60 @@ async function revokeCheckInAccess({ eventId, userId, adminUserId, ipAddress = n
     ipAddress,
   });
   return revoked;
+}
+
+// --- the module's own landing page ------------------------------------------
+
+// Which events this person may run a door for, newest first, each carrying the
+// counts the list needs. A main admin sees every event; a chapter admin sees
+// only the ones granted to them, so the page is never a list of doors they
+// cannot open.
+async function listCheckInEvents(sessionUser, { scope = 'current' } = {}) {
+  if (!sessionUser) return [];
+
+  const where = {};
+  if (sessionUser.role === 'CHAPTER_ADMIN') {
+    const grants = await prisma.eventCheckInStaff.findMany({
+      where: { userId: Number(sessionUser.id), revokedAt: null },
+      select: { eventId: true },
+    });
+    if (!grants.length) return [];
+    where.id = { in: grants.map((g) => g.eventId) };
+  } else if (sessionUser.role !== 'ADMIN') {
+    return [];
+  }
+
+  const now = new Date();
+  // "current" is the default because a door is run on the day: an operator
+  // opening this page is nearly always looking for the event happening now, not
+  // one from last year. Past stays reachable for reporting after the fact.
+  if (scope === 'current') Object.assign(where, eventService.notEndedWhere(now));
+  else if (scope === 'past') Object.assign(where, eventService.hasEndedWhere(now));
+
+  const events = await prisma.event.findMany({
+    where,
+    orderBy: { startDate: scope === 'past' ? 'desc' : 'asc' },
+    take: 50,
+  });
+
+  // One pass per event rather than a grouped query: this list is capped at 50
+  // and runs on a page nobody is standing at a door using, so clarity wins over
+  // shaving a round trip.
+  return Promise.all(events.map(async (event) => ({
+    event,
+    stats: await getEventCheckInStats(event.id),
+  })));
+}
+
+// Chapter admins who could be given a door. Main admins are excluded because
+// they already have every door, and offering to grant them one would make the
+// staff list read as though they needed it.
+async function listGrantableUsers() {
+  return prisma.user.findMany({
+    where: { role: 'CHAPTER_ADMIN' },
+    select: { id: true, firstName: true, lastName: true, email: true },
+    orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+  });
 }
 
 // --- the scan ---------------------------------------------------------------
@@ -333,6 +388,8 @@ async function searchRegistrations(eventId, term) {
 
 module.exports = {
   canCheckIn,
+  listCheckInEvents,
+  listGrantableUsers,
   assertCanCheckIn,
   listCheckInStaff,
   grantCheckInAccess,

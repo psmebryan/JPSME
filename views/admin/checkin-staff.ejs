@@ -1,0 +1,191 @@
+<%
+/*
+  Who may run which door.
+
+  A main admin can already check in anywhere, so this page is entirely about
+  lending that authority to a chapter admin for one specific event. Revocations
+  stay listed rather than disappearing: after a disputed admission, "who could
+  scan here, and who let them" has to still be answerable.
+*/
+function fullName(u) {
+  return u ? `${u.firstName} ${u.lastName}` : '—';
+}
+function when(d) {
+  return d ? new Date(d).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+}
+const active = staff.filter(function (g) { return !g.revokedAt; });
+const revoked = staff.filter(function (g) { return g.revokedAt; });
+const activeIds = active.map(function (g) { return g.userId; });
+const available = grantable.filter(function (u) { return activeIds.indexOf(u.id) === -1; });
+%>
+<div class="max-w-4xl mx-auto" data-checkin-staff <% if (event) { %>data-event-id="<%= event.id %>"<% } %>>
+  <a href="/admin/check-in" class="text-sm text-indigo-600 hover:underline">&larr; Back to check-in</a>
+  <h1 class="admin-h1 mt-1">Check-in staff</h1>
+  <p class="admin-subtitle">
+    Main admins can check in at every event. Use this to let a chapter admin run the door at one.
+  </p>
+
+  <form method="GET" action="/admin/check-in/staff" class="mt-4 admin-card p-4">
+    <label for="eventId" class="form-label">Event</label>
+    <div class="flex flex-wrap gap-2">
+      <select id="eventId" name="eventId" class="form-input flex-1 min-w-[240px]">
+        <option value="">Choose an event…</option>
+        <% events.forEach(function (e) { %>
+          <option value="<%= e.id %>" <%= event && event.id === e.id ? 'selected' : '' %>>
+            <%= e.title %> — <%= new Date(e.startDate).toLocaleDateString() %>
+          </option>
+        <% }) %>
+      </select>
+      <button type="submit" class="btn-primary">Show staff</button>
+    </div>
+  </form>
+
+  <% if (!event) { %>
+    <div class="admin-card mt-4">
+      <%- include('../partials/empty-state', {
+        title: 'Pick an event',
+        hint: 'Check-in access is granted one event at a time, so that running the door at a convention gives no access to anything else.',
+      }) %>
+    </div>
+  <% } else { %>
+
+    <div class="mt-4 admin-card p-4">
+      <h2 class="text-sm font-semibold text-slate-800">Grant access</h2>
+      <% if (!grantable.length) { %>
+        <p class="text-sm text-slate-500 mt-2">
+          There are no chapter admins yet. Only a chapter admin can be given check-in access —
+          <a href="/admin/organization-admins" class="text-indigo-600 hover:underline">assign one first</a>.
+        </p>
+      <% } else if (!available.length) { %>
+        <p class="text-sm text-slate-500 mt-2">Every chapter admin already has access to this event.</p>
+      <% } else { %>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <select data-grant-user class="form-input flex-1 min-w-[240px]">
+            <% available.forEach(function (u) { %>
+              <option value="<%= u.id %>"><%= fullName(u) %> — <%= u.email %></option>
+            <% }) %>
+          </select>
+          <button type="button" data-grant-btn class="btn-primary">Give access</button>
+        </div>
+      <% } %>
+    </div>
+
+    <div class="mt-4">
+      <h2 class="text-sm font-semibold text-slate-800">
+        Can scan at "<%= event.title %>" <span class="font-normal text-slate-500">(<%= active.length %>)</span>
+      </h2>
+      <div class="admin-table-wrap mt-2">
+        <table class="admin-table">
+          <thead class="admin-table-head">
+            <tr>
+              <th class="admin-th">Person</th>
+              <th class="admin-th">Granted by</th>
+              <th class="admin-th">Granted</th>
+              <th class="admin-th"></th>
+            </tr>
+          </thead>
+          <tbody class="admin-tbody">
+            <% if (!active.length) { %>
+              <tr><td colspan="4" class="admin-td">
+                <%- include('../partials/empty-state', {
+                  title: 'Nobody else can scan here yet',
+                  hint: 'Main admins can already run this door. Grant a chapter admin above if someone else needs to.',
+                }) %>
+              </td></tr>
+            <% } else { %>
+              <% active.forEach(function (g) { %>
+                <tr class="admin-tr">
+                  <td class="admin-td">
+                    <span class="font-medium text-slate-900"><%= fullName(g.user) %></span>
+                    <span class="block text-xs text-slate-500"><%= g.user.email %></span>
+                  </td>
+                  <td class="admin-td text-sm text-slate-600"><%= fullName(g.grantedByUser) %></td>
+                  <td class="admin-td text-sm text-slate-600 whitespace-nowrap"><%= when(g.grantedAt) %></td>
+                  <td class="admin-td text-right">
+                    <button type="button" data-revoke-user="<%= g.userId %>"
+                            class="text-sm text-red-600 hover:underline">Remove</button>
+                  </td>
+                </tr>
+              <% }) %>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <% if (revoked.length) { %>
+      <div class="mt-6">
+        <h2 class="text-sm font-semibold text-slate-800">
+          Previously had access <span class="font-normal text-slate-500">(<%= revoked.length %>)</span>
+        </h2>
+        <p class="text-xs text-slate-500 mt-0.5">
+          Kept on record so a disputed admission can still be traced back to who was allowed to scan at the time.
+        </p>
+        <div class="admin-table-wrap mt-2">
+          <table class="admin-table">
+            <thead class="admin-table-head">
+              <tr>
+                <th class="admin-th">Person</th>
+                <th class="admin-th">Removed by</th>
+                <th class="admin-th">Removed</th>
+              </tr>
+            </thead>
+            <tbody class="admin-tbody">
+              <% revoked.forEach(function (g) { %>
+                <tr class="admin-tr">
+                  <td class="admin-td text-sm text-slate-600"><%= fullName(g.user) %></td>
+                  <td class="admin-td text-sm text-slate-600"><%= fullName(g.revokedByUser) %></td>
+                  <td class="admin-td text-sm text-slate-600 whitespace-nowrap"><%= when(g.revokedAt) %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    <% } %>
+  <% } %>
+</div>
+
+<script nonce="<%= cspNonce %>">
+  document.addEventListener('DOMContentLoaded', () => {
+    const root = document.querySelector('[data-checkin-staff]');
+    if (!root || !root.dataset.eventId) return;
+    const eventId = root.dataset.eventId;
+
+    const grantBtn = root.querySelector('[data-grant-btn]');
+    if (grantBtn) {
+      grantBtn.addEventListener('click', async () => {
+        const select = root.querySelector('[data-grant-user]');
+        if (!select || !select.value) return;
+        grantBtn.disabled = true;
+        try {
+          await apiFetch(`/api/events/${eventId}/checkin/staff`, {
+            method: 'POST',
+            body: JSON.stringify({ userId: Number(select.value) }),
+          });
+          showToast('Check-in access granted');
+          window.location.reload();
+        } catch (err) {
+          showToast(err.message, 'error');
+          grantBtn.disabled = false;
+        }
+      });
+    }
+
+    root.querySelectorAll('[data-revoke-user]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const userId = btn.dataset.revokeUser;
+        if (!window.confirm('Remove this person\'s check-in access for this event?')) return;
+        btn.disabled = true;
+        try {
+          await apiFetch(`/api/events/${eventId}/checkin/staff/${userId}`, { method: 'DELETE' });
+          showToast('Check-in access removed');
+          window.location.reload();
+        } catch (err) {
+          showToast(err.message, 'error');
+          btn.disabled = false;
+        }
+      });
+    });
+  });
+</script>
