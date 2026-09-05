@@ -18,7 +18,8 @@
     "test:paymongo": "node tests/paymongo.service.test.js",
     "test:organizations": "node tests/organization.service.test.js",
     "seed:dummy": "node prisma/seedDummyUsers.js",
-    "test:attachment": "node tests/organization.attachment.test.js"
+    "test:attachment": "node tests/organization.attachment.test.js",
+    "test:qr": "node tests/qr.service.test.js"
   },
   "license": "UNLICENSED",
   "dependencies": {
@@ -40,7 +41,8 @@
     "multer": "^2.2.0",
     "mysql2": "^3.23.3",
     "nodemailer": "^9.0.5",
-    "pdfkit": "^0.19.1"
+    "pdfkit": "^0.19.1",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "autocannon": "^8.0.0",
