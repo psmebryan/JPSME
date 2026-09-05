@@ -21,7 +21,8 @@
     "test:attachment": "node tests/organization.attachment.test.js",
     "test:qr": "node tests/qr.service.test.js",
     "test:registration-qr": "node tests/registration.qr.test.js",
-    "backfill:qr": "node prisma/backfillRegistrationQr.js"
+    "backfill:qr": "node prisma/backfillRegistrationQr.js",
+    "test:checkin": "node tests/checkin.service.test.js"
   },
   "license": "UNLICENSED",
   "dependencies": {

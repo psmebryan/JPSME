@@ -5,6 +5,7 @@ const eventApi = require('../../controllers/api/event.api');
 const registrationApi = require('../../controllers/api/registration.api');
 const invitationApi = require('../../controllers/api/invitation.api');
 const ticketApi = require('../../controllers/api/ticket.api');
+const checkinApi = require('../../controllers/api/checkin.api');
 const { apiAuth, apiAdmin } = require('../../middleware/auth.middleware');
 const { verifyCsrfToken } = require('../../middleware/csrf.middleware');
 const { uploadEventImage } = require('../../middleware/upload.middleware');
@@ -107,6 +108,55 @@ const ticketLimiter = rateLimit({
 
 router.get('/:id/ticket.pdf', apiAuth, ticketLimiter, ticketApi.downloadTicketPdf);
 router.get('/:id/ticket/qr.png', apiAuth, ticketLimiter, ticketApi.downloadTicketQrPng);
+
+// --- Event check-in ---------------------------------------------------------
+//
+// Deliberately loose. A single entrance can scan a few hundred people in the
+// first ten minutes of a convention, and several stations usually share one
+// venue IP, so a limit tuned like the other endpoints here would throttle a
+// real door mid-queue — the worst possible failure for this feature. This is
+// sized to stop a runaway client loop, not to police legitimate scanning, and
+// the endpoint is already behind an admin-or-granted-staff gate. Guessing a
+// token is not a threat this needs to defend against: it is 256 bits.
+const checkinLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 1200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many scans from this device. Please wait a moment.' },
+});
+
+const scanValidators = [
+  // Length-bounded but not format-checked here: deciding what is a valid code
+  // is qr.service's job, and a malformed scan must come back as a normal
+  // INVALID_QR verdict the door can display, not as a 422 the scanner page has
+  // to translate. This only stops something absurd reaching the service.
+  body('qrToken').isString().withMessage('A scanned value is required').isLength({ min: 1, max: 512 }),
+  body('scannerIdentifier').optional({ checkFalsy: true }).trim().isLength({ max: 64 }),
+];
+
+router.post('/:id/checkin', apiAuth, verifyCsrfToken, checkinLimiter, scanValidators, checkinApi.scan);
+router.post(
+  '/:id/checkin/manual',
+  apiAuth, verifyCsrfToken, checkinLimiter,
+  [
+    body('registrationId').isInt({ min: 1 }).withMessage('A registration is required'),
+    body('scannerIdentifier').optional({ checkFalsy: true }).trim().isLength({ max: 64 }),
+  ],
+  checkinApi.manualCheckIn
+);
+router.get('/:id/checkin/search', apiAuth, checkinApi.searchRegistrations);
+router.get('/:id/checkin/stats', apiAuth, checkinApi.stats);
+
+// Granting the ability to scan is a main-admin power, separate from having it.
+router.get('/:id/checkin/staff', apiAdmin, checkinApi.listStaff);
+router.post(
+  '/:id/checkin/staff',
+  apiAdmin, verifyCsrfToken,
+  [body('userId').isInt({ min: 1 }).withMessage('A user is required')],
+  checkinApi.grantStaff
+);
+router.delete('/:id/checkin/staff/:userId', apiAdmin, verifyCsrfToken, checkinApi.revokeStaff);
 
 // Admin management
 router.post(
