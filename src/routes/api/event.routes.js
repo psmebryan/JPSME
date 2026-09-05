@@ -4,6 +4,7 @@ const rateLimit = require('express-rate-limit');
 const eventApi = require('../../controllers/api/event.api');
 const registrationApi = require('../../controllers/api/registration.api');
 const invitationApi = require('../../controllers/api/invitation.api');
+const ticketApi = require('../../controllers/api/ticket.api');
 const { apiAuth, apiAdmin } = require('../../middleware/auth.middleware');
 const { verifyCsrfToken } = require('../../middleware/csrf.middleware');
 const { uploadEventImage } = require('../../middleware/upload.middleware');
@@ -91,6 +92,21 @@ router.get('/:id', eventApi.getEvent);
 // Authenticated user actions (direct/auto-fill registration)
 router.post('/:id/register', apiAuth, verifyCsrfToken, registrationLimiter, registrationApi.registerForEvent);
 router.post('/:id/cancel', apiAuth, verifyCsrfToken, registrationApi.cancelRegistration);
+
+// A member's own e-ticket. Generous limit on purpose: someone standing in a
+// queue with a phone that lost signal will retry, and throttling them at the
+// door is exactly the wrong moment to be strict. It is still bounded, since
+// each request renders a PDF and a QR bitmap.
+const ticketLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many ticket requests. Please try again in a few minutes.' },
+});
+
+router.get('/:id/ticket.pdf', apiAuth, ticketLimiter, ticketApi.downloadTicketPdf);
+router.get('/:id/ticket/qr.png', apiAuth, ticketLimiter, ticketApi.downloadTicketQrPng);
 
 // Admin management
 router.post(

@@ -2,6 +2,7 @@ const path = require('path');
 const config = require('../config');
 const { transporter, MAIL_FROM } = require('../config/mailer');
 const emailTemplateService = require('./emailTemplate.service');
+const ticketService = require('./ticket.service');
 const storageService = require('./storage.service');
 const { substituteTokens, formatDate, fullName } = require('../utils/templateTokens');
 
@@ -108,6 +109,21 @@ async function sendEventRegistrationEmail(user, event) {
     if (attachmentSource) {
       attachments.push({ filename: path.basename(attachmentSource), path: attachmentToAbsolutePath(attachmentSource) });
     }
+
+    // The e-ticket, when there is one to attach. buildTicketAttachment returns
+    // null rather than throwing for every reason a ticket might not exist yet —
+    // an unpaid registration, a cancelled one, a row the backfill has not
+    // reached — because a missing ticket must never be the reason a member is
+    // not told their registration went through. The email still sends, and the
+    // ticket remains available on their profile.
+    //
+    // This is also why the send is downstream of the mint on both paths: the
+    // free-event path enqueues this job only after the transaction that mints
+    // commits, and the paid path sends only after applyPaymentPaid's
+    // transaction commits. A ticket promised in an email that does not exist
+    // yet would be worse than one attached a moment later.
+    const ticket = await ticketService.buildTicketAttachment(user.id, event.id);
+    if (ticket) attachments.push(ticket);
 
     await transporter.sendMail({
       from: MAIL_FROM,
