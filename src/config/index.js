@@ -87,6 +87,11 @@ const config = {
       get sweepIntervalMinutes() { return Number(process.env.RECONCILIATION_SWEEP_INTERVAL_MINUTES) || 15; },
     },
     get broadcastSendIntervalMs() { return Number(process.env.BROADCAST_SEND_INTERVAL_MS) || 350; },
+    // 'inline' (default) runs the job queue inside the web server, so a host
+    // that keeps only one process alive still sends confirmation emails.
+    // 'external' leaves the queue entirely to `npm run worker`, which is the
+    // better arrangement where a second process can actually be relied on.
+    get workerMode() { return oneOf('WORKER_MODE', ['inline', 'external'], 'inline'); },
   },
 
   email: {

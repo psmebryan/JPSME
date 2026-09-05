@@ -22,7 +22,8 @@
     "test:qr": "node tests/qr.service.test.js",
     "test:registration-qr": "node tests/registration.qr.test.js",
     "backfill:qr": "node prisma/backfillRegistrationQr.js",
-    "test:checkin": "node tests/checkin.service.test.js"
+    "test:checkin": "node tests/checkin.service.test.js",
+    "preflight": "node -e \"require(\"dotenv\").config();const r=require(\"./src/config/preflight\").check();console.log(JSON.stringify(r,null,2))\""
   },
   "license": "UNLICENSED",
   "dependencies": {
