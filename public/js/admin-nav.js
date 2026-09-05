@@ -49,7 +49,47 @@ function openSubmenuForPath(path) {
   }
 }
 
+// The sidebar is a slide-over below lg and an ordinary column from lg up, so
+// all of this only ever runs on small screens. Kept here rather than inline in
+// the layout because the layout has a script nonce and no unsafe-inline.
+function setupMobileSidebar() {
+  const sidebar = document.querySelector('[data-admin-sidebar]');
+  const backdrop = document.querySelector('[data-admin-backdrop]');
+  const toggle = document.querySelector('[data-sidebar-toggle]');
+  if (!sidebar || !backdrop || !toggle) return;
+
+  function setOpen(open) {
+    sidebar.classList.toggle('-translate-x-full', !open);
+    backdrop.classList.toggle('hidden', !open);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    // Stops the page behind the drawer scrolling under a thumb that meant to
+    // scroll the menu.
+    document.body.classList.toggle('overflow-hidden', open);
+  }
+
+  toggle.addEventListener('click', () => {
+    setOpen(toggle.getAttribute('aria-expanded') !== 'true');
+  });
+  backdrop.addEventListener('click', () => setOpen(false));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') setOpen(false);
+  });
+
+  // Close after navigating. Admin links load their page over AJAX, so without
+  // this the drawer would stay open on top of the page it just opened.
+  sidebar.addEventListener('click', (e) => {
+    if (e.target.closest('a[href]')) setOpen(false);
+  });
+
+  // Returning to a wide viewport must not leave the drawer state stuck: the
+  // sidebar becomes a normal column again and the backdrop would otherwise
+  // hang over it.
+  window.matchMedia('(min-width: 1024px)').addEventListener('change', (e) => {
+    if (e.matches) setOpen(false);
+  });
+}
 document.addEventListener('DOMContentLoaded', () => {
+  setupMobileSidebar();
   const nav = document.getElementById('admin-nav');
   const content = document.getElementById('admin-content');
   if (!nav || !content) return;
