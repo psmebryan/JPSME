@@ -6,6 +6,24 @@ const organizationService = require('./organization.service');
 const sheetsSyncService = require('./sheetsSync.service');
 const invitationService = require('./invitation.service');
 const qrService = require('./qr.service');
+const eventService = require('./event.service');
+
+// Registration closes when the event is over — not when it starts. Someone can
+// still sign up on the morning of a convention, or midway through a week-long
+// one, because those are both events you can still turn up to. What must not
+// happen is a registration being taken for something that already finished:
+// there is nothing left to attend, no door left to scan at, and for a paid
+// event it would take money for it.
+//
+// Enforced here rather than in the controller so it covers every way in — the
+// direct button, an emailed invitation link, and the paid checkout — instead of
+// only the path someone remembered to guard.
+function assertRegistrationOpen(event) {
+  if (!event.isPublished) throw new AppError('This event is not open for registration', 400);
+  if (eventService.hasEventEnded(event)) {
+    throw new AppError('This event has already ended, so registration is closed', 400);
+  }
+}
 
 // Under real concurrent contention, a Serializable transaction can abort
 // with a write-conflict error instead of just queuing — confirmed by load
@@ -83,7 +101,7 @@ async function countActiveRegistrations(eventId, client = prisma) {
 async function registerForEvent(user, eventId, invitation = null) {
   const event = await prisma.event.findUnique({ where: { id: Number(eventId) } });
   if (!event) throw new AppError('Event not found', 404);
-  if (!event.isPublished) throw new AppError('This event is not open for registration', 400);
+  assertRegistrationOpen(event);
 
   const snapshot = await organizationSnapshot(user);
 
@@ -191,6 +209,10 @@ async function registerForEvent(user, eventId, invitation = null) {
 // "create registration" and "create payment" could otherwise leave one
 // without the other.
 async function upsertPendingPaymentRegistration(client, user, event, invitation = null) {
+  // The paid path's equivalent of the check in registerForEvent above. It sits
+  // here rather than only in createEventCheckout so a closed event cannot be
+  // paid for through any caller that reaches this function.
+  assertRegistrationOpen(event);
   const snapshot = await organizationSnapshot(user);
   const existing = await client.eventRegistration.findUnique({
     where: { userId_eventId: { userId: user.id, eventId: event.id } },
@@ -352,6 +374,7 @@ module.exports = {
   getRegisteredEventIds,
   getRegistrationStatus,
   countActiveRegistrations,
+  assertRegistrationOpen,
   upsertPendingPaymentRegistration,
   createPendingPaymentRegistration,
 };

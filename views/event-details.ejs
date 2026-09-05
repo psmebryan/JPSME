@@ -18,6 +18,7 @@
   <% } %>
 
   <% const registered = typeof isRegistered !== 'undefined' && isRegistered; %>
+  <% const eventOver = typeof locals.hasEnded !== 'undefined' && locals.hasEnded; %>
   <% const status = typeof registrationStatus !== 'undefined' ? registrationStatus : null; %>
   <% const hasFee = event.feeCentavos > 0; %>
   <% const surchargeCentavos = locals.surchargeCentavos || 0; %>
@@ -30,7 +31,18 @@
     </p>
   <% } %>
 
-  <% if (isGuestInvite) { %>
+  <% if (eventOver) { %>
+    <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <p class="font-medium text-slate-700">This event has ended</p>
+      <p class="text-sm text-slate-500 mt-1">
+        <% if (registered) { %>
+          You were registered for it. Registration is now closed.
+        <% } else { %>
+          Registration is closed. <a href="/events" class="text-indigo-600 hover:underline">See upcoming events</a>.
+        <% } %>
+      </p>
+    </div>
+  <% } else if (isGuestInvite) { %>
     <div id="invitation-rsvp-section" data-event-id="<%= event.id %>" data-invite-token="<%= invitation.token %>">
       <% if (invitation.rsvpStatus === 'ATTENDING') { %>
         <p class="text-green-700 font-medium mb-2">&#10003; You're marked as attending &mdash; see you there!</p>
@@ -72,18 +84,18 @@
     </button>
   <% } %>
 
-  <% if (!locals.currentUser && invitation && !isGuestInvite) { %>
+  <% if (!eventOver && !locals.currentUser && invitation && !isGuestInvite) { %>
     <p class="text-sm text-gray-500 mt-2">
       <a href="/login?next=<%= encodeURIComponent(`/events/${event.id}/invite/${invitation.token}`) %>" class="text-indigo-600 hover:underline">Log in</a>
       if you already have an account, or
       <a href="/register?next=<%= encodeURIComponent(`/events/${event.id}/invite/${invitation.token}`) %>" class="text-indigo-600 hover:underline">create one</a>
       — after verifying your email, come back to this link to finish registering.
     </p>
-  <% } else if (!locals.currentUser && !invitation) { %>
+  <% } else if (!eventOver && !locals.currentUser && !invitation) { %>
     <p class="text-sm text-gray-500 mt-2">You'll need to log in first — we'll use your saved profile to register you instantly.</p>
   <% } %>
 
-  <% if (!locals.currentUser && !invitation) { %>
+  <% if (!locals.currentUser && !invitation && !eventOver) { %>
     <div id="invitation-request-section" class="mt-8 border-t border-slate-200 pt-6" data-event-id="<%= event.id %>">
       <h2 class="text-lg font-semibold text-slate-900 mb-1">Not a member? Request an invitation</h2>
       <p class="text-sm text-slate-500 mb-4">Fill this out and we'll email you an invite link to register for this event — no account needed.</p>

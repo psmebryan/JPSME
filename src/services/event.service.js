@@ -140,6 +140,14 @@ async function deleteEvent(id) {
 // That leaves a single-day event with no end time counted as over the moment
 // its start time passes, which is the behaviour this project has always had;
 // see the note in the git history if that ever needs revisiting.
+// The same question as the two where-builders below, asked about a row already
+// in hand instead of in SQL. Kept beside them so the two can't drift: if the
+// fallback rule changes, it changes here for both.
+function hasEventEnded(event, now = new Date()) {
+  const end = event.endDate || event.startDate;
+  return new Date(end) < now;
+}
+
 function notEndedWhere(now) {
   return { OR: [{ endDate: { gte: now } }, { endDate: null, startDate: { gte: now } }] };
 }
@@ -293,6 +301,7 @@ async function getAdminEventsListing({
 }
 
 module.exports = {
+  hasEventEnded,
   notEndedWhere,
   hasEndedWhere,
   listActiveEvents,

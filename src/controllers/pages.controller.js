@@ -130,7 +130,12 @@ const eventDetailPage = asyncHandler(async (req, res) => {
   // page (fee + this same surcharge, itemized) isn't a surprise.
   const surchargeCentavos = event.feeCentavos > 0 ? await paymentService.calculateGatewaySurcharge(event.feeCentavos) : 0;
 
-  res.render('event-details', { title: event.title, event, isRegistered, registrationStatus, surchargeCentavos });
+  res.render('event-details', {
+    title: event.title, event, isRegistered, registrationStatus, surchargeCentavos,
+    // Computed from the same helper registration.service enforces with, so the
+    // page and the server can never disagree about whether this is still open.
+    hasEnded: eventService.hasEventEnded(event),
+  });
 });
 
 // PayMongo's redirect-return pages aside, this is the one other place a
@@ -163,7 +168,10 @@ const eventInvitePage = asyncHandler(async (req, res) => {
 
   const surchargeCentavos = event.feeCentavos > 0 ? await paymentService.calculateGatewaySurcharge(event.feeCentavos) : 0;
 
-  res.render('event-details', { title: event.title, event, isRegistered, registrationStatus, invitation, invitationMismatch, surchargeCentavos });
+  res.render('event-details', {
+    title: event.title, event, isRegistered, registrationStatus, invitation, invitationMismatch, surchargeCentavos,
+    hasEnded: eventService.hasEventEnded(event),
+  });
 });
 
 // One-click RSVP link embedded directly in the invitation email's
