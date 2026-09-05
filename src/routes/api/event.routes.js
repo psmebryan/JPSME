@@ -109,6 +109,10 @@ const ticketLimiter = rateLimit({
 router.get('/:id/ticket.pdf', apiAuth, ticketLimiter, ticketApi.downloadTicketPdf);
 router.get('/:id/ticket/qr.png', apiAuth, ticketLimiter, ticketApi.downloadTicketQrPng);
 
+// Replacing somebody's ticket is a main-admin action, kept apart from the
+// member-facing routes above it.
+router.post('/:id/registrations/:registrationId/qr/regenerate', apiAdmin, verifyCsrfToken, ticketApi.regenerateTicket);
+
 // --- Event check-in ---------------------------------------------------------
 //
 // Deliberately loose. A single entrance can scan a few hundred people in the

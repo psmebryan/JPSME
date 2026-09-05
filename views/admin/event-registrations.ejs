@@ -53,6 +53,8 @@ function regStatusBadge(status) {
             <th class="admin-th">Status</th>
             <th class="admin-th">Source</th>
             <th class="admin-th">Registered At</th>
+            <th class="admin-th">Ticket</th>
+            <% if (isMainAdmin) { %><th class="admin-th"></th><% } %>
           </tr>
         </thead>
         <tbody class="admin-tbody">
@@ -65,6 +67,31 @@ function regStatusBadge(status) {
               <td class="admin-td"><%- regStatusBadge(r.status) %></td>
               <td class="admin-td"><%- r.invitationId ? '<span class="badge-purple">Invited</span>' : '-' %></td>
               <td class="admin-td"><%= new Date(r.createdAt).toLocaleString() %></td>
+              <td class="admin-td">
+                <% if (r.qrToken) { %>
+                  <span class="block font-mono text-xs text-slate-700"><%= r.registrationNumber || '—' %></span>
+                  <% if (r.checkedInAt) { %>
+                    <span class="badge-green mt-0.5">Checked in <%= new Date(r.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) %></span>
+                  <% } else { %>
+                    <span class="badge-slate mt-0.5">Not yet scanned</span>
+                  <% } %>
+                <% } else if (r.status === 'PENDING_PAYMENT') { %>
+                  <%# No ticket exists until payment confirms - that is the rule, not a gap. %>
+                  <span class="text-xs text-slate-400">Issued once paid</span>
+                <% } else { %>
+                  <span class="text-xs text-slate-400">&mdash;</span>
+                <% } %>
+              </td>
+              <% if (isMainAdmin) { %>
+                <td class="admin-td text-right">
+                  <% if (r.qrToken) { %>
+                    <button type="button"
+                            data-regenerate-qr="<%= r.id %>"
+                            data-name="<%= r.fullName %>"
+                            class="text-sm text-indigo-600 hover:underline">Regenerate QR</button>
+                  <% } %>
+                </td>
+              <% } %>
             </tr>
           <% }) %>
         </tbody>
@@ -78,3 +105,39 @@ function regStatusBadge(status) {
     }) %>
   <% } %>
 </div>
+
+<script nonce="<%= cspNonce %>">
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-regenerate-qr]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const name = btn.dataset.name || 'this registrant';
+        // Confirmed because it cannot be undone and it breaks something the
+        // member may already be holding: their current code stops working the
+        // instant this runs.
+        const ok = window.confirm(
+          'Issue a new QR for ' + name + '?\n\n'
+          + 'Their current code will stop working immediately. '
+          + 'A replacement e-ticket will be emailed to them.'
+        );
+        if (!ok) return;
+
+        btn.disabled = true;
+        const original = btn.textContent;
+        btn.textContent = 'Working...';
+        try {
+          const eventId = window.location.pathname.split('/')[3];
+          const res = await apiFetch(
+            '/api/events/' + eventId + '/registrations/' + btn.dataset.regenerateQr + '/qr/regenerate',
+            { method: 'POST' }
+          );
+          showToast(res.message);
+          window.location.reload();
+        } catch (err) {
+          showToast(err.message, 'error');
+          btn.disabled = false;
+          btn.textContent = original;
+        }
+      });
+    });
+  });
+</script>
