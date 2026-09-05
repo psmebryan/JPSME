@@ -137,13 +137,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const eventId = button.getAttribute('data-cancel-registration');
       if (!confirm('Cancel your registration for this event?')) return;
 
-      try {
-        await apiFetch(`/api/events/${eventId}/cancel`, { method: 'POST' });
-        showToast('Registration cancelled');
-        setTimeout(() => window.location.reload(), 800);
-      } catch (err) {
-        showToast(err.message, 'error');
-      }
+      await withPending(button, 'Cancelling...', async () => {
+        try {
+          await apiFetch(`/api/events/${eventId}/cancel`, { method: 'POST' });
+          showToast('Registration cancelled');
+          setTimeout(() => window.location.reload(), 800);
+        } catch (err) {
+          showToast(err.message, 'error');
+        }
+      });
     });
   });
 });

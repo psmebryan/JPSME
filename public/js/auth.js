@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const formData = new FormData(loginForm);
+      await withPending(loginForm, 'Signing in...', async () => {
       try {
         const res = await apiFetch('/api/auth/login', {
           method: 'POST',
@@ -60,6 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (err) {
         showToast(err.message, 'error');
       }
+      });
     });
   }
 
@@ -364,6 +366,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       const formData = new FormData(registerForm);
+      // The one place this matters most: a duplicate submit here fails on the
+      // unique email the first one just claimed, so someone who double-clicks
+      // is told their address is already registered seconds after registering.
+      await withPending(registerForm, 'Creating your account...', async () => {
       try {
         const res = await apiFetch('/api/auth/register', {
           method: 'POST',
@@ -375,6 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (err) {
         showToast(err.errors?.[0]?.msg || err.message, 'error');
       }
+      });
     });
   }
 
@@ -383,6 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
     resendForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const formData = new FormData(resendForm);
+      await withPending(resendForm, 'Sending...', async () => {
       try {
         const res = await apiFetch('/api/auth/resend-verification', {
           method: 'POST',
@@ -393,6 +401,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (err) {
         showToast(err.errors?.[0]?.msg || err.message, 'error');
       }
+      });
     });
   }
 
