@@ -38,6 +38,31 @@ enum RegistrationStatus {
   CANCELLED
 }
 
+// What a scan was trying to do. CHECK_IN is the scanner-gun path; MANUAL_CHECK_IN
+// is the staff fallback search (a person admitted without presenting a QR at all)
+// — recorded distinctly so an audit can tell the two apart. CHECK_OUT is unused in
+// Phase 1 but reserved so re-entry tracking doesn't need an enum migration later.
+enum CheckInAction {
+  CHECK_IN
+  CHECK_OUT
+  MANUAL_CHECK_IN
+}
+
+// The server's verdict on a scan. Every scan writes an EventCheckIn row carrying
+// one of these — the failures included, which is the point: "how many wrong-event
+// scans happened at ENTRANCE-02" is a question door staff actually ask, and it is
+// unanswerable if only successes are stored.
+enum CheckInResult {
+  SUCCESS
+  ALREADY_CHECKED_IN
+  INVALID_QR
+  WRONG_EVENT
+  NOT_REGISTERED
+  CANCELLED
+  UNPAID
+  REJECTED
+}
+
 // Pure delivery lifecycle — engagement (opened/clicked) is tracked as
 // separate nullable timestamps on EventInvitation instead of folded into
 // this enum, since a delivered email may or may not ever be opened; those
@@ -124,6 +149,15 @@ enum AuditAction {
   // makes it show up on the admin audit log so a stuck PENDING-despite-PAID
   // account actually gets noticed and manually approved.
   AUTO_APPROVAL_FAILED
+  // QR + check-in access lifecycle. Individual scan outcomes deliberately do
+  // NOT go here — they are rows in EventCheckIn, which is indexed for the
+  // per-event and per-station reporting this table cannot serve. These four are
+  // the administrative actions around it: minting or replacing a ticket's
+  // identity, and granting or removing a chapter admin's ability to scan.
+  QR_GENERATED
+  QR_REGENERATED
+  CHECKIN_ACCESS_GRANTED
+  CHECKIN_ACCESS_REVOKED
 }
 
 model User {
@@ -158,6 +192,14 @@ model User {
   // account" from. Set at registration, read + cleared (one-time) by
   // auth.service.js's login once status is APPROVED. Null the rest of the time.
   postApprovalRedirectUrl String?
+  // Null means this account has never completed a login. That is the whole
+  // point of the column: the first login after registering lands on /profile,
+  // so a new member sees their membership card and learns that paying is
+  // optional — every login after that goes to the site home instead, because
+  // repeating the orientation on a returning member's tenth visit is just an
+  // extra click between them and the site. Written on every successful login,
+  // so it doubles as "last seen" for admin use.
+  lastLoginAt     DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -178,6 +220,11 @@ model User {
   auditLogsAsTarget AuditLog[] @relation("audit_target")
   broadcastsCreated EmailBroadcast[]
   eventInvitations  EventInvitation[]
+
+  checkInsScanned      EventCheckIn[]      @relation("checkin_scanned_by")
+  checkInAccess        EventCheckInStaff[] @relation("checkin_staff_user")
+  checkInAccessGranted EventCheckInStaff[] @relation("checkin_staff_granted_by")
+  checkInAccessRevoked EventCheckInStaff[] @relation("checkin_staff_revoked_by")
 
   @@index([status])
   @@index([organizationId])
@@ -220,6 +267,8 @@ model Event {
   emailTemplates      EmailTemplate[]
   payments            Payment[]
   invitations         EventInvitation[]
+  checkIns            EventCheckIn[]
+  checkInStaff        EventCheckInStaff[]
 }
 
 model EventRegistration {
@@ -243,6 +292,25 @@ model EventRegistration {
   // event invitation (see EventInvitation.registeredAt) — lets the admin
   // registrations list show "invited" registrants distinctly from ones who
   // found the event and registered on their own.
+  // Human-facing reference ("REG-2026-000123") — what staff read aloud, search
+  // by, and print on the ticket. Distinct from Payment.referenceNumber, which
+  // identifies a payment rather than a registration. Nullable because it is
+  // assigned when the registration becomes valid, not when the row is created.
+  registrationNumber String?   @unique
+  // The QR's actual payload: 32 cryptographically random bytes, hex-encoded.
+  // Opaque by design — it encodes nothing about the person or the event, so a
+  // photographed ticket leaks nothing and the server stays the only thing able
+  // to resolve it. Unique, so a collision is a write error rather than a silent
+  // two-people-one-ticket. Nullable: a PENDING_PAYMENT or CANCELLED
+  // registration legitimately has no usable QR.
+  qrToken            String?   @unique
+  qrGeneratedAt      DateTime?
+  // Denormalized "first successful check-in". The scan hot path gates on this
+  // one column with a single conditional UPDATE (... WHERE checkedInAt IS NULL),
+  // which is what makes two scanners hitting the same QR safe without holding a
+  // transaction open; deriving it from the EventCheckIn rows would mean an
+  // aggregate on every scan instead. Null = not yet admitted.
+  checkedInAt        DateTime?
   invitationId Int?     @unique
   createdAt    DateTime @default(now())
 
@@ -252,6 +320,7 @@ model EventRegistration {
   // SetNull, not Cascade — deleting an organization must never delete the
   // historical registration; organizationPath still preserves the label.
   organization Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  checkIns     EventCheckIn[]
 
   @@unique([userId, eventId])
   @@index([organizationId])
@@ -269,6 +338,84 @@ model EventRegistration {
 // the invitee ever having/keeping an account. `token` is the unguessable
 // value embedded in the email link; clicking it is how registeredAt/the
 // linked EventRegistration ever get set — nothing here auto-registers anyone.
+// One row per SCAN, not per admitted person — a person who is scanned three
+// times produces three rows (one SUCCESS, two ALREADY_CHECKED_IN). That is
+// deliberate: the duplicate and rejected attempts are exactly what the door
+// reports are about, and discarding them would leave "this QR was presented
+// four times at three stations" invisible. "Is this person admitted?" is
+// answered by EventRegistration.checkedInAt, never by aggregating this table.
+model EventCheckIn {
+  id                  Int      @id @default(autoincrement())
+  // Nullable: a scan of a token that matches nothing still gets logged, and by
+  // definition has no registration to point at (result = INVALID_QR).
+  eventRegistrationId Int?
+  // Denormalized from the registration so per-event and per-station reporting
+  // never needs a join — and so INVALID_QR scans, which have no registration at
+  // all, are still attributable to the event whose door they happened at.
+  eventId             Int
+  // Reserved for the session-level check-in in the roadmap (Opening Ceremony,
+  // Technical Session 1, ...). Unused and always null in Phase 1; present now
+  // only so adding sessions later is a new table plus a foreign key, not a
+  // rewrite of how scans are recorded.
+  sessionId           Int?
+  scannedAt           DateTime      @default(now())
+  // Null only for a scan that somehow reaches the service without a session —
+  // in practice always set, since the endpoint is behind an admin gate.
+  scannedBy           Int?
+  // Free text the station operator sets once ("ENTRANCE-02"), stored per scan
+  // so the station breakdown survives the station being renamed later.
+  scannerIdentifier   String?
+  action              CheckInAction @default(CHECK_IN)
+  result              CheckInResult
+  ipAddress           String?
+  userAgent           String?       @db.Text
+  createdAt           DateTime      @default(now())
+
+  // SetNull rather than Cascade: deleting a registration must not erase the
+  // record that someone was admitted at the door with it.
+  eventRegistration EventRegistration? @relation(fields: [eventRegistrationId], references: [id], onDelete: SetNull)
+  event             Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  scanner           User?              @relation("checkin_scanned_by", fields: [scannedBy], references: [id], onDelete: SetNull)
+
+  @@index([eventRegistrationId])
+  // Backs both the live "recent check-ins" feed and any time-windowed report.
+  @@index([eventId, scannedAt])
+  // Backs the per-result counts (successes, duplicates, invalid) on the
+  // dashboard without scanning every scan ever recorded for the event.
+  @@index([eventId, result])
+  @@map("event_check_ins")
+}
+
+// A main admin (Role.ADMIN) can always run check-in for any event. This table is
+// how that authority is lent to a CHAPTER_ADMIN, and it is scoped to ONE event
+// on purpose: a chapter admin granted access for the National Convention gains
+// no ability to scan at anything else, and the grant stops mattering when that
+// event ends rather than lingering on their account.
+//
+// Revocation is soft (revokedAt/revokedBy) rather than a row delete, mirroring
+// why OrganizationAdminAudit exists — "who could scan at this event, and who
+// gave them that" must remain answerable after access is taken away. The unique
+// constraint is on (eventId, userId) alone, so re-granting revives the existing
+// row instead of accumulating duplicates; active means revokedAt IS NULL.
+model EventCheckInStaff {
+  id        Int       @id @default(autoincrement())
+  eventId   Int
+  userId    Int
+  grantedBy Int
+  grantedAt DateTime  @default(now())
+  revokedAt DateTime?
+  revokedBy Int?
+
+  event     Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User  @relation("checkin_staff_user", fields: [userId], references: [id], onDelete: Cascade)
+  grantedByUser User  @relation("checkin_staff_granted_by", fields: [grantedBy], references: [id], onDelete: Cascade)
+  revokedByUser User? @relation("checkin_staff_revoked_by", fields: [revokedBy], references: [id], onDelete: SetNull)
+
+  @@unique([eventId, userId])
+  @@index([userId])
+  @@map("event_check_in_staff")
+}
+
 model EventInvitation {
   id            Int              @id @default(autoincrement())
   eventId       Int

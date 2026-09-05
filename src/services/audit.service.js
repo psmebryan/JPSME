@@ -42,6 +42,14 @@ const AUDIT_ACTIONS = [
   'SUSPICIOUS_PAYMENT_MISMATCH',
   'PAYMENT_RECONCILED',
   'USER_STATUS_CHANGED',
+  // Was missing here while present in the schema enum — the admin filter could
+  // never select it, so an auto-approval failure was invisible on the very page
+  // built to surface it.
+  'AUTO_APPROVAL_FAILED',
+  'QR_GENERATED',
+  'QR_REGENERATED',
+  'CHECKIN_ACCESS_GRANTED',
+  'CHECKIN_ACCESS_REVOKED',
 ];
 
 const SAFE_USER_SELECT = { id: true, firstName: true, lastName: true, email: true };
