@@ -211,9 +211,18 @@ function verifyWebhookSignature(rawBody, signatureHeader) {
   return crypto.timingSafeEqual(expectedBuf, candidateBuf);
 }
 
+// Read-only. Used by the webhook health check to ask PayMongo whether it still
+// has somewhere to deliver confirmations — the failure that otherwise shows up
+// only as "paying feels slow".
+async function listWebhooks() {
+  const json = await paymongoRequest('GET', '/webhooks');
+  return json.data || [];
+}
+
 module.exports = {
   createGcashCheckout,
   getCheckoutSession,
   createRefund,
   verifyWebhookSignature,
+  listWebhooks,
 };
