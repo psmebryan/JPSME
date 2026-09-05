@@ -24,14 +24,12 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Logged in! Redirecting...');
         const loginContext = formData.get('context');
         const user = res.data.user;
-        let destination = '/profile';
+        // Default is the site home. A returning member logging in for the
+        // tenth time wants the site, not their own profile page — landing
+        // them on /profile every time just adds a click.
+        let destination = '/';
         if (loginContext === 'admin' && ['ADMIN', 'CHAPTER_ADMIN'].includes(user.role)) {
           destination = '/admin/dashboard';
-        } else if (user.role === 'USER' && user.status === 'PENDING') {
-          // A pending membership payment always takes priority over wherever
-          // the user was headed (e.g. an event invitation link) — nothing
-          // else on the account is usable until that's resolved.
-          destination = '/membership-payment';
         } else if (loginContext !== 'admin') {
           // Only a same-site relative path is ever honored — a bare "/next"
           // (never "//next", which browsers treat as protocol-relative to an
@@ -43,6 +41,19 @@ document.addEventListener('DOMContentLoaded', () => {
           const next = user.postApprovalRedirectUrl || new URLSearchParams(window.location.search).get('next');
           if (next && next.startsWith('/') && !next.startsWith('//')) {
             destination = next;
+          } else if (user.isFirstLogin) {
+            // First login after registering, and nowhere specific they were
+            // headed: show them their profile once. The membership card there
+            // states that paying is optional and carries the Pay button, which
+            // is the thing a brand-new member needs to see and would otherwise
+            // have to go hunting for. Ranked below `next` on purpose — someone
+            // who signed up from an event link wanted that event, not a tour.
+            //
+            // Whether a PENDING member is instead confined to the payment flow
+            // is the server's call: app.js's pending-user gate reads the
+            // membership_payment_required setting and redirects if it is on.
+            // Not duplicated here — two copies of that policy could only drift.
+            destination = '/profile';
           }
         }
         window.location.href = destination;

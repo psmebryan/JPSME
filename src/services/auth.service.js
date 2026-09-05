@@ -143,16 +143,25 @@ async function login(email, password, { context = "user" } = {}) {
   }
 
   // One-time: only actually usable once the account has cleared payment +
-  // admin approval (a still-PENDING user gets forced to /membership-payment
-  // regardless — see app.js's pending-user gate and this same check on the
-  // client side). Cleared immediately so it doesn't fire on every future login.
+  // admin approval (a still-PENDING user with required payment gets held on
+  // /membership-payment by app.js's pending-user gate regardless). Cleared
+  // immediately so it doesn't fire on every future login.
   let postApprovalRedirectUrl = null;
   if (user.role === "USER" && user.status === "APPROVED" && user.postApprovalRedirectUrl) {
     postApprovalRedirectUrl = user.postApprovalRedirectUrl;
     await prisma.user.update({ where: { id: user.id }, data: { postApprovalRedirectUrl: null } });
   }
 
-  return { ...toPublicUser(user), postApprovalRedirectUrl };
+  // Read BEFORE the stamp below, or it would always be false: this is the
+  // signal the client uses to send a brand-new member to their profile once
+  // (where the membership card explains that paying is optional) and to the
+  // site home on every visit after that.
+  const isFirstLogin = !user.lastLoginAt;
+  // Awaited, not fire-and-forget: if this write is lost the account still reads
+  // as never-logged-in and the first-login landing repeats on every visit.
+  await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+
+  return { ...toPublicUser(user), postApprovalRedirectUrl, isFirstLogin };
 }
 
 async function getById(id) {
