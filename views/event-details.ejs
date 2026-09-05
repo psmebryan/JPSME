@@ -124,6 +124,7 @@
           <label for="inv-req-company" class="form-label">Company (optional)</label>
           <input id="inv-req-company" name="company" maxlength="150" class="form-input">
         </div>
+        <%- include('partials/human-check') %>
         <button type="submit" class="bg-indigo-600 text-white px-5 py-2.5 rounded-md hover:bg-indigo-700">Request an Invitation</button>
       </form>
       <p id="invitation-request-message" class="hidden mt-3 text-sm"></p>

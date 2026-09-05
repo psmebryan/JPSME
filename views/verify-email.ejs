@@ -61,6 +61,7 @@
       <input name="email" type="email" required placeholder="you@example.com"
              value="<%= locals.email || '' %>"
              class="flex-1 min-w-[200px] rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500">
+      <%- include('partials/human-check') %>
       <button type="submit" class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50 text-sm font-medium">
         Send a new code
       </button>

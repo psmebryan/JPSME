@@ -6,6 +6,7 @@ const registrationApi = require('../../controllers/api/registration.api');
 const invitationApi = require('../../controllers/api/invitation.api');
 const ticketApi = require('../../controllers/api/ticket.api');
 const checkinApi = require('../../controllers/api/checkin.api');
+const { requireHuman } = require('../../services/captcha.service');
 const { apiAuth, apiAdmin } = require('../../middleware/auth.middleware');
 const { verifyCsrfToken } = require('../../middleware/csrf.middleware');
 const { uploadEventImage } = require('../../middleware/upload.middleware');
@@ -199,6 +200,9 @@ router.post(
   '/:id/invitation-requests',
   verifyCsrfToken,
   invitationRequestLimiter,
+  // The most exposed form in the app: no account needed, and it mails whatever
+  // address is typed into it.
+  requireHuman(),
   invitationRequestValidators,
   invitationApi.requestInvitation
 );

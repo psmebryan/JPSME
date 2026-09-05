@@ -1,0 +1,40 @@
+<%
+/*
+  Drop inside any public <form> that creates a record or sends mail. Pairs with
+  captcha.service.js's requireHuman() on the matching route — one without the
+  other is either a check nobody can pass or a form nobody checks.
+
+  Two layers, deliberately:
+
+  The honeypot needs no keys and no third party, so it works today. Most abuse
+  is a script filling every field it can find, and a field no human ever sees
+  catches that outright. It is inside the form so the existing
+  FormData -> Object.fromEntries submit path picks it up with no JS changes.
+
+  Turnstile renders only once TURNSTILE_SITE_KEY is set, and writes its result
+  into a hidden input named captchaToken — the name the server reads — via
+  data-response-field-name, so it too rides along with the existing submit.
+*/
+%>
+<div class="hidden" aria-hidden="true">
+  <%
+    /*
+      Named "website" rather than something like "honeypot": a bot fills what
+      looks fillable, so a plausible name catches far more than an honest one.
+      tabindex="-1" keeps it out of keyboard navigation, and autocomplete="off"
+      stops a browser helpfully filling it on a real person's behalf — which
+      would lock them out of the form they are trying to use.
+    */
+  %>
+  <label>Website
+    <input type="text" name="website" tabindex="-1" autocomplete="off" value="">
+  </label>
+</div>
+
+<% if (locals.turnstileSiteKey) { %>
+  <div class="cf-turnstile my-3"
+       data-sitekey="<%= turnstileSiteKey %>"
+       data-response-field-name="captchaToken"
+       data-theme="auto"
+       data-appearance="interaction-only"></div>
+<% } %>

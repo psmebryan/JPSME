@@ -111,6 +111,14 @@ const config = {
     get paymongoWebhookSecret() { return process.env.PAYMONGO_WEBHOOK_SECRET; },
   },
 
+  captcha: {
+    // Both must be set for Turnstile to do anything. The site key is public
+    // (it is rendered into the page); the secret key never leaves the server.
+    // With neither set, the honeypot in captcha.service.js still runs.
+    get turnstileSiteKey() { return process.env.TURNSTILE_SITE_KEY; },
+    get turnstileSecretKey() { return process.env.TURNSTILE_SECRET_KEY; },
+  },
+
   googleSheets: {
     get sheetId() { return process.env.GOOGLE_SHEETS_ID; },
     get serviceAccountEmail() { return process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL; },

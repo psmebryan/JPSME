@@ -115,10 +115,16 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", (req, res) => `'nonce-${res.locals.cspNonce}'`],
+        // challenges.cloudflare.com is Turnstile. It needs three directives:
+        // its script, the iframe that script creates, and the calls that
+        // iframe makes back to Cloudflare. Named explicitly rather than
+        // loosening the policy — it is the only third-party origin the app
+        // runs code from.
+        scriptSrc: ["'self'", 'https://challenges.cloudflare.com', (req, res) => `'nonce-${res.locals.cspNonce}'`],
+        connectSrc: ["'self'", 'https://challenges.cloudflare.com'],
         styleSrc: ["'self'", (req, res) => `'nonce-${res.locals.cspNonce}'`],
         imgSrc: ["'self'", 'data:'],
-        frameSrc: ["'self'", 'https://online.anyflip.com'],
+        frameSrc: ["'self'", 'https://online.anyflip.com', 'https://challenges.cloudflare.com'],
       },
     },
   })
@@ -199,6 +205,10 @@ app.use((req, res, next) => {
 app.use(async (req, res, next) => {
   if (!req.path.startsWith('/api/')) {
     res.locals.logoUrl = await settingsService.getLogoUrl().catch(() => '/img/default-logo.svg');
+    // Public by design — it identifies the site to Turnstile and is meant to
+    // be read by the browser. Empty when unconfigured, which is how the views
+    // know to render nothing rather than a broken widget.
+    res.locals.turnstileSiteKey = config.captcha.turnstileSiteKey || '';
   }
   next();
 });

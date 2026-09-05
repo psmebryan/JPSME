@@ -14,6 +14,12 @@
   </main>
   <%- include('partials/footer') %>
   <script src="/js/api.js"></script>
+  <% if (locals.turnstileSiteKey) { %>
+    <%# Cloudflare's own loader. Renders every .cf-turnstile on the page and
+        writes each result into that widget's captchaToken input. Deferred so it
+        never delays first paint of a form somebody is about to fill in. %>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  <% } %>
   <style nonce="<%= cspNonce %>">
     /*
       The public site is dark, but its views are written with light-theme

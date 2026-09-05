@@ -6,6 +6,7 @@ const { apiAuth } = require('../../middleware/auth.middleware');
 const { verifyCsrfToken } = require('../../middleware/csrf.middleware');
 const { uploadProfileImage } = require('../../middleware/upload.middleware');
 const verifyImageSignature = require('../../middleware/verifyImageSignature');
+const { requireHuman } = require('../../services/captcha.service');
 
 const router = Router();
 
@@ -78,7 +79,10 @@ const profileValidators = [
   }).withMessage('A valid organization is required'),
 ];
 
-router.post('/register', verifyCsrfToken, registerLimiter, registerValidators, authApi.register);
+// requireHuman sits before the validators on purpose: a bot's submission
+// should be turned away before the server spends anything parsing what it
+// claimed to be.
+router.post('/register', verifyCsrfToken, registerLimiter, requireHuman(), registerValidators, authApi.register);
 router.post('/login', verifyCsrfToken, loginLimiter, loginValidators, authApi.login);
 router.post('/logout', verifyCsrfToken, authApi.logout);
 router.get('/me', apiAuth, authApi.me);
@@ -91,10 +95,13 @@ router.post(
   verifyImageSignature,
   authApi.uploadProfileImage
 );
+// Protected because it mails an arbitrary address on demand — the cheapest
+// way to use this site to send someone else mail they did not ask for.
 router.post(
   '/resend-verification',
   verifyCsrfToken,
   resendVerificationLimiter,
+  requireHuman(),
   resendVerificationValidators,
   authApi.resendVerification
 );
