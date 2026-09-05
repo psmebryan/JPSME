@@ -7,6 +7,7 @@ const organizationService = require('../services/organization.service');
 const organizationAdminService = require('../services/organizationAdmin.service');
 const settingsService = require('../services/settings.service');
 const checkinService = require('../services/checkin.service');
+const checkinReportService = require('../services/checkinReport.service');
 const registrationService = require('../services/registration.service');
 const invitationService = require('../services/invitation.service');
 const emailVerificationService = require('../services/emailVerification.service');
@@ -725,6 +726,40 @@ const adminEventCheckInPage = asyncHandler(async (req, res) => {
   });
 });
 
+// The report on a door after the fact. Gated the same way the door itself is:
+// a chapter admin who was trusted to run this entrance can read what happened
+// at it, and nobody else can.
+const adminEventCheckInReportPage = asyncHandler(async (req, res) => {
+  const event = await eventService.getEventById(req.params.id);
+  if (!(await checkinService.canCheckIn(req.session.user, event.id))) {
+    throw new AppError('You do not have check-in access for this event', 403);
+  }
+
+  const result = (req.query.result || '').toString();
+  const station = (req.query.station || '').toString();
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+
+  const [summary, log, notCheckedIn] = await Promise.all([
+    checkinReportService.getReportSummary(event.id),
+    checkinReportService.listScans(event.id, { result, station, page }),
+    checkinReportService.getNotCheckedIn(event.id),
+  ]);
+
+  renderAdmin(req, res, 'admin/event-checkin-report', {
+    title: `Check-in report — ${event.title}`,
+    event,
+    summary,
+    scans: log.scans,
+    total: log.total,
+    page: log.page,
+    totalPages: log.totalPages,
+    notCheckedIn,
+    result,
+    station,
+    resultOptions: checkinReportService.RESULTS,
+  });
+});
+
 const adminEventRegistrationsPage = asyncHandler(async (req, res) => {
   const isMainAdmin = req.session.user.role === 'ADMIN';
   const search = (req.query.search || '').toString().trim();
@@ -843,6 +878,7 @@ module.exports = {
   adminEditEventPage,
   adminEventRegistrationsPage,
   adminEventCheckInPage,
+  adminEventCheckInReportPage,
   adminInvitationsPage,
   adminArticlesPage,
   adminCreateArticlePage,

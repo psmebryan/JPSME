@@ -1,0 +1,239 @@
+<%
+/*
+  What happened at the door, after the door has closed. Read rather than
+  operated, so unlike the check-in screen this one is dense on purpose: an
+  organiser reconciling an event is comparing numbers, not glancing at a
+  verdict from arm's length.
+*/
+function fmt(d) {
+  return new Date(d).toLocaleString([], { dateStyle: 'medium', timeStyle: 'medium' });
+}
+const RESULT_BADGE = {
+  SUCCESS: 'badge-green',
+  ALREADY_CHECKED_IN: 'badge-amber',
+  INVALID_QR: 'badge-red',
+  WRONG_EVENT: 'badge-red',
+  NOT_REGISTERED: 'badge-red',
+  CANCELLED: 'badge-slate',
+  UNPAID: 'badge-red',
+  REJECTED: 'badge-red',
+};
+function qs(overrides) {
+  const base = { result: locals.result || '', station: locals.station || '', page: '' };
+  const merged = Object.assign({}, base, overrides);
+  return Object.entries(merged).filter(function (e) { return e[1]; })
+    .map(function (e) { return encodeURIComponent(e[0]) + '=' + encodeURIComponent(e[1]); }).join('&');
+}
+%>
+<div class="max-w-6xl mx-auto">
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div class="min-w-0">
+      <a href="/admin/events/<%= event.id %>/registrations" class="text-sm text-indigo-600 hover:underline">&larr; Back to registrations</a>
+      <h1 class="admin-h1 mt-1">Check-in report</h1>
+      <p class="admin-subtitle truncate"><%= event.title %> &middot; <%= new Date(event.startDate).toLocaleDateString() %></p>
+    </div>
+    <div class="flex flex-wrap gap-3">
+      <a href="/admin/events/<%= event.id %>/check-in" class="btn-secondary">Open check-in</a>
+      <a href="/api/events/<%= event.id %>/checkin/report.xlsx" class="btn-primary">Export to Excel</a>
+    </div>
+  </div>
+
+  <!-- Attendance. The four numbers an organiser is asked for first. -->
+  <div class="mt-5 grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div class="admin-card p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Confirmed registrations</p>
+      <p class="mt-1 text-2xl font-semibold text-slate-900 tabular-nums"><%= summary.registered %></p>
+    </div>
+    <div class="admin-card p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Checked in</p>
+      <p class="mt-1 text-2xl font-semibold text-green-700 tabular-nums"><%= summary.checkedIn %></p>
+    </div>
+    <div class="admin-card p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Did not attend</p>
+      <p class="mt-1 text-2xl font-semibold text-slate-900 tabular-nums"><%= summary.notCheckedIn %></p>
+    </div>
+    <div class="admin-card p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Attendance rate</p>
+      <p class="mt-1 text-2xl font-semibold text-slate-900 tabular-nums"><%= summary.rate %>%</p>
+    </div>
+  </div>
+
+  <div class="mt-5 grid gap-5 lg:grid-cols-2">
+    <!-- Every outcome, including the zeroes: omitting "WRONG_EVENT: 0" would
+         read as though the question was never asked, which is not the same as
+         the answer being none. -->
+    <div class="admin-card p-4">
+      <h2 class="text-sm font-semibold text-slate-800">Scan outcomes</h2>
+      <p class="text-xs text-slate-500 mt-0.5"><%= summary.scanTotal %> scans in total, refusals included.</p>
+      <table class="admin-table mt-3">
+        <tbody class="admin-tbody">
+          <% summary.resultBreakdown.forEach(function (r) { %>
+            <tr class="admin-tr">
+              <td class="admin-td"><span class="<%= RESULT_BADGE[r.result] || 'badge-slate' %>"><%= r.result.replace(/_/g, ' ') %></span></td>
+              <td class="admin-td text-right tabular-nums font-medium"><%= r.count %></td>
+              <td class="admin-td text-right w-24">
+                <% if (r.count) { %>
+                  <a href="?<%= qs({ result: r.result }) %>" class="text-xs text-indigo-600 hover:underline">View</a>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- A station with many scans but few admissions is usually one pointed at
+         the wrong queue, which is only visible if both are shown. -->
+    <div class="admin-card p-4">
+      <h2 class="text-sm font-semibold text-slate-800">Stations</h2>
+      <% if (!summary.stations.length) { %>
+        <p class="text-sm text-slate-500 mt-2">No scans recorded yet.</p>
+      <% } else { %>
+        <table class="admin-table mt-3">
+          <thead class="admin-table-head">
+            <tr>
+              <th class="admin-th">Station</th>
+              <th class="admin-th text-right">Scans</th>
+              <th class="admin-th text-right">Admitted</th>
+              <th class="admin-th text-right">Refused</th>
+            </tr>
+          </thead>
+          <tbody class="admin-tbody">
+            <% summary.stations.forEach(function (s) { %>
+              <tr class="admin-tr">
+                <td class="admin-td font-mono text-xs">
+                  <a href="?<%= qs({ station: s.station }) %>" class="text-indigo-600 hover:underline"><%= s.station %></a>
+                </td>
+                <td class="admin-td text-right tabular-nums"><%= s.total %></td>
+                <td class="admin-td text-right tabular-nums text-green-700"><%= s.admitted %></td>
+                <td class="admin-td text-right tabular-nums text-red-700"><%= s.refused %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </div>
+
+  <!-- The scan log -->
+  <div class="mt-5">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <h2 class="text-sm font-semibold text-slate-800">
+        Scan log
+        <span class="font-normal text-slate-500">(<%= total %><%= (result || station) ? ' matching' : '' %>)</span>
+      </h2>
+      <% if (result || station) { %>
+        <a href="/admin/events/<%= event.id %>/check-in/report" class="text-sm text-indigo-600 hover:underline">Clear filters</a>
+      <% } %>
+    </div>
+
+    <div class="admin-table-wrap mt-3">
+      <table class="admin-table">
+        <thead class="admin-table-head">
+          <tr>
+            <th class="admin-th">Time</th>
+            <th class="admin-th">Result</th>
+            <th class="admin-th">Person</th>
+            <th class="admin-th">Station</th>
+            <th class="admin-th">Operator</th>
+          </tr>
+        </thead>
+        <tbody class="admin-tbody">
+          <% if (!scans.length) { %>
+            <tr><td colspan="5" class="admin-td">
+              <%- include('../partials/empty-state', {
+                title: (result || station) ? 'No scans match those filters' : 'No scans recorded yet',
+                hint: (result || station)
+                  ? 'Try clearing the filter to see everything that happened at this event.'
+                  : 'Scans will appear here as people are checked in at the door.',
+                filtered: Boolean(result || station),
+              }) %>
+            </td></tr>
+          <% } else { %>
+            <% scans.forEach(function (s) { %>
+              <tr class="admin-tr">
+                <td class="admin-td text-xs tabular-nums text-slate-600 whitespace-nowrap"><%= fmt(s.scannedAt) %></td>
+                <td class="admin-td">
+                  <span class="<%= RESULT_BADGE[s.result] || 'badge-slate' %>"><%= s.result.replace(/_/g, ' ') %></span>
+                  <% if (s.action === 'MANUAL_CHECK_IN') { %>
+                    <span class="badge-slate ml-1">manual</span>
+                  <% } %>
+                </td>
+                <td class="admin-td">
+                  <% if (s.eventRegistration) { %>
+                    <span class="font-medium text-slate-900"><%= s.eventRegistration.fullName %></span>
+                    <% if (s.eventRegistration.registrationNumber) { %>
+                      <span class="block text-xs font-mono text-slate-500"><%= s.eventRegistration.registrationNumber %></span>
+                    <% } %>
+                  <% } else { %>
+                    <%# An unrecognised code has no registration behind it — this is
+                        genuinely nobody, not missing data. %>
+                    <span class="text-slate-400 text-sm">&mdash;</span>
+                  <% } %>
+                </td>
+                <td class="admin-td font-mono text-xs"><%= s.scannerIdentifier || '—' %></td>
+                <td class="admin-td text-sm text-slate-600">
+                  <%= s.scanner ? (s.scanner.firstName + ' ' + s.scanner.lastName) : '—' %>
+                </td>
+              </tr>
+            <% }) %>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+
+    <% if (totalPages > 1) { %>
+      <div class="mt-3 flex items-center justify-between text-sm">
+        <span class="text-slate-500">Page <%= page %> of <%= totalPages %></span>
+        <div class="flex gap-2">
+          <% if (page > 1) { %>
+            <a href="?<%= qs({ page: page - 1 }) %>" class="btn-secondary">Previous</a>
+          <% } %>
+          <% if (page < totalPages) { %>
+            <a href="?<%= qs({ page: page + 1 }) %>" class="btn-secondary">Next</a>
+          <% } %>
+        </div>
+      </div>
+    <% } %>
+  </div>
+
+  <!-- The list an organiser wants the morning after. -->
+  <div class="mt-6">
+    <h2 class="text-sm font-semibold text-slate-800">
+      Did not attend <span class="font-normal text-slate-500">(<%= notCheckedIn.length %>)</span>
+    </h2>
+    <div class="admin-table-wrap mt-3">
+      <table class="admin-table">
+        <thead class="admin-table-head">
+          <tr>
+            <th class="admin-th">Registration No.</th>
+            <th class="admin-th">Name</th>
+            <th class="admin-th">Email</th>
+            <th class="admin-th">Organization</th>
+          </tr>
+        </thead>
+        <tbody class="admin-tbody">
+          <% if (!notCheckedIn.length) { %>
+            <tr><td colspan="4" class="admin-td">
+              <%- include('../partials/empty-state', {
+                title: summary.registered ? 'Everyone who registered came' : 'No confirmed registrations yet',
+                hint: summary.registered
+                  ? 'Every confirmed registration was checked in at the door.'
+                  : 'This list fills in once people register and are confirmed.',
+              }) %>
+            </td></tr>
+          <% } else { %>
+            <% notCheckedIn.forEach(function (r) { %>
+              <tr class="admin-tr">
+                <td class="admin-td font-mono text-xs"><%= r.registrationNumber || '—' %></td>
+                <td class="admin-td font-medium text-slate-900"><%= r.fullName %></td>
+                <td class="admin-td text-sm text-slate-600"><%= r.email %></td>
+                <td class="admin-td text-sm text-slate-600"><%= r.organizationPath || '—' %></td>
+              </tr>
+            <% }) %>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

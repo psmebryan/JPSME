@@ -58,6 +58,7 @@ router.get('/admin/events', ensureAdmin, pages.adminEventsPage);
 router.get('/admin/events/:id/edit', ensureAdmin, pages.adminEditEventPage);
 router.get('/admin/events/:id/registrations', ensureAdmin, pages.adminEventRegistrationsPage);
 router.get('/admin/events/:id/check-in', ensureAdmin, pages.adminEventCheckInPage);
+router.get('/admin/events/:id/check-in/report', ensureAdmin, pages.adminEventCheckInReportPage);
 
 // Payments — MAIN_ADMIN only. Chapter admins have no access to payment data.
 router.get('/admin/payments', ensureMainAdminOnly, pages.adminPaymentsPage);

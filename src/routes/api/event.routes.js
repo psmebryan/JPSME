@@ -147,6 +147,7 @@ router.post(
 );
 router.get('/:id/checkin/search', apiAuth, checkinApi.searchRegistrations);
 router.get('/:id/checkin/stats', apiAuth, checkinApi.stats);
+router.get('/:id/checkin/report.xlsx', apiAuth, checkinApi.exportReport);
 
 // Granting the ability to scan is a main-admin power, separate from having it.
 router.get('/:id/checkin/staff', apiAdmin, checkinApi.listStaff);
