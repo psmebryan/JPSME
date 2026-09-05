@@ -1,5 +1,6 @@
 const config = require('../config');
 const logger = require('../utils/logger');
+const challengeService = require('./challenge.service');
 
 // Bot protection for the handful of public forms that create records or send
 // mail to an address the sender chose — registration, resend-verification, and
@@ -13,10 +14,12 @@ const logger = require('../utils/logger');
 //      right now. Most abuse is a script filling every field it can find; a
 //      field a human never sees and never fills catches that outright.
 //
-//   2. Cloudflare Turnstile, which catches what a honeypot cannot but only does
-//      anything once TURNSTILE_SECRET_KEY is set. Until then the honeypot is
-//      the whole defence, which is exactly why it exists rather than being
-//      skipped as redundant.
+//   2. Either Cloudflare Turnstile, or — when its keys are not configured — a
+//      built-in challenge the server generates and checks itself. Turnstile is
+//      much the stronger of the two and is nearly invisible to a real person,
+//      so it wins whenever it is available; the built-in one exists so that a
+//      deployment without keys still has something a visitor can see working,
+//      rather than a hidden field and a promise.
 
 const VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 
@@ -107,7 +110,18 @@ function requireHuman() {
       });
     }
 
-    if (!isTurnstileConfigured()) return next();
+    // No Turnstile keys: the built-in challenge is the visible layer instead.
+    if (!isTurnstileConfigured()) {
+      if (!challengeService.verify(req.session, req.body && req.body.challengeAnswer)) {
+        logger.warn('captcha: challenge answer wrong or missing', { path: req.path, ip: req.ip });
+        return res.status(400).json({
+          success: false,
+          message: 'The characters did not match. Please try the new image.',
+          errors: null,
+        });
+      }
+      return next();
+    }
 
     const result = await verifyTurnstileToken(req.body && req.body.captchaToken, req.ip);
     if (result.ok) {

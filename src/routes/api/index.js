@@ -10,6 +10,8 @@ const webhookRoutes = require('./webhook.routes');
 const articleRoutes = require('./article.routes');
 const organizationRoutes = require('./organization.routes');
 const { success } = require('../../utils/apiResponse');
+const captchaService = require('../../services/captcha.service');
+const challengeService = require('../../services/challenge.service');
 
 const router = Router();
 
@@ -27,6 +29,17 @@ router.use(baselineApiLimiter);
 
 // Lets client-side JS fetch the current CSRF token without a full page reload.
 router.get('/csrf-token', (req, res) => success(res, { csrfToken: req.session.csrfToken }));
+
+// Hands out the built-in challenge image and remembers only its hash on the
+// session. Also the refresh button's endpoint — asking again abandons the
+// previous one, so nobody can collect answers to submit later.
+//
+// Returns nothing when Turnstile is configured, because then Turnstile is the
+// check and the page should not be drawing a second one.
+router.get('/captcha', (req, res) => {
+  if (captchaService.isTurnstileConfigured()) return success(res, { svg: null });
+  return success(res, challengeService.issue(req.session));
+});
 
 router.use('/auth', authRoutes);
 router.use('/admin', adminRoutes);

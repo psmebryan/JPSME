@@ -14,6 +14,10 @@
   </main>
   <%- include('partials/footer') %>
   <script src="/js/api.js"></script>
+  <%# Loads the built-in challenge image. Does nothing on a page with no
+      challenge slot, and nothing at all once Turnstile keys are set, since the
+      partial then renders Cloudflare's widget instead. %>
+  <script src="/js/captcha.js"></script>
   <% if (locals.turnstileSiteKey) { %>
     <%# Cloudflare's own loader. Renders every .cf-turnstile on the page and
         writes each result into that widget's captchaToken input. Deferred so it

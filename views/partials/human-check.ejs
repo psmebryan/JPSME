@@ -6,14 +6,16 @@
 
   Two layers, deliberately:
 
-  The honeypot needs no keys and no third party, so it works today. Most abuse
-  is a script filling every field it can find, and a field no human ever sees
-  catches that outright. It is inside the form so the existing
-  FormData -> Object.fromEntries submit path picks it up with no JS changes.
+  The honeypot needs no keys and no third party. Most abuse is a script filling
+  every field it can find, and a field no human ever sees catches that outright.
+  It is inside the form so the existing FormData -> Object.fromEntries submit
+  path picks it up with no JS changes.
 
-  Turnstile renders only once TURNSTILE_SITE_KEY is set, and writes its result
-  into a hidden input named captchaToken — the name the server reads — via
-  data-response-field-name, so it too rides along with the existing submit.
+  Then whichever real check is available. With TURNSTILE_SITE_KEY set, Cloudflare
+  Turnstile — stronger, and nearly invisible to a real person. Without it, the
+  built-in challenge image, which the server generates and checks itself so that
+  a deployment with no keys still has a working, visible check rather than a
+  hidden field and a promise.
 */
 %>
 <div class="hidden" aria-hidden="true">
@@ -35,6 +37,32 @@
   <div class="cf-turnstile my-3"
        data-sitekey="<%= turnstileSiteKey %>"
        data-response-field-name="captchaToken"
-       data-theme="auto"
-       data-appearance="interaction-only"></div>
+       data-theme="auto"></div>
+<% } else { %>
+  <%
+    /*
+      Rendered empty and filled in by /js/captcha.js, rather than server-side,
+      so this partial works from any page without every page controller having
+      to remember to issue a challenge. The image arrives a moment after the
+      form; that is fine, because nobody submits before they have read it.
+    */
+  %>
+  <div class="my-3" data-challenge>
+    <label class="block text-sm font-medium text-gray-700 mb-1" for="challenge-answer">
+      Type the characters shown
+    </label>
+    <div class="flex items-center gap-2 flex-wrap">
+      <div data-challenge-image
+           class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-gray-100 overflow-hidden"
+           style="width:180px;height:60px"></div>
+      <button type="button" data-challenge-refresh
+              class="text-sm text-indigo-600 hover:underline px-2 py-2"
+              title="Show different characters">New image</button>
+    </div>
+    <input id="challenge-answer" name="challengeAnswer" type="text"
+           autocomplete="off" autocapitalize="characters" spellcheck="false"
+           maxlength="8" required
+           class="mt-2 w-40 rounded-lg border border-gray-300 px-3 py-2 text-lg font-mono tracking-widest uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500">
+    <p class="mt-1 text-xs text-gray-500">Not case sensitive. Click "New image" if you can't read it.</p>
+  </div>
 <% } %>
