@@ -3,18 +3,22 @@
 
 generator client {
   provider = "prisma-client-js"
-  // Prisma ships a query engine compiled against a specific libssl, and picks
-  // one by sniffing the host. On this deployment that sniff failed outright —
-  // "failed to detect the libssl/openssl version" — so it fell back to
-  // openssl-1.1.x and then could not load libssl.so.1.1, which does not exist
-  // on a modern distro.
+  // Prisma compiles its query engine against a specific libssl and chooses one
+  // by sniffing the host at runtime. On this host the sniff fails — "failed to
+  // detect the libssl/openssl version" — and it falls back to openssl-1.1.x,
+  // which no longer exists there.
   //
-  // Since the detection is what broke, guessing a single replacement target
-  // just moves the gamble. These cover the realistic possibilities instead:
-  // Debian/Ubuntu, RHEL/CloudLinux (which is what cPanel hosting usually runs
-  // on), and Alpine, each on OpenSSL 3. The 1.1 variants stay for older hosts.
-  // Extra targets cost download size at build time and nothing at runtime.
-  binaryTargets = ["native", "debian-openssl-3.0.x", "rhel-openssl-3.0.x", "linux-musl-openssl-3.0.x", "debian-openssl-1.1.x", "rhel-openssl-1.1.x"]
+  // Only OpenSSL 3 targets are listed, and that is the point rather than an
+  // omission. Shipping a 1.1 engine as well does not add a fallback: the failing
+  // path looks up an engine by the name it wrongly detected, so a 1.1 binary
+  // being present just gives it something to load and fail on, reproducing the
+  // exact error. With none available it resolves to a target it can actually
+  // run. debian-openssl-3.0.x is what this platform's own diagnostics name;
+  // musl is kept as cheap insurance in case the base image ever changes.
+  //
+  // Must stay on one line — Prisma 5.22 rejects a multi-line array here with
+  // "this line is not a valid definition within a generator".
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
