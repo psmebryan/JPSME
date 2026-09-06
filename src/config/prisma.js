@@ -33,12 +33,28 @@ function useOpenSsl3EngineIfNeeded() {
     return; // not generated yet — nothing to point at
   }
 
-  // Ordered by likelihood on a hosted Linux image. glibc first, musl second.
-  const candidates = [
-    'libquery_engine-debian-openssl-3.0.x.so.node',
-    'libquery_engine-rhel-openssl-3.0.x.so.node',
-    'libquery_engine-linux-musl-openssl-3.0.x.so.node',
-  ];
+  // Which C library the host uses decides this, and it is not a guess: a musl
+  // image (Alpine) has no glibc dynamic linker, so a glibc engine cannot even
+  // start — it fails with "Error loading shared library ld-linux-x86-64.so.2",
+  // which is precisely what happened here after the first override picked the
+  // Debian engine on this host's recommendation.
+  //
+  // Node reports the runtime glibc version, and on musl there is none. That is
+  // a direct reading of the host rather than another inference from a platform
+  // name, which is what got this wrong twice.
+  let isMusl = false;
+  try {
+    isMusl = !process.report.getReport().header.glibcVersionRuntime;
+  } catch (err) {
+    isMusl = false; // unreadable — assume glibc, the commoner case
+  }
+
+  const candidates = isMusl
+    ? ['libquery_engine-linux-musl-openssl-3.0.x.so.node']
+    : [
+      'libquery_engine-debian-openssl-3.0.x.so.node',
+      'libquery_engine-rhel-openssl-3.0.x.so.node',
+    ];
 
   for (const name of candidates) {
     const full = path.join(clientDir, name);
