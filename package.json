@@ -4,7 +4,7 @@
   "description": "JPSME web application - Node.js/Express + Prisma (MySQL/XAMPP) backend, AJAX + Tailwind frontend",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/cluster.js",
+    "start": "node src/server.js",
     "start:cluster": "node src/cluster.js",
     "dev": "node --watch src/server.js",
     "worker": "node src/worker.js",

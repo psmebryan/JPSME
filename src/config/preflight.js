@@ -53,6 +53,12 @@ function check() {
     return { problems, warnings, skipped: problems.length === 0 };
   }
 
+  if (!config.database.url) {
+    add(problems, 'DATABASE_URL is not set',
+      'The app cannot reach a database at all. On a host this has to be set in the '
+      + 'environment variables, since a .env file is never deployed.');
+  }
+
   const appUrl = config.appUrl || '';
 
   if (/localhost|127\.0\.0\.1/.test(appUrl)) {

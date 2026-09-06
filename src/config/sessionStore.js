@@ -8,7 +8,31 @@ const config = require('./index');
 // SESSION_STORE currently only supports 'mysql' (config.session.store already
 // validates this at startup) — a second store would branch here.
 function buildSessionStore() {
-  const url = new URL(config.database.url);
+  // Checked explicitly, because this is the first thing in the whole app to
+  // touch DATABASE_URL and it runs at import time — before server.js's
+  // try/catch exists to say anything useful. Unset, new URL(undefined) throws
+  // "TypeError: Invalid URL, input: 'undefined'", which names neither the
+  // variable nor the file, and on a host that restarts the process it simply
+  // repeats forever. Worth two lines to turn that into an instruction.
+  if (!config.database.url) {
+    throw new Error(
+      'DATABASE_URL is not set, so the app cannot reach a database.\n'
+      + '  Locally: add it to .env (e.g. mysql://root:@localhost:3306/jpsme2_new).\n'
+      + '  On a host: set it in the environment variables for the app — a .env file '
+      + 'is not deployed, so the value has to be provided there.'
+    );
+  }
+
+  let url;
+  try {
+    url = new URL(config.database.url);
+  } catch (err) {
+    throw new Error(
+      'DATABASE_URL is set but is not a valid connection URL. '
+      + 'It should look like mysql://user:password@host:3306/database — and if the '
+      + 'password contains @ # / or :, those characters must be percent-encoded.'
+    );
+  }
 
   return new MySQLStore({
     host: url.hostname,
