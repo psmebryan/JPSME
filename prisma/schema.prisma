@@ -3,7 +3,18 @@
 
 generator client {
   provider = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  // Prisma ships a query engine compiled against a specific libssl, and picks
+  // one by sniffing the host. On this deployment that sniff failed outright —
+  // "failed to detect the libssl/openssl version" — so it fell back to
+  // openssl-1.1.x and then could not load libssl.so.1.1, which does not exist
+  // on a modern distro.
+  //
+  // Since the detection is what broke, guessing a single replacement target
+  // just moves the gamble. These cover the realistic possibilities instead:
+  // Debian/Ubuntu, RHEL/CloudLinux (which is what cPanel hosting usually runs
+  // on), and Alpine, each on OpenSSL 3. The 1.1 variants stay for older hosts.
+  // Extra targets cost download size at build time and nothing at runtime.
+  binaryTargets = ["native", "debian-openssl-3.0.x", "rhel-openssl-3.0.x", "linux-musl-openssl-3.0.x", "debian-openssl-1.1.x", "rhel-openssl-1.1.x"]
 }
 
 datasource db {
