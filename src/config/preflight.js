@@ -14,16 +14,43 @@ const config = require('./index');
 // production, because a local machine is meant to run on http://localhost with
 // test keys.
 
+// The app calls global fetch and AbortSignal.timeout, neither of which exists
+// before Node 18. On an older runtime it installs and starts perfectly happily,
+// then fails the first time it tries to reach PayMongo, Brevo or Cloudflare —
+// so payments never confirm and no email is ever sent, with nothing at startup
+// to suggest why. Checked here, at boot, in every environment.
+const MIN_NODE_MAJOR = 18;
+
+function nodeVersionProblem() {
+  const major = Number(process.versions.node.split('.')[0]);
+  if (major >= MIN_NODE_MAJOR) return null;
+  return {
+    title: `Node ${process.versions.node} is too old — this app needs Node ${MIN_NODE_MAJOR} or newer`,
+    detail: 'It uses global fetch and AbortSignal.timeout, which arrived in Node 18. On this version '
+      + 'every outbound call fails: PayMongo checkouts and webhook reconciliation, Brevo email '
+      + '(so verification codes and e-tickets never arrive), and Turnstile verification. '
+      + 'On cPanel hosting, raise the version in Setup Node.js App and restart.',
+  };
+}
+
 function check() {
   const problems = [];
   const warnings = [];
 
   const add = (list, title, detail) => list.push({ title, detail });
 
+  // Deliberately outside the production-only block below: an unsupported
+  // runtime breaks the app just as thoroughly on a developer's machine, and
+  // finding out at boot is far cheaper than finding out from a failed payment.
+  const nodeProblem = nodeVersionProblem();
+  if (nodeProblem) problems.push(nodeProblem);
+
   if (!config.isProduction) {
-    // One nudge, not a wall of text: a developer running locally does not need
-    // to be told about their own machine every time they start the server.
-    return { problems, warnings, skipped: true };
+    // Locally, only a genuinely fatal runtime problem is worth reporting — a
+    // developer does not need to be told about their own localhost every time
+    // they start the server. `skipped` reflects that the production checks did
+    // not run, while any Node problem found above is still returned.
+    return { problems, warnings, skipped: problems.length === 0 };
   }
 
   const appUrl = config.appUrl || '';
