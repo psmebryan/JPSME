@@ -24,7 +24,9 @@
     "backfill:qr": "node prisma/backfillRegistrationQr.js",
     "test:checkin": "node tests/checkin.service.test.js",
     "preflight": "node -e \"require(\"dotenv\").config();const r=require(\"./src/config/preflight\").check();console.log(JSON.stringify(r,null,2))\"",
-    "test:checkin-page": "node tests/checkin.page.test.js"
+    "test:checkin-page": "node tests/checkin.page.test.js",
+    "postinstall": "prisma generate",
+    "build": "prisma generate"
   },
   "license": "UNLICENSED",
   "dependencies": {
@@ -47,11 +49,11 @@
     "mysql2": "^3.23.3",
     "nodemailer": "^9.0.5",
     "pdfkit": "^0.19.1",
+    "prisma": "^5.20.0",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "autocannon": "^8.0.0",
-    "prisma": "^5.20.0",
     "tailwindcss": "^3.4.19"
   },
   "prisma": {
