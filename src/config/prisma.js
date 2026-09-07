@@ -63,6 +63,24 @@ function useOpenSsl3EngineIfNeeded() {
       return;
     }
   }
+
+  // Nothing suitable was built. Silence here would hand the problem back to the
+  // detection that is already known to be wrong on this host, and the resulting
+  // error names a missing system library rather than a missing engine — which
+  // sends you looking for the wrong thing entirely. Say what is actually absent
+  // and how to produce it.
+  const wanted = candidates.join(', ');
+  const present = fs.readdirSync(clientDir).filter((n) => n.startsWith('libquery_engine-'));
+  console.error(
+    `prisma: no usable query engine for this host (${isMusl ? 'musl' : 'glibc'}).
+`
+    + `  looked for : ${wanted}
+`
+    + `  present    : ${present.length ? present.join(', ') : '(none)'}
+`
+    + '  fix        : add the matching target to binaryTargets in prisma/schema.prisma '
+    + 'and redeploy, so postinstall builds it.'
+  );
 }
 
 // Runs before @prisma/client is required, so the variable is in place by the
