@@ -76,7 +76,46 @@ async function applyMigrationsDirect(databaseUrl, log = console) {
     const [rows] = await connection.query(
       'SELECT migration_name FROM `_prisma_migrations` WHERE finished_at IS NOT NULL'
     );
-    const done = new Set(rows.map((r) => r.migration_name));
+    let done = new Set(rows.map((r) => r.migration_name));
+
+    // The tracking table can lie. A partial import — or a dump carrying
+    // _prisma_migrations without the tables it describes — leaves a database
+    // claiming 38 applied migrations while containing none of them. Trusting
+    // that record means skipping every migration and then failing on the first
+    // query instead, which is how this went wrong in practice.
+    //
+    // So the claim is checked against reality: User is created by the very first
+    // migration, and its absence proves the record cannot be true.
+    if (done.size > 0) {
+      const [userTable] = await connection.query(
+        "SELECT COUNT(*) n FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'User'"
+      );
+      if (Number(userTable[0].n) === 0) {
+        const [others] = await connection.query(
+          "SELECT COUNT(*) n FROM information_schema.tables WHERE table_schema = DATABASE() "
+          + "AND table_name NOT IN ('_prisma_migrations', 'sessions')"
+        );
+        const strays = Number(others[0].n);
+
+        // Starting over is only safe when there is effectively nothing there.
+        // With real tables present, re-running would hit CREATE TABLE on one
+        // that exists and stop halfway — worse than refusing outright.
+        if (strays > 0) {
+          throw new Error(
+            "_prisma_migrations records " + done.size + " applied migrations, but the User table is "
+            + "missing while " + strays + " other tables exist. This is a state the fallback cannot "
+            + "safely repair — restore a complete backup, or empty the database entirely and redeploy."
+          );
+        }
+
+        log.log(
+          "  _prisma_migrations claims " + done.size + " applied migrations but no tables exist — "
+          + "that record came from an import, not from this database. Clearing it and applying from scratch."
+        );
+        await connection.query('DELETE FROM `_prisma_migrations`');
+        done = new Set();
+      }
+    }
 
     const all = listMigrations();
     const pending = all.filter((m) => !done.has(m.name));
