@@ -1,4 +1,3 @@
-const { google } = require('googleapis');
 const config = require('../config');
 const prisma = require('../config/prisma');
 
@@ -12,6 +11,19 @@ const SPREADSHEET_ID = config.googleSheets.sheetId;
 let sheetsClient = null;
 function getSheetsClient() {
   if (!sheetsClient) {
+    // Required here rather than at the top of the file. `googleapis` is an
+    // umbrella package that eagerly loads every Google API client it ships —
+    // several hundred of them — and this module sits on the boot path via
+    // event.service, so that cost was being paid on every start even with
+    // Sheets sync switched off. It also made the app's boot depend on all of
+    // those files being intact: an incomplete install of the package crashed
+    // the server outright with "Cannot find module './sasportal'", a client
+    // this app has no use for.
+    //
+    // Every exported function checks isConfigured() before reaching this, so
+    // by the time the require runs, Sheets sync is genuinely in use.
+    // eslint-disable-next-line global-require
+    const { google } = require('googleapis');
     const auth = new google.auth.JWT({
       email: config.googleSheets.serviceAccountEmail,
       key: (config.googleSheets.serviceAccountPrivateKey || '').replace(/\\n/g, '\n'),
