@@ -74,6 +74,39 @@ function envFlag(name) {
   return value === 'true' || value === '1' || value === 'yes' || value === 'on';
 }
 
+// Builds a connection URL from the DB_* variables a managed platform injects
+// when it attaches a database, and — the part that matters — puts it into the
+// real environment rather than only into this object.
+//
+// schema.prisma reads env("DATABASE_URL") itself, and so does the prisma CLI.
+// Neither can see a value composed in JavaScript, so exporting it here is what
+// makes the client, the migration runner and the session store all agree on
+// one database. Without it they disagree silently: the session store connects
+// and Prisma reports the variable as missing.
+//
+// Runs once, at require time, before anything constructs a client.
+function exportComposedDatabaseUrl() {
+  if (process.env.DATABASE_URL) return;
+
+  const host = process.env.DB_HOST;
+  const name = process.env.DB_NAME;
+  const user = process.env.DB_USER;
+  if (!host || !name || !user) return;
+
+  const port = process.env.DB_PORT || 3306;
+  // Encoded rather than interpolated raw: an injected password is not chosen
+  // by anyone and routinely contains @ # / or ?, each of which would end the
+  // URL early and produce a parse error naming the wrong component.
+  const auth = process.env.DB_PASSWORD
+    ? `${encodeURIComponent(user)}:${encodeURIComponent(process.env.DB_PASSWORD)}`
+    : encodeURIComponent(user);
+
+  process.env.DATABASE_URL = `mysql://${auth}@${host}:${port}/${encodeURIComponent(name)}`;
+  process.env.DATABASE_URL_SOURCE = "DB_* variables";
+}
+
+exportComposedDatabaseUrl();
+
 const config = {
   get env() { return process.env.NODE_ENV || 'development'; },
   get isProduction() { return process.env.NODE_ENV === 'production'; },
@@ -91,24 +124,7 @@ const config = {
     // rather than a URL — nothing sets DATABASE_URL for you, so without this
     // the app cannot see a database that is sitting right there, already
     // provisioned and already reachable.
-    get url() {
-      if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
-
-      const host = process.env.DB_HOST;
-      const name = process.env.DB_NAME;
-      const user = process.env.DB_USER;
-      if (!host || !name || !user) return undefined;
-
-      const port = process.env.DB_PORT || 3306;
-      // Encoded, not interpolated raw: an injected password is not chosen by
-      // anyone and routinely contains @ # / or ?, each of which would end the
-      // URL early and produce a parse error naming the wrong component.
-      const auth = process.env.DB_PASSWORD
-        ? `${encodeURIComponent(user)}:${encodeURIComponent(process.env.DB_PASSWORD)}`
-        : encodeURIComponent(user);
-
-      return `mysql://${auth}@${host}:${port}/${encodeURIComponent(name)}`;
-    },
+    get url() { return process.env.DATABASE_URL; },
 
     // Which of the two the value came from. Worth reporting at startup: "no
     // database" and "the wrong database" look identical in a connection error,
@@ -122,9 +138,8 @@ const config = {
     get migrateOnBoot() { return envFlag('RUN_MIGRATIONS_ON_BOOT'); },
 
     get source() {
-      if (process.env.DATABASE_URL) return "DATABASE_URL";
-      if (process.env.DB_HOST && process.env.DB_NAME && process.env.DB_USER) return "DB_* variables";
-      return "nothing";
+      if (process.env.DATABASE_URL_SOURCE) return process.env.DATABASE_URL_SOURCE;
+      return process.env.DATABASE_URL ? "DATABASE_URL" : "nothing";
     },
   },
 

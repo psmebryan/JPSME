@@ -61,7 +61,16 @@ async function start() {
     // wrong one sends someone looking in a place that does not exist. "Is
     // XAMPP running" means nothing on a server; "check the remote access
     // rules" means nothing on a laptop.
-    if (config.isProduction) {
+    // Only a genuine connection failure deserves connection advice. A schema or
+    // configuration error (P1012, say) reaches this same handler, and answering
+    // it with "check your firewall and remote access rules" sends someone after
+    // a problem they do not have — which is exactly what happened when a missing
+    // DATABASE_URL was reported as a refused connection.
+    const isConnectionFailure = err.errorCode === 'P1001'
+      || err.code === 'P1001'
+      || /can't reach database server/i.test(err.message || '');
+
+    if (config.isProduction && isConnectionFailure) {
       // P1001 covers two completely different failures with one message: a
       // socket that never opens (the port is blocked or the host is wrong) and
       // a socket that opens and is then refused (credentials, or the address
@@ -107,8 +116,10 @@ async function start() {
           + "  If the same connection string works from your own machine, it is the latter."
         );
       }
-    } else {
+    } else if (isConnectionFailure) {
       console.error('Failed to connect to the database. Is XAMPP MySQL running and DATABASE_URL correct?');
+    } else {
+      console.error(`Startup failed (${err.errorCode || err.code || 'no code'}). The database was not the problem.`);
     }
     console.error(err);
     process.exit(1);
