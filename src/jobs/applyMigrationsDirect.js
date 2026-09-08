@@ -23,6 +23,7 @@ const mysql = require('mysql2/promise');
 // engine can still get its tables.
 
 const MIGRATIONS_DIR = path.join(__dirname, '..', '..', 'prisma', 'migrations');
+const SCHEMA_PATH = path.join(__dirname, '..', '..', 'prisma', 'schema.prisma');
 
 // Matches what Prisma creates, so the real CLI can read and extend it later.
 const CREATE_TRACKING_TABLE = `
@@ -56,6 +57,61 @@ function listMigrations() {
     });
 }
 
+// The table names Prisma will actually query: @@map where a model declares one,
+// otherwise the model name exactly as written.
+function expectedTableNames() {
+  const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
+  const models = [...schema.matchAll(/^model\s+(\w+)\s*\{([\s\S]*?)^\}/gm)];
+  return models.map(([, name, body]) => {
+    const mapped = body.match(/@@map\("([^"]+)"\)/);
+    return mapped ? mapped[1] : name;
+  });
+}
+
+// Repairs table names that differ from the schema only by capitalisation.
+//
+// mysqldump lowercases table names when exporting from a case-insensitive
+// server (Windows, lower_case_table_names=1). Restore that dump onto Linux,
+// where names are case-sensitive, and every table is present but five of them
+// are called user, event, eventregistration, sitesetting and
+// emailverificationtoken, while Prisma asks for User, Event and the rest. Every
+// query then fails with "table does not exist" against a database that plainly
+// contains it.
+//
+// Only renames where the exact name is absent and one differing solely by case
+// is present, so it cannot touch a correctly-migrated database.
+async function repairTableNameCase(connection, log) {
+  // Only meaningful where names are case-sensitive. On XAMPP and anywhere else
+  // running lower_case_table_names=1 the server folds every name to lowercase,
+  // so `user` and `User` are one table — and RENAME TABLE `user` TO `User`
+  // becomes a rename onto itself, which fails with "table already exists".
+  const [[vars]] = await connection.query("SHOW VARIABLES LIKE 'lower_case_table_names'");
+  if (!vars || vars.Value !== '0') return 0;
+
+  const [rows] = await connection.query(
+    'SELECT table_name AS t FROM information_schema.tables WHERE table_schema = DATABASE()'
+  );
+  const present = rows.map((r) => r.t);
+  const renames = [];
+
+  expectedTableNames().forEach((wanted) => {
+    if (present.includes(wanted)) return;
+    const actual = present.find((p) => p.toLowerCase() === wanted.toLowerCase());
+    if (actual && actual !== wanted) renames.push({ from: actual, to: wanted });
+  });
+
+  if (!renames.length) return 0;
+
+  log.log(`  ${renames.length} table(s) differ from the schema only by capitalisation — renaming:`);
+  renames.forEach((r) => log.log(`    ${r.from} -> ${r.to}`));
+
+  // One statement, so it either all applies or none of it does. InnoDB updates
+  // the foreign keys to match automatically.
+  const clauses = renames.map((r) => `\`${r.from}\` TO \`${r.to}\``).join(', ');
+  await connection.query(`RENAME TABLE ${clauses}`);
+  return renames.length;
+}
+
 async function applyMigrationsDirect(databaseUrl, log = console) {
   const url = new URL(databaseUrl);
   const connection = await mysql.createConnection({
@@ -72,6 +128,11 @@ async function applyMigrationsDirect(databaseUrl, log = console) {
 
   try {
     await connection.query(CREATE_TRACKING_TABLE);
+
+    // Before judging what is missing: a table present under a different
+    // capitalisation is present, and renaming it is repair rather than
+    // re-creation.
+    await repairTableNameCase(connection, log);
 
     const [rows] = await connection.query(
       'SELECT migration_name FROM `_prisma_migrations` WHERE finished_at IS NOT NULL'
@@ -92,7 +153,7 @@ async function applyMigrationsDirect(databaseUrl, log = console) {
       );
       if (Number(userTable[0].n) === 0) {
         const [others] = await connection.query(
-          "SELECT COUNT(*) n FROM information_schema.tables WHERE table_schema = DATABASE() "
+          'SELECT COUNT(*) n FROM information_schema.tables WHERE table_schema = DATABASE() '
           + "AND table_name NOT IN ('_prisma_migrations', 'sessions')"
         );
         const strays = Number(others[0].n);
@@ -102,15 +163,15 @@ async function applyMigrationsDirect(databaseUrl, log = console) {
         // that exists and stop halfway — worse than refusing outright.
         if (strays > 0) {
           throw new Error(
-            "_prisma_migrations records " + done.size + " applied migrations, but the User table is "
-            + "missing while " + strays + " other tables exist. This is a state the fallback cannot "
-            + "safely repair — restore a complete backup, or empty the database entirely and redeploy."
+            `_prisma_migrations records ${done.size} applied migrations, but the User table is `
+            + `missing while ${strays} other tables exist. This is a state the fallback cannot `
+            + 'safely repair — restore a complete backup, or empty the database entirely and redeploy.'
           );
         }
 
         log.log(
-          "  _prisma_migrations claims " + done.size + " applied migrations but no tables exist — "
-          + "that record came from an import, not from this database. Clearing it and applying from scratch."
+          `  _prisma_migrations claims ${done.size} applied migrations but no tables exist — `
+          + 'that record came from an import, not from this database. Clearing it and applying from scratch.'
         );
         await connection.query('DELETE FROM `_prisma_migrations`');
         done = new Set();
@@ -147,4 +208,9 @@ async function applyMigrationsDirect(databaseUrl, log = console) {
   }
 }
 
-module.exports = { applyMigrationsDirect, listMigrations };
+module.exports = {
+  applyMigrationsDirect,
+  listMigrations,
+  expectedTableNames,
+  repairTableNameCase,
+};

@@ -27,7 +27,8 @@
     "test:checkin-page": "node tests/checkin.page.test.js",
     "postinstall": "prisma generate",
     "build": "prisma generate",
-    "test:db": "node scripts/test-db-connection.js"
+    "test:db": "node scripts/test-db-connection.js",
+    "test:migration-repair": "node tests/migration.repair.test.js"
   },
   "license": "UNLICENSED",
   "dependencies": {
