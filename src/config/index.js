@@ -55,12 +55,31 @@ function requireSessionSecret() {
   return value;
 }
 
+// Reads a boolean setting from the environment without being fussy about how
+// it was written.
+//
+// Environment values arrive as strings, but the person typing one into a
+// hosting panel has no way to know that, and some panels advise wrapping
+// values in quotes and then store the quotes. A strict === "true" turns any of
+// that into a silently disabled setting — which for TRUST_PROXY means sessions
+// quietly stop working, with nothing to connect the symptom to the cause.
+//
+// So: surrounding quotes are stripped, case and whitespace are ignored, and the
+// spellings people actually use all count. Anything unrecognised is false,
+// which keeps the default off for a setting nobody deliberately enabled.
+function envFlag(name) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === null) return false;
+  const value = String(raw).trim().replace(/^['"]|['"]$/g, '').toLowerCase();
+  return value === 'true' || value === '1' || value === 'yes' || value === 'on';
+}
+
 const config = {
   get env() { return process.env.NODE_ENV || 'development'; },
   get isProduction() { return process.env.NODE_ENV === 'production'; },
   get port() { return Number(process.env.PORT) || 3000; },
   get appUrl() { return process.env.APP_URL || `http://localhost:${config.port}`; },
-  get trustProxy() { return process.env.TRUST_PROXY === 'true'; },
+  get trustProxy() { return envFlag('TRUST_PROXY'); },
   get clusterWorkers() { return Math.max(1, Number(process.env.CLUSTER_WORKERS) || 1); },
 
   database: {
@@ -100,7 +119,7 @@ const config = {
     // of a restart. It exists for platforms that give you no shell — where
     // otherwise a freshly attached database stays empty forever and every
     // page fails on a missing table, with no way in to fix it.
-    get migrateOnBoot() { return process.env.RUN_MIGRATIONS_ON_BOOT === "true"; },
+    get migrateOnBoot() { return envFlag('RUN_MIGRATIONS_ON_BOOT'); },
 
     get source() {
       if (process.env.DATABASE_URL) return "DATABASE_URL";
@@ -144,7 +163,7 @@ const config = {
     smtp: {
       get host() { return process.env.SMTP_HOST; },
       get port() { return Number(process.env.SMTP_PORT) || 587; },
-      get secure() { return process.env.SMTP_SECURE === 'true'; },
+      get secure() { return envFlag('SMTP_SECURE'); },
       get user() { return process.env.SMTP_USER; },
       get pass() { return process.env.SMTP_PASS; },
     },
