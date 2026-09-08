@@ -24,7 +24,23 @@ async function start() {
     startInProcessWorker();
     startInvitationReconciliationSweep();
   } catch (err) {
-    console.error('Failed to connect to the database. Is XAMPP MySQL running and DATABASE_URL correct?');
+    // The useful advice differs completely by environment, and giving the
+    // wrong one sends someone looking in a place that does not exist. "Is
+    // XAMPP running" means nothing on a server; "check the remote access
+    // rules" means nothing on a laptop.
+    if (config.isProduction) {
+      let host = "(unparseable)";
+      try { host = new URL(config.database.url).host; } catch (e) { /* leave the placeholder */ }
+      console.error(
+        `Failed to reach the database at ${host}.\n`
+        + "  If that says localhost, DATABASE_URL points at this server rather than the\n"
+        + "  database server — on managed hosting those are two different machines.\n"
+        + "  Otherwise the database is refusing this app: check the host's remote access\n"
+        + "  rules (the app's IP may need allowing) and that the port is reachable."
+      );
+    } else {
+      console.error('Failed to connect to the database. Is XAMPP MySQL running and DATABASE_URL correct?');
+    }
     console.error(err);
     process.exit(1);
   }
