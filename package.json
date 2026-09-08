@@ -26,7 +26,8 @@
     "preflight": "node -e \"require(\"dotenv\").config();const r=require(\"./src/config/preflight\").check();console.log(JSON.stringify(r,null,2))\"",
     "test:checkin-page": "node tests/checkin.page.test.js",
     "postinstall": "prisma generate",
-    "build": "prisma generate"
+    "build": "prisma generate",
+    "test:db": "node scripts/test-db-connection.js"
   },
   "license": "UNLICENSED",
   "dependencies": {

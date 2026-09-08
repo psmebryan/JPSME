@@ -1,3 +1,4 @@
+const net = require('net');
 const app = require('./app');
 const config = require('./config');
 const prisma = require('./config/prisma');
@@ -29,15 +30,51 @@ async function start() {
     // XAMPP running" means nothing on a server; "check the remote access
     // rules" means nothing on a laptop.
     if (config.isProduction) {
-      let host = "(unparseable)";
-      try { host = new URL(config.database.url).host; } catch (e) { /* leave the placeholder */ }
-      console.error(
-        `Failed to reach the database at ${host}.\n`
-        + "  If that says localhost, DATABASE_URL points at this server rather than the\n"
-        + "  database server — on managed hosting those are two different machines.\n"
-        + "  Otherwise the database is refusing this app: check the host's remote access\n"
-        + "  rules (the app's IP may need allowing) and that the port is reachable."
-      );
+      // P1001 covers two completely different failures with one message: a
+      // socket that never opens (the port is blocked or the host is wrong) and
+      // a socket that opens and is then refused (credentials, or the address
+      // is not in the database's allow-list). They are fixed in different
+      // places, and guessing between them costs a deploy each time. So ask the
+      // network directly before printing advice.
+      let host = '(unparseable)';
+      let port = 3306;
+      try {
+        const u = new URL(config.database.url);
+        host = u.hostname;
+        port = u.port ? Number(u.port) : 3306;
+      } catch (e) { /* leave the placeholders */ }
+
+      const socketOpens = await new Promise((resolve) => {
+        const s2 = new net.Socket();
+        let settled = false;
+        const done = (v) => { if (!settled) { settled = true; s2.destroy(); resolve(v); } };
+        s2.setTimeout(8000);
+        s2.once('connect', () => done(true));
+        s2.once('timeout', () => done(false));
+        s2.once('error', () => done(false));
+        s2.connect(port, host);
+      });
+
+      if (socketOpens) {
+        console.error(
+          `Reached ${host}:${port} — the network is fine, the database refused the connection.\n`
+          + "  So this is not a firewall or a wrong hostname. It is one of:\n"
+          + "    - the username or password is wrong\n"
+          + "    - the user is not attached to the database (cPanel > MySQL Databases >\n"
+          + "      Add User To Database, with All Privileges)\n"
+          + "    - this server's address is not in the database's allow-list\n"
+          + "      (cPanel > Remote MySQL)"
+        );
+      } else {
+        console.error(
+          `Could not open a connection to ${host}:${port} at all.\n`
+          + "  Nothing answered, so the credentials were never even offered. Either the\n"
+          + "  hostname is wrong, or this platform blocks outbound connections on that\n"
+          + "  port — some hosting only permits outbound HTTP/HTTPS, which would make a\n"
+          + "  remote MySQL server unreachable no matter how it is configured.\n"
+          + "  If the same connection string works from your own machine, it is the latter."
+        );
+      }
     } else {
       console.error('Failed to connect to the database. Is XAMPP MySQL running and DATABASE_URL correct?');
     }
