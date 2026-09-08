@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const net = require('net');
 const { execFile } = require('child_process');
+const { applyMigrationsDirect } = require('./jobs/applyMigrationsDirect');
 const app = require('./app');
 const config = require('./config');
 const prisma = require('./config/prisma');
@@ -72,6 +73,19 @@ async function runMigrationsIfRequested() {
 
   console.log("Running database migrations (RUN_MIGRATIONS_ON_BOOT=true)...");
   const schemaEngine = schemaEngineOverride();
+
+  // No engine this host can run. Rather than fail — which on a platform with no
+  // shell leaves the database empty and no way to fill it — apply the same
+  // migration files over a plain MySQL connection. The SQL is identical and the
+  // tracking table is written the same way, so a later `migrate deploy` on a
+  // host where the engine does work sees them as applied and does nothing.
+  if (!schemaEngine && process.platform === 'linux') {
+    console.log('  schema engine unusable — applying migrations directly over mysql2 instead');
+    const result = await applyMigrationsDirect(config.database.url);
+    console.log(`  ${result.applied} applied, ${result.total} total. Migrations up to date.`);
+    return;
+  }
+
   if (schemaEngine) console.log(`  using schema engine ${path.basename(schemaEngine)}`);
   await new Promise((resolve, reject) => {
     execFile(
