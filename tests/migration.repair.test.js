@@ -42,18 +42,27 @@ function assertEqual(actual, expected, message) {
 // A stand-in for a mysql2 connection that answers the two SELECTs this function
 // asks and remembers every statement, so a test can assert on what was run —
 // including, importantly, that nothing was run.
-function fakeConnection({ caseSensitive = true, tables = [] } = {}) {
+function fakeConnection({ caseSensitive = true, tables = [], variableAvailable = true, renameFails = null } = {}) {
   const issued = [];
+  const value = caseSensitive ? '0' : '1';
   return {
     issued,
     async query(sql) {
       issued.push(sql);
+      // A managed server can refuse to answer either form; variableAvailable
+      // false makes both throw, the way a locked-down MySQL does.
+      if (sql.includes('@@GLOBAL.lower_case_table_names')) {
+        if (!variableAvailable) throw new Error('Access denied for SELECT @@GLOBAL');
+        return [[{ v: value }]];
+      }
       if (sql.includes('lower_case_table_names')) {
-        return [[{ Variable_name: 'lower_case_table_names', Value: caseSensitive ? '0' : '1' }]];
+        if (!variableAvailable) throw new Error('Access denied for SHOW VARIABLES');
+        return [[{ Variable_name: 'lower_case_table_names', Value: value }]];
       }
       if (sql.includes('information_schema.tables')) {
         return [tables.map((t) => ({ t }))];
       }
+      if (sql.startsWith('RENAME TABLE') && renameFails) throw renameFails;
       return [[]];
     },
   };
@@ -118,7 +127,64 @@ async function main() {
     const conn = fakeConnection({ caseSensitive: false, tables: importedTableList() });
     const count = await repairTableNameCase(conn, silent);
     assertEqual(count, 0, 'no repair attempted');
-    assertEqual(conn.issued.length, 1, 'it stops after reading the variable, without even listing tables');
+    assert(
+      !conn.issued.some((s) => s.includes('information_schema.tables')),
+      'it stops after reading the variable, without even listing tables'
+    );
+  });
+
+  await test('a server that refuses to report the variable still gets repaired', async () => {
+    // A managed MySQL can deny both SELECT @@GLOBAL and SHOW VARIABLES. The
+    // old code read that silence as "nothing to do" and returned without a
+    // word, which in the logs was indistinguishable from the fix not being
+    // deployed at all — it cost two deploys to tell those apart.
+    const conn = fakeConnection({ variableAvailable: false, tables: importedTableList() });
+    const count = await repairTableNameCase(conn, silent);
+    assertEqual(count, 5, 'it goes ahead and repairs rather than giving up');
+  });
+
+  await test('an unreadable variable on a folding server is caught, not fatal', async () => {
+    // Having attempted the rename blind, the server answers by rejecting it:
+    // every rename is a table onto itself. That is a healthy database, so the
+    // error is absorbed rather than taking down the boot.
+    const err = new Error("Table 'User' already exists");
+    err.errno = 1050;
+    const conn = fakeConnection({ variableAvailable: false, tables: importedTableList(), renameFails: err });
+    const count = await repairTableNameCase(conn, silent);
+    assertEqual(count, 0, 'treated as nothing to repair');
+  });
+
+  await test('a rename that fails for any other reason is not swallowed', async () => {
+    // Only the rename-onto-itself error means "healthy". A permissions failure
+    // or a lock timeout must surface, not be mistaken for a clean database.
+    const err = new Error('Access denied for user');
+    err.errno = 1142;
+    const conn = fakeConnection({ variableAvailable: false, tables: importedTableList(), renameFails: err });
+    let threw = null;
+    try {
+      await repairTableNameCase(conn, silent);
+    } catch (e) {
+      threw = e;
+    }
+    assert(threw, 'the error propagates');
+    assertEqual(threw.errno, 1142, 'and it is the original error, unchanged');
+  });
+
+  await test('the decision is always logged, so silence is never ambiguous', async () => {
+    // Every path says what it concluded. A run that logs nothing means the
+    // code is not deployed, which is now a readable signal rather than a guess.
+    for (const opts of [
+      { tables: importedTableList() },
+      { tables: expectedTableNames() },
+      { caseSensitive: false, tables: importedTableList() },
+      { tables: [] },
+    ]) {
+      const lines = [];
+      // eslint-disable-next-line no-await-in-loop
+      await repairTableNameCase(fakeConnection(opts), { log: (m) => lines.push(m) });
+      assert(lines.some((l) => l.includes('lower_case_table_names')), 'reports what it read');
+      assert(lines.length >= 2, 'and what it decided');
+    }
   });
 
   await test('a genuinely missing table is left for the migration to create', async () => {

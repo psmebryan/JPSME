@@ -80,13 +80,37 @@ function expectedTableNames() {
 //
 // Only renames where the exact name is absent and one differing solely by case
 // is present, so it cannot touch a correctly-migrated database.
+// Reads lower_case_table_names, or reports null if the server will not say.
+// A managed MySQL can refuse SHOW VARIABLES, and "I could not find out" must
+// not be silently treated as "no repair needed" — that was indistinguishable
+// in the logs from the repair simply not being deployed.
+async function readLowerCaseTableNames(connection) {
+  try {
+    const [rows] = await connection.query('SELECT @@GLOBAL.lower_case_table_names AS v');
+    if (rows.length && rows[0].v !== null && rows[0].v !== undefined) return String(rows[0].v);
+  } catch (err) { /* fall through to SHOW VARIABLES */ }
+
+  try {
+    const [rows] = await connection.query("SHOW VARIABLES LIKE 'lower_case_table_names'");
+    if (rows.length) return String(rows[0].Value);
+  } catch (err) { /* server will not say */ }
+
+  return null;
+}
+
 async function repairTableNameCase(connection, log) {
-  // Only meaningful where names are case-sensitive. On XAMPP and anywhere else
-  // running lower_case_table_names=1 the server folds every name to lowercase,
-  // so `user` and `User` are one table — and RENAME TABLE `user` TO `User`
-  // becomes a rename onto itself, which fails with "table already exists".
-  const [[vars]] = await connection.query("SHOW VARIABLES LIKE 'lower_case_table_names'");
-  if (!vars || vars.Value !== '0') return 0;
+  // Where names are folded (lower_case_table_names = 1, as on XAMPP), `user`
+  // and `User` are one table, and renaming one to the other is a rename onto
+  // itself that fails with "table already exists". So that case is skipped —
+  // but only when the server actually says so. When it will not say, the
+  // rename is attempted and that specific error is caught below, which reaches
+  // the same answer without needing the variable at all.
+  const lcn = await readLowerCaseTableNames(connection);
+  log.log(`  table-name case: lower_case_table_names = ${lcn === null ? 'unavailable' : lcn}`);
+  if (lcn === '1' || lcn === '2') {
+    log.log('    server folds table names, so there is no case mismatch to repair');
+    return 0;
+  }
 
   const [rows] = await connection.query(
     'SELECT table_name AS t FROM information_schema.tables WHERE table_schema = DATABASE()'
@@ -100,15 +124,29 @@ async function repairTableNameCase(connection, log) {
     if (actual && actual !== wanted) renames.push({ from: actual, to: wanted });
   });
 
-  if (!renames.length) return 0;
+  if (!renames.length) {
+    log.log(`    ${present.length} tables, none miscased`);
+    return 0;
+  }
 
-  log.log(`  ${renames.length} table(s) differ from the schema only by capitalisation — renaming:`);
-  renames.forEach((r) => log.log(`    ${r.from} -> ${r.to}`));
+  log.log(`    ${renames.length} table(s) differ from the schema only by capitalisation — renaming:`);
+  renames.forEach((r) => log.log(`      ${r.from} -> ${r.to}`));
 
   // One statement, so it either all applies or none of it does. InnoDB updates
   // the foreign keys to match automatically.
   const clauses = renames.map((r) => `\`${r.from}\` TO \`${r.to}\``).join(', ');
-  await connection.query(`RENAME TABLE ${clauses}`);
+  try {
+    await connection.query(`RENAME TABLE ${clauses}`);
+  } catch (err) {
+    // Reached only when the variable was unavailable and the server does fold
+    // names after all: every rename is then a table onto itself. Nothing is
+    // wrong and nothing needs doing.
+    if (err.errno === 1050 || err.code === 'ER_TABLE_EXISTS_ERROR') {
+      log.log('    server folds table names after all — nothing to repair');
+      return 0;
+    }
+    throw err;
+  }
   return renames.length;
 }
 
@@ -153,19 +191,26 @@ async function applyMigrationsDirect(databaseUrl, log = console) {
       );
       if (Number(userTable[0].n) === 0) {
         const [others] = await connection.query(
-          'SELECT COUNT(*) n FROM information_schema.tables WHERE table_schema = DATABASE() '
+          'SELECT table_name AS t FROM information_schema.tables WHERE table_schema = DATABASE() '
           + "AND table_name NOT IN ('_prisma_migrations', 'sessions')"
         );
-        const strays = Number(others[0].n);
+        const strayNames = others.map((r) => r.t);
 
         // Starting over is only safe when there is effectively nothing there.
         // With real tables present, re-running would hit CREATE TABLE on one
         // that exists and stop halfway — worse than refusing outright.
-        if (strays > 0) {
+        if (strayNames.length > 0) {
+          // The names, not just the count. A count says "something is wrong";
+          // the names say what — a miscased import, a half-restored backup, or
+          // a database that belongs to a different application entirely. Each
+          // needs a different answer, and reading them back beats another
+          // round of deploying to find out.
           throw new Error(
             `_prisma_migrations records ${done.size} applied migrations, but the User table is `
-            + `missing while ${strays} other tables exist. This is a state the fallback cannot `
-            + 'safely repair — restore a complete backup, or empty the database entirely and redeploy.'
+            + `missing while ${strayNames.length} other tables exist. This is a state the fallback `
+            + 'cannot safely repair — restore a complete backup, or empty the database entirely and '
+            + `redeploy.
+  tables found: ${strayNames.sort().join(', ')}`
           );
         }
 
