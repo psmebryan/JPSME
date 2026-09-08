@@ -60,6 +60,12 @@ function useOpenSsl3EngineIfNeeded() {
     const full = path.join(clientDir, name);
     if (fs.existsSync(full)) {
       process.env.PRISMA_QUERY_ENGINE_LIBRARY = full;
+      // Said out loud, because when this goes wrong the error that follows
+      // names a missing system library and redacts the engine path as
+      // "[internal]" — so the log shows a symptom with no way to tell which
+      // engine produced it. One line here turns the next failure from a guess
+      // into a reading.
+      console.log(`prisma: host is ${isMusl ? 'musl' : 'glibc'}, using ${name}`);
       return;
     }
   }
