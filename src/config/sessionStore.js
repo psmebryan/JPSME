@@ -23,6 +23,20 @@ function buildSessionStore() {
     );
   }
 
+  // A connection string copied from instructions and only half filled in is a
+  // very easy mistake to make, and it fails as "can't reach database server at
+  // HOST:3306" — which reads like a network problem and sends you checking
+  // firewalls and remote-access rules rather than re-reading the value. Caught
+  // by name here so it says what it actually is.
+  const placeholders = ['HOST', 'YOUR_PASSWORD', 'YOURPASSWORD', 'PASSWORD', 'USER', 'USERNAME', 'DBNAME', 'localhost:3306/dbname'];
+  const found = placeholders.filter((p) => new RegExp(`[@/:]${p}([:/]|$)`).test(config.database.url));
+  if (found.length) {
+    throw new Error(
+      `DATABASE_URL still contains the placeholder ${found.map((p) => `"${p}"`).join(' and ')} `
+      + 'from the example — replace it with the real value.'
+    );
+  }
+
   let url;
   try {
     url = new URL(config.database.url);
