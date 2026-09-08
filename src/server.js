@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const net = require('net');
 const { execFile } = require('child_process');
 const app = require('./app');
@@ -22,15 +24,67 @@ const PORT = config.port;
 // A failure here stops the app rather than letting it serve against a schema
 // it does not match — half-migrated is worse than not started, because the
 // errors surface as scattered missing columns rather than one clear failure.
+// Migrations run through a different binary than queries do: the schema
+// engine, which the CLI downloads at install time for whatever platform it
+// detects. That detection is the same one that gets this host wrong, so the
+// query-engine override in config/prisma.js does not help here — a wrong
+// schema engine fails with "Could not parse schema engine response", because
+// what the CLI reads as JSON is actually a dynamic-linker error.
+//
+// If a musl build is present, point at it explicitly. If it is not, nothing
+// here can conjure one; the message below explains what to set so the install
+// fetches it.
+function schemaEngineOverride() {
+  if (process.platform !== "linux") return null;
+  if (process.env.PRISMA_SCHEMA_ENGINE_BINARY) return process.env.PRISMA_SCHEMA_ENGINE_BINARY;
+
+  let isMusl = false;
+  try { isMusl = !process.report.getReport().header.glibcVersionRuntime; } catch (e) { isMusl = false; }
+
+  let dir;
+  try { dir = path.dirname(require.resolve("@prisma/engines/package.json")); } catch (e) { return null; }
+
+  const wanted = isMusl
+    ? ["schema-engine-linux-musl-openssl-3.0.x"]
+    : ["schema-engine-debian-openssl-3.0.x", "schema-engine-rhel-openssl-3.0.x"];
+
+  for (const name of wanted) {
+    const full = path.join(dir, name);
+    if (fs.existsSync(full)) return full;
+  }
+
+  let present = [];
+  try { present = fs.readdirSync(dir).filter((n) => n.startsWith("schema-engine")); } catch (e) { /* ignore */ }
+  console.error(
+    `No usable schema engine for this host (${isMusl ? "musl" : "glibc"}).\n`
+    + `  looked for : ${wanted.join(", ")}\n`
+    + `  present    : ${present.length ? present.join(", ") : "(none)"}\n`
+    + "  fix        : set PRISMA_CLI_BINARY_TARGETS=linux-musl-openssl-3.0.x in this\n"
+    + "               environment and redeploy, so the install downloads the matching\n"
+    + "               engine. binaryTargets in schema.prisma covers the query engine\n"
+    + "               only; the migration engine is fetched by the CLI separately."
+  );
+  return null;
+}
+
 async function runMigrationsIfRequested() {
   if (!config.database.migrateOnBoot) return;
 
   console.log("Running database migrations (RUN_MIGRATIONS_ON_BOOT=true)...");
+  const schemaEngine = schemaEngineOverride();
+  if (schemaEngine) console.log(`  using schema engine ${path.basename(schemaEngine)}`);
   await new Promise((resolve, reject) => {
     execFile(
       process.execPath,
       [require.resolve("prisma/build/index.js"), "migrate", "deploy"],
-      { cwd: process.cwd(), env: { ...process.env, DATABASE_URL: config.database.url } },
+      {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          DATABASE_URL: config.database.url,
+          ...(schemaEngine ? { PRISMA_SCHEMA_ENGINE_BINARY: schemaEngine } : {}),
+        },
+      },
       (err, stdout, stderr) => {
         if (stdout) console.log(stdout.trim());
         if (stderr) console.error(stderr.trim());
