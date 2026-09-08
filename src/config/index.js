@@ -64,7 +64,49 @@ const config = {
   get clusterWorkers() { return Math.max(1, Number(process.env.CLUSTER_WORKERS) || 1); },
 
   database: {
-    get url() { return process.env.DATABASE_URL; },
+    // DATABASE_URL first, because Prisma needs a single URL and an explicit
+    // value should always win.
+    //
+    // Failing that, build one from DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD.
+    // Managed platforms attach a database by injecting those five variables
+    // rather than a URL — nothing sets DATABASE_URL for you, so without this
+    // the app cannot see a database that is sitting right there, already
+    // provisioned and already reachable.
+    get url() {
+      if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
+
+      const host = process.env.DB_HOST;
+      const name = process.env.DB_NAME;
+      const user = process.env.DB_USER;
+      if (!host || !name || !user) return undefined;
+
+      const port = process.env.DB_PORT || 3306;
+      // Encoded, not interpolated raw: an injected password is not chosen by
+      // anyone and routinely contains @ # / or ?, each of which would end the
+      // URL early and produce a parse error naming the wrong component.
+      const auth = process.env.DB_PASSWORD
+        ? `${encodeURIComponent(user)}:${encodeURIComponent(process.env.DB_PASSWORD)}`
+        : encodeURIComponent(user);
+
+      return `mysql://${auth}@${host}:${port}/${encodeURIComponent(name)}`;
+    },
+
+    // Which of the two the value came from. Worth reporting at startup: "no
+    // database" and "the wrong database" look identical in a connection error,
+    // and on a platform that injects credentials it is genuinely unobvious
+    // which set is in play.
+    // Runs `prisma migrate deploy` at startup. Off unless asked for, because
+    // schema changes should normally be a deliberate step, not a side effect
+    // of a restart. It exists for platforms that give you no shell — where
+    // otherwise a freshly attached database stays empty forever and every
+    // page fails on a missing table, with no way in to fix it.
+    get migrateOnBoot() { return process.env.RUN_MIGRATIONS_ON_BOOT === "true"; },
+
+    get source() {
+      if (process.env.DATABASE_URL) return "DATABASE_URL";
+      if (process.env.DB_HOST && process.env.DB_NAME && process.env.DB_USER) return "DB_* variables";
+      return "nothing";
+    },
   },
 
   session: {

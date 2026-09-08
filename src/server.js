@@ -1,4 +1,5 @@
 const net = require('net');
+const { execFile } = require('child_process');
 const app = require('./app');
 const config = require('./config');
 const prisma = require('./config/prisma');
@@ -11,9 +12,40 @@ const { startInvitationReconciliationSweep, stopInvitationReconciliationSweep } 
 
 const PORT = config.port;
 
+// Applies any pending migrations before the app serves a request.
+//
+// `migrate deploy` only ever moves forward: it applies migrations that have
+// not run, never generates or edits one, and never resets. Re-running it is a
+// no-op. That is what makes it safe to attach to a boot; `migrate dev` would
+// not be.
+//
+// A failure here stops the app rather than letting it serve against a schema
+// it does not match — half-migrated is worse than not started, because the
+// errors surface as scattered missing columns rather than one clear failure.
+async function runMigrationsIfRequested() {
+  if (!config.database.migrateOnBoot) return;
+
+  console.log("Running database migrations (RUN_MIGRATIONS_ON_BOOT=true)...");
+  await new Promise((resolve, reject) => {
+    execFile(
+      process.execPath,
+      [require.resolve("prisma/build/index.js"), "migrate", "deploy"],
+      { cwd: process.cwd(), env: { ...process.env, DATABASE_URL: config.database.url } },
+      (err, stdout, stderr) => {
+        if (stdout) console.log(stdout.trim());
+        if (stderr) console.error(stderr.trim());
+        if (err) return reject(new Error("migrate deploy failed: " + err.message));
+        console.log("Migrations up to date.");
+        return resolve();
+      }
+    );
+  });
+}
+
 async function start() {
   try {
     await prisma.$connect();
+    await runMigrationsIfRequested();
     app.listen(PORT, () => {
       console.log(`JPSME server running at http://localhost:${PORT}`);
     });
