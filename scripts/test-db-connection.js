@@ -16,6 +16,7 @@
 require('dotenv').config();
 const net = require('net');
 const mysql = require('mysql2/promise');
+const { expectedTableNames } = require('../src/jobs/applyMigrationsDirect');
 
 const raw = process.argv[2] || process.env.DATABASE_URL;
 
@@ -110,11 +111,60 @@ function explain(err) {
   }
 
   const [rows] = await conn.query(
-    'SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = ?',
+    'SELECT table_name AS t FROM information_schema.tables WHERE table_schema = ? ORDER BY table_name',
     [database]
   );
+  const present = rows.map((r) => r.t);
   console.log('  connected and authenticated');
-  console.log(`  tables in ${database}: ${rows[0].n}`);
+  console.log(`  tables in ${database}: ${present.length}`);
+
+  // Reporting the count alone hides the failure that actually happened here: a
+  // database with every table present, but five of them lowercased by a dump
+  // taken from a case-insensitive server. On Linux, where names are
+  // case-sensitive, Prisma's first query then fails on a table the database
+  // plainly contains — and a count of 25 looks perfectly healthy while it does.
+  if (present.length) {
+    // Whether capitalisation matters at all is a property of the server, not
+    // the data. Where names are folded (XAMPP, lower_case_table_names=1) every
+    // table is stored lowercase and `user` IS `User` — reporting those as
+    // problems would send someone renaming tables that are perfectly fine.
+    const [[lcn]] = await conn.query("SHOW VARIABLES LIKE 'lower_case_table_names'").catch(() => [[null]]);
+    const caseSensitive = lcn ? lcn.Value === '0' : true;
+    if (lcn) console.log(`  lower_case_table_names: ${lcn.Value}${caseSensitive ? ' (case-sensitive)' : ' (names folded, capitalisation irrelevant)'}`);
+
+    const expected = expectedTableNames();
+    const miscased = [];
+    const missing = [];
+    expected.forEach((wanted) => {
+      const exact = present.includes(wanted);
+      const insensitive = present.find((x) => x.toLowerCase() === wanted.toLowerCase());
+      if (caseSensitive) {
+        if (exact) return;
+        if (insensitive) miscased.push(`${insensitive} -> ${wanted}`);
+        else missing.push(wanted);
+      } else if (!insensitive) {
+        missing.push(wanted);
+      }
+    });
+
+    if (miscased.length) {
+      console.log('');
+      console.log(`  ${miscased.length} table(s) differ from the schema only by capitalisation:`);
+      miscased.forEach((m) => console.log(`    ${m}`));
+      console.log('  On a case-sensitive server the app cannot read these.');
+      console.log('  Deploy once with RUN_MIGRATIONS_ON_BOOT="true" and the boot-time repair renames them.');
+    }
+    if (missing.length) {
+      console.log('');
+      console.log(`  ${missing.length} table(s) the schema expects are absent:`);
+      missing.forEach((m) => console.log(`    ${m}`));
+      console.log('  Migrations have not been applied to this database.');
+    }
+    if (!miscased.length && !missing.length) {
+      console.log(`  every table the schema expects is present, correctly named`);
+    }
+  }
+
   await conn.end();
   console.log('');
   console.log('  This connection string works. If the app still cannot connect,');
