@@ -16,11 +16,12 @@ const listInvitations = asyncHandler(async (req, res) => {
 // pages.controller.js's adminInvitationsPage) and don't refetch here, same
 // as the admin Payments page's summary cards.
 const listInvitationsReport = asyncHandler(async (req, res) => {
-  const { eventId, chapter, school, type, status, source, sort, dir, page } = req.query;
+  const { eventId, chapter, type, status, source, sort, dir, page } = req.query;
   const result = await invitationService.listInvitationsForAdmin({
     eventId: eventId || undefined,
+    // `chapter` is the organization filter — the parameter keeps its original
+    // name so existing links and bookmarks still resolve.
     chapter: chapter || undefined,
-    school: school || undefined,
     type: type || undefined,
     status: status || undefined,
     source: source || undefined,
@@ -80,9 +81,9 @@ const requestInvitation = asyncHandler(async (req, res) => {
   const result = validationResult(req);
   if (!result.isEmpty()) return error(res, 'Validation failed', 422, result.array());
 
-  const { fullName, email, school, chapter, company } = req.body;
+  const { fullName, email, chapter, company } = req.body;
   const [invitation] = await invitationService.createInvitations(req.params.id, [
-    { fullName, email, school: school || null, chapter: chapter || null, company: company || null, source: 'SELF_REQUESTED' },
+    { fullName, email, chapter: chapter || null, company: company || null, source: 'SELF_REQUESTED' },
   ]);
   return success(res, { invitation }, 'Your invitation is on its way — check your email.', 201);
 });

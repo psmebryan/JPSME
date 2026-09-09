@@ -106,7 +106,6 @@ async function buildWorkbook() {
     { header: 'Last Name', key: 'lastName', width: 18 },
     { header: 'Email', key: 'email', width: 30 },
     { header: 'Phone', key: 'phone', width: 16 },
-    { header: 'School', key: 'school', width: 30 },
     { header: 'Year Level', key: 'yearLevel', width: 12 },
     { header: 'Organization', key: 'organization', width: 40 },
     { header: 'Organization Path', key: 'organizationPath', width: 46 },
@@ -127,7 +126,6 @@ async function buildWorkbook() {
       lastName: u.lastName,
       email: u.email,
       phone: u.phone || '',
-      school: u.school || '',
       yearLevel: YEAR[u.yearLevel] || '',
       organization: u.organization ? u.organization.name : '',
       organizationPath: u.organization ? fullPath(u.organization) : '',
@@ -186,7 +184,6 @@ async function buildWorkbook() {
     { header: 'Name', key: 'name', width: 28 },
     { header: 'Email', key: 'email', width: 30 },
     { header: 'Phone', key: 'phone', width: 16 },
-    { header: 'School', key: 'school', width: 30 },
     // The frozen snapshot, not the member's organization today — a member who
     // transfers must still appear here under the one they attended under.
     { header: 'Organization (at registration)', key: 'org', width: 46 },
@@ -198,7 +195,6 @@ async function buildWorkbook() {
     name: r.fullName,
     email: r.email,
     phone: r.phone || '',
-    school: r.school || '',
     org: r.organizationPath || '',
     status: r.status,
     createdAt: fmtDateTime(r.createdAt),

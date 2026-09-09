@@ -166,6 +166,12 @@ async function sendEventInvitationEmail(invitation, event) {
     eventTitle: event.title,
     eventDate: formatDate(event.startDate),
     eventLocation: event.location || '',
+    // {{organization}} is the name to use; {{chapter}} is the same value under
+    // the column's original name, and {{school}} resolves to whatever a row
+    // recorded back when the form still asked for one. Both stay mapped so a
+    // template saved before this change keeps rendering rather than printing a
+    // literal {{chapter}} into somebody's invitation.
+    organization: invitation.chapter || '',
     chapter: invitation.chapter || '',
     school: invitation.school || '',
     company: invitation.company || '',

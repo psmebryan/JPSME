@@ -30,7 +30,11 @@ async function sendInvitation(invitation, event) {
   }
 }
 
-// invitees: [{ userId?, fullName, email, chapter?, school?, company?, source? }].
+// invitees: [{ userId?, fullName, email, chapter?, company?, source? }].
+// `chapter` carries the invitee's organization — the column predates the
+// Organization tree and kept its old name; the UI calls it Organization. The
+// School column it used to sit beside is gone from every form and report, since
+// members have no way to set one any more; existing values stay on old rows.
 // source defaults to ADMIN_SENT; the public self-service endpoint is the only
 // caller that ever passes 'SELF_REQUESTED' (see invitation.api.js). Re-inviting an
 // email already invited to this event reuses the existing row (idempotent —
@@ -66,7 +70,6 @@ async function createInvitations(eventId, invitees) {
         fullName: invitee.fullName,
         email,
         chapter: invitee.chapter || null,
-        school: invitee.school || null,
         company: invitee.company || null,
         source: invitee.source === 'SELF_REQUESTED' ? 'SELF_REQUESTED' : 'ADMIN_SENT',
         token: generateToken(),
@@ -132,11 +135,10 @@ const INVITATION_SORT_FIELDS = { name: 'fullName', sent: 'sentAt', opened: 'open
 // they back the Excel export and the source-breakdown summary below, both of
 // which need every matching row at once regardless of the table's current
 // page/filter.
-async function listInvitationsForAdmin({ eventId, chapter, school, type, status, source, sort, dir, page = 1, pageSize = 25 } = {}) {
+async function listInvitationsForAdmin({ eventId, chapter, type, status, source, sort, dir, page = 1, pageSize = 25 } = {}) {
   const where = {};
   if (eventId) where.eventId = Number(eventId);
   if (chapter) where.chapter = chapter;
-  if (school) where.school = school;
   if (type === 'Member') where.userId = { not: null };
   if (type === 'Guest') where.userId = null;
   if (status) where.status = status;
@@ -165,22 +167,24 @@ async function listInvitationsForAdmin({ eventId, chapter, school, type, status,
   return { invitations, total, page, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
 }
 
-// Distinct chapter/school (and, cross-event only, event) values actually
-// present on invitations — drives the filter dropdowns. Derived from
-// EventInvitation itself (not the members table) so external contacts, who
-// aren't members at all, still show up as filter options.
+// Distinct organization (and, cross-event only, event) values actually present
+// on invitations — drives the filter dropdowns. Derived from EventInvitation
+// itself (not the members table) so external contacts, who aren't members at
+// all, still show up as filter options.
+//
+// Still keyed `chapters` rather than `organizations`: the query parameter is
+// `chapter`, so renaming the key here would only put a second name on the same
+// thing. The label the admin reads is set in the view.
 async function getInvitationFilterOptions(eventId) {
   const where = eventId ? { eventId: Number(eventId) } : {};
-  const [chapterRows, schoolRows, eventRows] = await Promise.all([
+  const [chapterRows, eventRows] = await Promise.all([
     prisma.eventInvitation.findMany({ where, select: { chapter: true }, distinct: ['chapter'] }),
-    prisma.eventInvitation.findMany({ where, select: { school: true }, distinct: ['school'] }),
     eventId
       ? Promise.resolve([])
       : prisma.eventInvitation.findMany({ where, select: { event: { select: { id: true, title: true } } }, distinct: ['eventId'] }),
   ]);
   return {
     chapters: chapterRows.map((r) => r.chapter).filter(Boolean).sort(),
-    schools: schoolRows.map((r) => r.school).filter(Boolean).sort(),
     events: eventRows.map((r) => r.event).filter(Boolean).sort((a, b) => a.title.localeCompare(b.title)),
   };
 }
@@ -275,8 +279,7 @@ async function exportInvitationsExcel(eventId) {
   ];
   if (!eventId) detailColumns.push({ header: 'Event', key: 'event', width: 26 });
   detailColumns.push(
-    { header: 'Chapter', key: 'chapter', width: 18 },
-    { header: 'School', key: 'school', width: 22 },
+    { header: 'Organization', key: 'chapter', width: 26 },
     { header: 'Company', key: 'company', width: 22 },
     { header: 'Type', key: 'type', width: 12 },
     { header: 'Source', key: 'source', width: 16 },
@@ -298,7 +301,6 @@ async function exportInvitationsExcel(eventId) {
       email: inv.email,
       event: inv.event ? inv.event.title : undefined,
       chapter: inv.chapter || '',
-      school: inv.school || '',
       company: inv.company || '',
       type: inv.userId ? 'Member' : 'Guest',
       source: inv.source === 'SELF_REQUESTED' ? 'Requested' : 'Admin-Sent',
@@ -312,10 +314,10 @@ async function exportInvitationsExcel(eventId) {
   });
 
   // Excel's own header-row filter dropdowns — every column (Type, Source,
-  // Status, Chapter, School, RSVP, etc.) becomes filterable/sortable right
+  // Status, Organization, RSVP, etc.) becomes filterable/sortable right
   // inside Excel, on top of whatever's already filtered here on the admin
   // page. columnLetter covers up to Z, which comfortably fits this sheet's
-  // column count either way (13 per-event, 14 cross-event).
+  // column count either way (12 per-event, 13 cross-event).
   const columnLetter = (n) => String.fromCharCode('A'.charCodeAt(0) + n - 1);
   details.autoFilter = { from: 'A1', to: `${columnLetter(detailColumns.length)}1` };
 

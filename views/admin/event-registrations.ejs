@@ -49,7 +49,7 @@ function regStatusBadge(status) {
             <th class="admin-th">Name</th>
             <th class="admin-th">Email</th>
             <th class="admin-th">Phone</th>
-            <th class="admin-th">School</th>
+            <th class="admin-th">Organization</th>
             <th class="admin-th">Status</th>
             <th class="admin-th">Source</th>
             <th class="admin-th">Registered At</th>
@@ -63,7 +63,10 @@ function regStatusBadge(status) {
               <td class="admin-td"><%= r.fullName %></td>
               <td class="admin-td max-w-[220px] truncate"><%= r.email %></td>
               <td class="admin-td"><%= r.phone || '-' %></td>
-              <td class="admin-td max-w-[160px] truncate"><%= r.school || '-' %></td>
+              <%# The organization snapshotted at registration time, not the
+                  member's today — a member who transfers must still appear here
+                  under the one they attended under. %>
+              <td class="admin-td max-w-[220px] truncate" title="<%= r.organizationPath || '' %>"><%= r.organizationPath || '-' %></td>
               <td class="admin-td"><%- regStatusBadge(r.status) %></td>
               <td class="admin-td"><%- r.invitationId ? '<span class="badge-purple">Invited</span>' : '-' %></td>
               <td class="admin-td"><%= new Date(r.createdAt).toLocaleString() %></td>

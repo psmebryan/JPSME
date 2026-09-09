@@ -16,9 +16,13 @@ function fmt(date) {
 const invitationsList = typeof invitations !== 'undefined' ? invitations : [];
 const invitedStatusRows = typeof invitedEmailStatuses !== 'undefined' ? invitedEmailStatuses : [];
 const invitedEmails = new Map(invitedStatusRows.map((inv) => [inv.email.toLowerCase(), inv.status]));
-const distinctChapters = [...new Set(members.map((m) => (m.organization && m.organization.name) || '').filter(Boolean))].sort();
-const distinctSchools = [...new Set(members.map((m) => m.school || '').filter(Boolean))].sort();
-const opts = typeof filterOptions !== 'undefined' ? filterOptions : { chapters: [], schools: [], events: [] };
+// The invitation's `chapter` column has always held the member's organization
+// name; it predates the Organization tree and simply kept the older label.
+// School was a second, separate field, and members can no longer set one at all
+// — so what were two columns are now the one that says what it actually is.
+// The query parameter stays `chapter` so existing bookmarks and links still work.
+const distinctOrganizations = [...new Set(members.map((m) => (m.organization && m.organization.name) || '').filter(Boolean))].sort();
+const opts = typeof filterOptions !== 'undefined' ? filterOptions : { chapters: [], events: [] };
 function memberOrGuestBadge(inv) {
   // Three-way, matching how the org classifies people:
   //   Guest      — no account; invited to this one event only
@@ -47,8 +51,8 @@ function rsvpBadge(inv) {
 }
 // This builds raw HTML via string concatenation, rendered unescaped below,
 // so the exact same row-template can be shared with admin.js for the
-// AJAX-refreshed rows — every user-controlled field (fullName/email/chapter/
-// school/company/event title, all admin- or visitor-entered free text) MUST
+// AJAX-refreshed rows — every user-controlled field (fullName/email/
+// organization/company/event title, all admin- or visitor-entered free text) MUST
 // go through esc() here, unlike a plain auto-escaping EJS output tag.
 function esc(value) {
   return String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => (
@@ -71,7 +75,6 @@ function invitationRowHtml(inv, includeEventColumn) {
       <td class="admin-td">${esc(inv.fullName)}</td>
       <td class="admin-td max-w-[180px] truncate">${esc(inv.email)}</td>
       <td class="admin-td">${esc(inv.chapter) || '-'}</td>
-      <td class="admin-td">${esc(inv.school) || '-'}</td>
       <td class="admin-td">${esc(inv.company) || '-'}</td>
       <td class="admin-td">${memberOrGuestBadge(inv)}</td>
       <td class="admin-td">${sourceBadge(inv.source)}</td>
@@ -122,18 +125,14 @@ function sortArrowHeader(label, key) {
         <p class="empty-state">No invitations sent yet.</p>
       <% } else { %>
         <div id="all-invitations-module" data-event-id="">
-          <form id="all-invitations-filter-form" class="grid gap-2 sm:grid-cols-6 mb-3">
+          <form id="all-invitations-filter-form" class="grid gap-2 sm:grid-cols-5 mb-3">
             <select name="eventId" class="form-input">
               <option value="">All Events</option>
               <% opts.events.forEach(e => { %><option value="<%= e.id %>"><%= e.title %></option><% }) %>
             </select>
             <select name="chapter" class="form-input">
-              <option value="">All Chapters</option>
+              <option value="">All Organizations</option>
               <% opts.chapters.forEach(c => { %><option value="<%= c %>"><%= c %></option><% }) %>
-            </select>
-            <select name="school" class="form-input">
-              <option value="">All Schools</option>
-              <% opts.schools.forEach(s => { %><option value="<%= s %>"><%= s %></option><% }) %>
             </select>
             <select name="type" class="form-input">
               <option value="">Members &amp; Guests</option>
@@ -161,8 +160,7 @@ function sortArrowHeader(label, key) {
                   <th class="admin-th">Event</th>
                   <th class="admin-th"><%- sortArrowHeader('Name', 'name') %></th>
                   <th class="admin-th">Email</th>
-                  <th class="admin-th">Chapter</th>
-                  <th class="admin-th">School</th>
+                  <th class="admin-th">Organization</th>
                   <th class="admin-th">Company</th>
                   <th class="admin-th">Type</th>
                   <th class="admin-th">Requested?</th>
@@ -192,20 +190,16 @@ function sortArrowHeader(label, key) {
       <div class="border border-slate-200 rounded-lg p-4 mb-4">
         <label class="form-label">Existing Members</label>
         <div class="mb-2 space-y-2">
-          <input id="invite-member-search" type="text" placeholder="Search by name, email, chapter, or school&hellip;" class="form-input w-full" />
-          <div class="grid gap-2 sm:grid-cols-3">
+          <input id="invite-member-search" type="text" placeholder="Search by name, email, or organization&hellip;" class="form-input w-full" />
+          <div class="grid gap-2 sm:grid-cols-2">
             <select id="invite-member-filter" class="form-input">
               <option value="all">All Members</option>
               <option value="not-invited">Not Yet Invited</option>
               <option value="invited">Already Invited</option>
             </select>
             <select id="invite-member-chapter-filter" class="form-input">
-              <option value="">All Chapters</option>
-              <% distinctChapters.forEach(c => { %><option value="<%= c %>"><%= c %></option><% }) %>
-            </select>
-            <select id="invite-member-school-filter" class="form-input">
-              <option value="">All Schools</option>
-              <% distinctSchools.forEach(s => { %><option value="<%= s %>"><%= s %></option><% }) %>
+              <option value="">All Organizations</option>
+              <% distinctOrganizations.forEach(c => { %><option value="<%= c %>"><%= c %></option><% }) %>
             </select>
           </div>
         </div>
@@ -216,33 +210,29 @@ function sortArrowHeader(label, key) {
                 <th class="p-2 text-left w-8"><input type="checkbox" id="invite-select-all" /></th>
                 <th class="p-2 text-left">Name</th>
                 <th class="p-2 text-left">Email</th>
-                <th class="p-2 text-left">Chapter</th>
-                <th class="p-2 text-left">School</th>
+                <th class="p-2 text-left">Organization</th>
                 <th class="p-2 text-left">Status</th>
               </tr>
             </thead>
             <tbody id="invite-member-tbody">
               <% members.forEach(m => { %>
-                <% const chapterName = (m.organization && m.organization.name) || ''; %>
+                <% const organizationName = (m.organization && m.organization.name) || ''; %>
                 <% const invitedStatus = invitedEmails.get(m.email.toLowerCase()); %>
                 <tr class="invite-member-row border-t border-slate-100 <%= invitedStatus ? 'bg-slate-50' : '' %>"
-                    data-search="<%= `${m.firstName} ${m.lastName} ${m.email} ${chapterName} ${m.school || ''}`.toLowerCase() %>"
+                    data-search="<%= `${m.firstName} ${m.lastName} ${m.email} ${organizationName}`.toLowerCase() %>"
                     data-invited="<%= invitedStatus ? 'true' : 'false' %>"
-                    data-chapter="<%= chapterName %>"
-                    data-school="<%= m.school || '' %>">
+                    data-chapter="<%= organizationName %>">
                   <td class="p-2">
                     <input type="checkbox" class="invite-member-checkbox"
                       value="<%= m.id %>"
                       data-name="<%= m.firstName %> <%= m.lastName %>"
                       data-email="<%= m.email %>"
-                      data-chapter="<%= chapterName %>"
-                      data-school="<%= m.school || '' %>"
+                      data-chapter="<%= organizationName %>"
                       <%= invitedStatus ? 'disabled title="Already invited to this event"' : '' %> />
                   </td>
                   <td class="p-2"><%= m.firstName %> <%= m.lastName %></td>
                   <td class="p-2 text-slate-500 max-w-[180px] truncate"><%= m.email %></td>
-                  <td class="p-2"><%= chapterName || '-' %></td>
-                  <td class="p-2"><%= m.school || '-' %></td>
+                  <td class="p-2"><%= organizationName || '-' %></td>
                   <td class="p-2"><%- invitedStatus ? invStatusBadge(invitedStatus) : '<span class="text-xs text-slate-400">Not invited</span>' %></td>
                 </tr>
               <% }) %>
@@ -259,8 +249,7 @@ function sortArrowHeader(label, key) {
         <div class="grid gap-2 sm:grid-cols-2">
           <input id="invite-ext-name" placeholder="Full name" class="form-input" />
           <input id="invite-ext-email" type="email" placeholder="Email address" class="form-input" />
-          <input id="invite-ext-chapter" placeholder="Chapter (optional)" class="form-input" />
-          <input id="invite-ext-school" placeholder="School (optional)" class="form-input" />
+          <input id="invite-ext-chapter" placeholder="Organization (optional)" class="form-input" />
           <input id="invite-ext-company" placeholder="Company (optional)" class="form-input" />
         </div>
         <div class="flex items-center gap-3 mt-2">
@@ -325,14 +314,10 @@ function sortArrowHeader(label, key) {
           </table>
         </div>
         <div id="event-invitations-module" data-event-id="<%= selectedEvent.id %>">
-          <form id="event-invitations-filter-form" class="grid gap-2 sm:grid-cols-5 mb-3">
+          <form id="event-invitations-filter-form" class="grid gap-2 sm:grid-cols-4 mb-3">
             <select name="chapter" class="form-input">
-              <option value="">All Chapters</option>
+              <option value="">All Organizations</option>
               <% opts.chapters.forEach(c => { %><option value="<%= c %>"><%= c %></option><% }) %>
-            </select>
-            <select name="school" class="form-input">
-              <option value="">All Schools</option>
-              <% opts.schools.forEach(s => { %><option value="<%= s %>"><%= s %></option><% }) %>
             </select>
             <select name="type" class="form-input">
               <option value="">Members &amp; Guests</option>
@@ -359,8 +344,7 @@ function sortArrowHeader(label, key) {
                 <tr>
                   <th class="admin-th"><%- sortArrowHeader('Name', 'name') %></th>
                   <th class="admin-th">Email</th>
-                  <th class="admin-th">Chapter</th>
-                  <th class="admin-th">School</th>
+                  <th class="admin-th">Organization</th>
                   <th class="admin-th">Company</th>
                   <th class="admin-th">Type</th>
                   <th class="admin-th">Requested?</th>

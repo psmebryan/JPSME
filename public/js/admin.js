@@ -1539,11 +1539,10 @@ function initInvitationsModule() {
     return true;
   }
 
-  // --- Existing-member search + invited-status/chapter/school filters + bulk select ---
+  // --- Existing-member search + invited-status/organization filters + bulk select ---
   const memberSearch = document.getElementById('invite-member-search');
   const memberFilter = document.getElementById('invite-member-filter');
   const memberChapterFilter = document.getElementById('invite-member-chapter-filter');
-  const memberSchoolFilter = document.getElementById('invite-member-school-filter');
   const memberRows = Array.from(document.querySelectorAll('.invite-member-row'));
   const memberEmptyEl = document.getElementById('invite-member-empty');
   const selectAllCheckbox = document.getElementById('invite-select-all');
@@ -1552,15 +1551,13 @@ function initInvitationsModule() {
     const query = memberSearch ? memberSearch.value.trim().toLowerCase() : '';
     const filter = memberFilter ? memberFilter.value : 'all';
     const chapter = memberChapterFilter ? memberChapterFilter.value : '';
-    const school = memberSchoolFilter ? memberSchoolFilter.value : '';
     let visibleCount = 0;
     memberRows.forEach((row) => {
       const matchesSearch = !query || row.dataset.search.includes(query);
       const isInvited = row.dataset.invited === 'true';
       const matchesFilter = filter === 'all' || (filter === 'invited' && isInvited) || (filter === 'not-invited' && !isInvited);
       const matchesChapter = !chapter || row.dataset.chapter === chapter;
-      const matchesSchool = !school || row.dataset.school === school;
-      const visible = matchesSearch && matchesFilter && matchesChapter && matchesSchool;
+      const visible = matchesSearch && matchesFilter && matchesChapter;
       row.classList.toggle('hidden', !visible);
       if (visible) visibleCount += 1;
     });
@@ -1571,7 +1568,6 @@ function initInvitationsModule() {
   memberSearch?.addEventListener('input', applyMemberFilters);
   memberFilter?.addEventListener('change', applyMemberFilters);
   memberChapterFilter?.addEventListener('change', applyMemberFilters);
-  memberSchoolFilter?.addEventListener('change', applyMemberFilters);
 
   // Only affects rows currently matching the search — selecting "all" while
   // filtered should mean all of *this* view, not every member in the event.
@@ -1596,7 +1592,6 @@ function initInvitationsModule() {
         fullName: checkbox.dataset.name,
         email: checkbox.dataset.email,
         chapter: checkbox.dataset.chapter,
-        school: checkbox.dataset.school,
       }, true);
       if (wasAdded) added += 1;
       checkbox.checked = false;
@@ -1610,15 +1605,13 @@ function initInvitationsModule() {
     const name = document.getElementById('invite-ext-name');
     const email = document.getElementById('invite-ext-email');
     const chapter = document.getElementById('invite-ext-chapter');
-    const school = document.getElementById('invite-ext-school');
     const company = document.getElementById('invite-ext-company');
-    const wasAdded = addPending({ fullName: name.value, email: email.value, chapter: chapter.value, school: school.value, company: company.value });
+    const wasAdded = addPending({ fullName: name.value, email: email.value, chapter: chapter.value, company: company.value });
     if (!wasAdded) return;
     renderPendingList();
     name.value = '';
     email.value = '';
     chapter.value = '';
-    school.value = '';
     company.value = '';
   });
 
@@ -1637,7 +1630,7 @@ function initInvitationsModule() {
       }
       let added = 0;
       contacts.forEach((c) => {
-        if (addPending({ fullName: c.fullName, email: c.email, chapter: c.chapter, school: c.school, company: c.company }, true)) added += 1;
+        if (addPending({ fullName: c.fullName, email: c.email, chapter: c.chapter, company: c.company }, true)) added += 1;
       });
       renderPendingList();
       showToast(added ? `Added ${added} contact${added === 1 ? '' : 's'} from the sheet` : 'All contacts from the sheet were already on the list', added ? 'success' : 'error');
@@ -1753,7 +1746,6 @@ function invitationRowHtml(inv, includeEventColumn) {
       <td class="admin-td">${escapeHtml(inv.fullName)}</td>
       <td class="admin-td max-w-[180px] truncate">${escapeHtml(inv.email)}</td>
       <td class="admin-td">${escapeHtml(inv.chapter) || '-'}</td>
-      <td class="admin-td">${escapeHtml(inv.school) || '-'}</td>
       <td class="admin-td">${escapeHtml(inv.company) || '-'}</td>
       <td class="admin-td">${memberOrGuestBadgeHtml(inv)}</td>
       <td class="admin-td">${sourceBadgeHtml(inv.source)}</td>
@@ -1819,7 +1811,7 @@ function initInvitationsReportTable({ moduleId, tableId, formId, emptyStateId, p
   async function loadInvitations(page) {
     const formData = filterForm ? new FormData(filterForm) : new FormData();
     const params = new URLSearchParams();
-    ['eventId', 'chapter', 'school', 'type', 'status', 'source'].forEach((key) => {
+    ['eventId', 'chapter', 'type', 'status', 'source'].forEach((key) => {
       const value = formData.get(key) || (key === 'eventId' ? eventId : '');
       if (value) params.set(key, value);
     });

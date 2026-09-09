@@ -132,12 +132,16 @@ async function fetchContactsToInvite() {
     range: `'${CONTACTS_TAB_NAME}'!A2:E${MAX_IMPORTED_CONTACTS + 1}`,
   });
 
+  // Invitations now carry one organization instead of a School and a Chapter,
+  // but this tab is the admin's own and its columns are left exactly as they
+  // are — so both are read and whichever was filled in becomes the
+  // organization. Chapter wins when a row has both, matching where that value
+  // used to land.
   return (res.data.values || [])
     .map(([fullName, email, school, chapter, company]) => ({
       fullName: (fullName || '').trim(),
       email: (email || '').trim(),
-      school: (school || '').trim() || null,
-      chapter: (chapter || '').trim() || null,
+      chapter: (chapter || '').trim() || (school || '').trim() || null,
       company: (company || '').trim() || null,
     }))
     .filter((c) => c.fullName && c.email); // blank/incomplete rows are silently skipped, not errors
@@ -377,12 +381,11 @@ async function syncInvitations(eventId) {
     ].join('   |   ');
 
     const rsvpLabels = { ATTENDING: 'Attending', NOT_ATTENDING: 'Not Attending', PENDING: 'No response' };
-    const header = ['Name', 'Email', 'Chapter', 'School', 'Company', 'Type', 'Source', 'Delivery Status', 'Sent At', 'Opened At', 'Clicked At', 'RSVP', 'Registered At'];
+    const header = ['Name', 'Email', 'Organization', 'Company', 'Type', 'Source', 'Delivery Status', 'Sent At', 'Opened At', 'Clicked At', 'RSVP', 'Registered At'];
     const rows = invitations.map((i) => [
       i.fullName,
       i.email,
       i.chapter || '-',
-      i.school || '-',
       i.company || '-',
       i.userId ? 'Member' : 'Guest',
       i.source === 'SELF_REQUESTED' ? 'Requested' : 'Admin-Sent',
@@ -452,7 +455,7 @@ async function syncEventRegistrations(eventId) {
     // live lookup through the user — that is the whole reason the column
     // exists. A member who transfers to another chapter after this event must
     // still appear here under the organization they actually attended under.
-    const header = ['Name', 'Email', 'Phone', 'School', 'Organization', 'Status', 'Payment Status', 'Amount Paid', 'Fee Deducted', 'Net Received', 'Registered At'];
+    const header = ['Name', 'Email', 'Phone', 'Organization', 'Status', 'Payment Status', 'Amount Paid', 'Fee Deducted', 'Net Received', 'Registered At'];
     const rows = registrations.map((r) => {
       const p = latestPaymentByUser.get(r.userId);
       const isPaid = p && p.status === 'PAID';
@@ -460,7 +463,6 @@ async function syncEventRegistrations(eventId) {
         r.fullName,
         r.email,
         r.phone || '-',
-        r.school || '-',
         r.organizationPath || '-',
         r.status,
         hasFee ? (p ? p.status : 'N/A') : 'FREE',

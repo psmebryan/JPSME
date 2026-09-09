@@ -113,12 +113,13 @@
           <input id="inv-req-email" name="email" type="email" required maxlength="191" class="form-input">
         </div>
         <div>
-          <label for="inv-req-school" class="form-label">School (optional)</label>
-          <input id="inv-req-school" name="school" maxlength="150" class="form-input">
-        </div>
-        <div>
-          <label for="inv-req-chapter" class="form-label">Chapter (optional)</label>
-          <input id="inv-req-chapter" name="chapter" maxlength="150" class="form-input">
+          <%# One affiliation field, not the two this used to ask for. A visitor
+              filling in a form has no way to tell which of "School" and
+              "Chapter" the organisers meant, and only one of them was ever
+              shown back to an admin. %>
+          <label for="inv-req-chapter" class="form-label">Organization (optional)</label>
+          <input id="inv-req-chapter" name="chapter" maxlength="150" class="form-input"
+                 placeholder="Your school, unit or chapter">
         </div>
         <div>
           <label for="inv-req-company" class="form-label">Company (optional)</label>
