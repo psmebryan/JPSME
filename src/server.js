@@ -142,20 +142,30 @@ async function start() {
       || err.code === 'P1001'
       || /can't reach database server/i.test(err.message || '');
 
-    if (config.isProduction && isConnectionFailure) {
+    // Which advice is right depends on where the DATABASE SERVER is, not on
+    // NODE_ENV. This was gated on config.isProduction, and the preview
+    // environment runs `npm run dev` on a Linux container — so a genuine
+    // outbound-port block on a hosted server was answered with "Is XAMPP MySQL
+    // running?", which is the exact wrong-place-to-look this code exists to
+    // prevent. A remote host can never be XAMPP, whatever NODE_ENV says.
+    let dbHost = '(unparseable)';
+    let dbPort = 3306;
+    try {
+      const parsed = new URL(config.database.url);
+      dbHost = parsed.hostname;
+      dbPort = parsed.port ? Number(parsed.port) : 3306;
+    } catch (e) { /* leave the placeholders */ }
+    const dbIsLocal = ['localhost', '127.0.0.1', '::1', ''].includes(dbHost);
+
+    if (isConnectionFailure && !dbIsLocal) {
       // P1001 covers two completely different failures with one message: a
       // socket that never opens (the port is blocked or the host is wrong) and
       // a socket that opens and is then refused (credentials, or the address
       // is not in the database's allow-list). They are fixed in different
       // places, and guessing between them costs a deploy each time. So ask the
       // network directly before printing advice.
-      let host = '(unparseable)';
-      let port = 3306;
-      try {
-        const u = new URL(config.database.url);
-        host = u.hostname;
-        port = u.port ? Number(u.port) : 3306;
-      } catch (e) { /* leave the placeholders */ }
+      const host = dbHost;
+      const port = dbPort;
 
       const socketOpens = await new Promise((resolve) => {
         const s2 = new net.Socket();
@@ -189,7 +199,8 @@ async function start() {
         );
       }
     } else if (isConnectionFailure) {
-      console.error('Failed to connect to the database. Is XAMPP MySQL running and DATABASE_URL correct?');
+      // Reached only when the database really is meant to be on this machine.
+      console.error(`Failed to connect to ${dbHost}:${dbPort}. Is XAMPP MySQL running, and is DATABASE_URL correct?`);
     } else {
       console.error(`Startup failed (${err.errorCode || err.code || 'no code'}). The database was not the problem.`);
     }
