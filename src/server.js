@@ -4,6 +4,7 @@ const net = require('net');
 const { execFile } = require('child_process');
 const { applyMigrationsDirect } = require('./jobs/applyMigrationsDirect');
 const { seedAdminIfRequested } = require('./jobs/seedAdmin');
+const { runEgressProbeIfRequested } = require('./jobs/egressProbe');
 const app = require('./app');
 const config = require('./config');
 const prisma = require('./config/prisma');
@@ -113,6 +114,10 @@ async function runMigrationsIfRequested() {
 
 async function start() {
   try {
+    // Before the database, so it still reports when the database is the thing
+    // that cannot be reached — which is exactly when the answer is wanted.
+    await runEgressProbeIfRequested(console);
+
     await prisma.$connect();
     await runMigrationsIfRequested();
     // After migrations, because on a first deploy the User table does not exist
