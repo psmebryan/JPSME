@@ -163,6 +163,32 @@ function explain(err) {
     if (!miscased.length && !missing.length) {
       console.log(`  every table the schema expects is present, correctly named`);
     }
+
+    // Correctly-named tables say the schema is right; they say nothing about
+    // whether there is anything in them. An empty copy of the schema and a
+    // live database look identical above, and pointing an app at the wrong one
+    // of those is the difference between a migration and an outage.
+    if (!missing.length) {
+      const interesting = ['User', 'Event', 'EventRegistration', 'organizations', 'payments'];
+      const counts = [];
+      for (const table of interesting) {
+        const actual = present.find((x) => (caseSensitive ? x === table : x.toLowerCase() === table.toLowerCase()));
+        if (!actual) continue;
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const [[row]] = await conn.query(`SELECT COUNT(*) AS n FROM \`${actual}\``);
+          counts.push(`${table}: ${row.n}`);
+        } catch (err) { /* a table we cannot count is not worth failing over */ }
+      }
+      if (counts.length) {
+        console.log('');
+        console.log(`  rows — ${counts.join('   ')}`);
+        if (counts.every((c) => c.endsWith(': 0'))) {
+          console.log('  Every one of those is empty: this is the schema without the data.');
+          console.log('  Pointing the app here would start it from nothing.');
+        }
+      }
+    }
   }
 
   await conn.end();
