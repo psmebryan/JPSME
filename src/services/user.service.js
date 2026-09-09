@@ -177,10 +177,36 @@ async function getById(userId) {
   return toPublicUser(user);
 }
 
-async function updateUser(userId, data) {
-  // Prevent promoting someone to ADMIN via chapter member edit
-  if (data.role && data.role === 'ADMIN') {
+// `allowAdminRole` is passed only by the controller path a full admin reaches,
+// never by the chapter-scoped one. Defaulting it to false keeps the original
+// guarantee — a chapter admin cannot mint an ADMIN, whatever they post — while
+// letting the person who already holds the role hand it to someone else, which
+// previously required a database they cannot reach.
+async function updateUser(userId, data, { allowAdminRole = false, actorId = null } = {}) {
+  const target = await prisma.user.findUnique({
+    where: { id: Number(userId) },
+    select: { id: true, role: true, email: true },
+  });
+  if (!target) throw new AppError('User not found', 404);
+
+  const wantsAdmin = data.role === 'ADMIN';
+  if (wantsAdmin && !allowAdminRole) {
     throw new AppError('Cannot assign ADMIN role via chapter member management', 403);
+  }
+
+  const losesAdmin = target.role === 'ADMIN' && data.role && data.role !== 'ADMIN';
+
+  // Two ways to lock everyone out of the admin panel, both easy to do by
+  // accident and neither recoverable from inside the app — the role can only
+  // be restored by an admin, and there would be none.
+  if (losesAdmin) {
+    if (actorId && Number(actorId) === target.id) {
+      throw new AppError('You cannot remove your own administrator role. Ask another admin to do it.', 400);
+    }
+    const admins = await prisma.user.count({ where: { role: 'ADMIN' } });
+    if (admins <= 1) {
+      throw new AppError('This is the only administrator account — promote someone else first.', 400);
+    }
   }
 
   // Whitelist fields that may be updated via this function to avoid passing
@@ -208,9 +234,11 @@ async function updateUser(userId, data) {
     allowed.yearLevel = ['FIRST', 'SECOND', 'THIRD', 'FOURTH'].includes(yl) ? yl : null;
   }
   if (Object.prototype.hasOwnProperty.call(data, 'role')) {
-    // Only allow role changes to CHAPTER_ADMIN or USER here; ADMIN is blocked above.
     const roleVal = data.role;
-    if (roleVal === 'CHAPTER_ADMIN' || roleVal === 'USER') allowed.role = roleVal;
+    const assignable = allowAdminRole
+      ? ['ADMIN', 'CHAPTER_ADMIN', 'USER']
+      : ['CHAPTER_ADMIN', 'USER'];
+    if (assignable.includes(roleVal)) allowed.role = roleVal;
   }
   if (Object.prototype.hasOwnProperty.call(data, 'organizationId')) {
     if (data.organizationId === '' || data.organizationId === null || data.organizationId === undefined) {
@@ -223,6 +251,20 @@ async function updateUser(userId, data) {
   }
 
   const updated = await prisma.user.update({ where: { id: Number(userId) }, data: allowed, include: { organization: true } });
+
+  // Logged after the write, so nothing claims a change that did not happen.
+  // Awaited rather than fired and forgotten: granting ADMIN hands over every
+  // member's personal details and the entire payment history, and an audit
+  // trail that silently drops the one entry that matters is worse than none.
+  if (allowed.role && allowed.role !== target.role) {
+    await auditService.log({
+      action: 'USER_ROLE_CHANGED',
+      actorId,
+      targetUserId: target.id,
+      metadata: { from: target.role, to: allowed.role, email: target.email },
+    });
+  }
+
   return toPublicUser(updated);
 }
 

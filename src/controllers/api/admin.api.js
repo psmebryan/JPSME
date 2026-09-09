@@ -126,7 +126,13 @@ const updateUser = asyncHandler(async (req, res) => {
     );
   }
 
-  const user = await userService.updateUser(userId, payload);
+  // allowAdminRole is true only here, on the branch a full admin reaches —
+  // the scoped branch above has already stripped `role` from the payload, so a
+  // chapter admin cannot arrive with one however they craft the request.
+  const user = await userService.updateUser(userId, payload, {
+    allowAdminRole: !req.orgScope,
+    actorId: req.session.user.id,
+  });
   return success(res, { user }, 'User updated');
 });
 
