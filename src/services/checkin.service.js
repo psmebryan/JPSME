@@ -331,6 +331,89 @@ async function applyVerdict({
   };
 }
 
+// --- taking an admission back ----------------------------------------------
+
+// The correction a door actually needs. Someone scans the person behind the one
+// they meant to, two people present the same code and the first one through was
+// the wrong one, a member is admitted a moment before staff spot a problem —
+// without this the only remedy is a database edit, which at a live event means
+// no remedy at all.
+//
+// Deliberately available to anyone who can run this door, not main admins only.
+// The person who needs it is the operator who just made the mistake, standing
+// at the entrance; a correction they cannot make is a correction that does not
+// happen. The cost is that a reversed ticket can be used again, so the reversal
+// is recorded twice over — a CHECK_OUT/UNDONE row in the door log, and an audit
+// entry naming the operator — rather than being made quiet and convenient.
+//
+// Nothing is deleted. The SUCCESS row that admitted them stays exactly where it
+// was; this adds the row that says it was taken back. "Nobody was ever admitted
+// on this ticket" and "somebody was admitted and then removed" are different
+// facts, and a report that cannot tell them apart is worse than no report.
+async function undoCheckIn({
+  eventId, registrationId, staffUser, scannerIdentifier = null, ipAddress = null, userAgent = null,
+}) {
+  await assertCanCheckIn(staffUser, eventId);
+
+  const registration = await prisma.eventRegistration.findUnique({
+    where: { id: Number(registrationId) },
+  });
+  // Scoped to this door for the same reason a scan is: an operator granted the
+  // convention must not be able to reach into a chapter seminar's attendance by
+  // posting an id that belongs to it.
+  if (!registration || registration.eventId !== Number(eventId)) {
+    throw new AppError('That registration is not for this event', 404);
+  }
+
+  // The mirror image of the admission claim: one conditional UPDATE, so two
+  // operators pressing Remove on the same person produce one reversal and one
+  // "already not checked in" — never two CHECK_OUT rows for a single admission.
+  const outcome = await prisma.$transaction(async (tx) => {
+    const release = await tx.eventRegistration.updateMany({
+      where: { id: registration.id, checkedInAt: { not: null } },
+      data: { checkedInAt: null },
+    });
+
+    const won = release.count === 1;
+    if (won) {
+      await recordScan(tx, {
+        registration, eventId, result: 'UNDONE', action: 'CHECK_OUT',
+        staffUserId: staffUser.id, scannerIdentifier, ipAddress, userAgent,
+      });
+    }
+    return { won };
+  });
+
+  if (!outcome.won) {
+    return {
+      ok: false,
+      result: 'NOT_CHECKED_IN',
+      message: 'This person is not checked in, so there is nothing to remove.',
+      participant: participantView(registration),
+    };
+  }
+
+  await auditService.log({
+    action: 'CHECKIN_UNDONE',
+    actorId: staffUser.id,
+    targetUserId: registration.userId,
+    metadata: {
+      eventId: Number(eventId),
+      registrationId: registration.id,
+      registrationNumber: registration.registrationNumber,
+      station: scannerIdentifier || null,
+    },
+    ipAddress,
+  });
+
+  return {
+    ok: true,
+    result: 'UNDONE',
+    message: 'Check-in removed. This ticket can be scanned again.',
+    participant: participantView(registration),
+  };
+}
+
 // --- what the door screen shows --------------------------------------------
 
 async function getEventCheckInStats(eventId) {
@@ -355,7 +438,15 @@ async function getRecentCheckIns(eventId, limit = 10) {
     orderBy: { scannedAt: 'desc' },
     take: limit,
     include: {
-      eventRegistration: { select: { fullName: true, registrationNumber: true } },
+      // checkedInAt is the registration's state *now*, not what it was at the
+      // moment of the scan — that is what makes the list able to show a row as
+      // removed rather than pretending the person is still inside, and what
+      // decides whether a Remove button is offered against it at all.
+      eventRegistration: {
+        select: {
+          id: true, fullName: true, registrationNumber: true, checkedInAt: true,
+        },
+      },
     },
   });
 }
@@ -396,6 +487,7 @@ module.exports = {
   revokeCheckInAccess,
   checkInByScan,
   checkInManually,
+  undoCheckIn,
   getEventCheckInStats,
   getRecentCheckIns,
   searchRegistrations,

@@ -53,6 +53,23 @@ const manualCheckIn = asyncHandler(async (req, res) => {
   return success(res, result, result.message);
 });
 
+// Taking an admission back. Like a refused scan, "there was nothing to remove"
+// is a normal outcome rather than a fault — two operators can press Remove on
+// the same person — so it comes back 200 with ok:false and the page renders it
+// as an ordinary verdict. Only a real fault (no access, wrong event) is a 4xx.
+const undoCheckIn = asyncHandler(async (req, res) => {
+  if (!checkValidation(req, res)) return undefined;
+  const result = await checkinService.undoCheckIn({
+    eventId: req.params.id,
+    registrationId: req.body.registrationId,
+    staffUser: req.session.user,
+    scannerIdentifier: req.body.scannerIdentifier,
+    ipAddress: req.ip,
+    userAgent: req.get('user-agent'),
+  });
+  return success(res, result, result.message);
+});
+
 const searchRegistrations = asyncHandler(async (req, res) => {
   await checkinService.assertCanCheckIn(req.session.user, req.params.id);
   const results = await checkinService.searchRegistrations(req.params.id, req.query.q);
@@ -110,4 +127,7 @@ const revokeStaff = asyncHandler(async (req, res) => {
   return success(res, null, 'Check-in access revoked');
 });
 
-module.exports = { scan, manualCheckIn, searchRegistrations, stats, exportReport, listStaff, grantStaff, revokeStaff };
+module.exports = {
+  scan, manualCheckIn, undoCheckIn, searchRegistrations, stats, exportReport,
+  listStaff, grantStaff, revokeStaff,
+};

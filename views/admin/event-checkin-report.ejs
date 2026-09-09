@@ -17,6 +17,9 @@ const RESULT_BADGE = {
   CANCELLED: 'badge-slate',
   UNPAID: 'badge-red',
   REJECTED: 'badge-red',
+  // Slate, not red: an undone check-in is a correction somebody made on
+  // purpose, not something that went wrong at the door.
+  UNDONE: 'badge-slate',
 };
 function qs(overrides) {
   const base = { result: locals.result || '', station: locals.station || '', page: '' };
@@ -96,6 +99,7 @@ function qs(overrides) {
               <th class="admin-th text-right">Scans</th>
               <th class="admin-th text-right">Admitted</th>
               <th class="admin-th text-right">Refused</th>
+              <th class="admin-th text-right">Undone</th>
             </tr>
           </thead>
           <tbody class="admin-tbody">
@@ -107,6 +111,7 @@ function qs(overrides) {
                 <td class="admin-td text-right tabular-nums"><%= s.total %></td>
                 <td class="admin-td text-right tabular-nums text-green-700"><%= s.admitted %></td>
                 <td class="admin-td text-right tabular-nums text-red-700"><%= s.refused %></td>
+                <td class="admin-td text-right tabular-nums text-slate-500"><%= s.undone %></td>
               </tr>
             <% }) %>
           </tbody>
@@ -158,6 +163,8 @@ function qs(overrides) {
                   <% if (s.action === 'MANUAL_CHECK_IN') { %>
                     <span class="badge-slate ml-1">manual</span>
                   <% } %>
+                  <%# Who reversed it is the Operator column on this same row —
+                      the one question an undone admission always raises. %>
                 </td>
                 <td class="admin-td">
                   <% if (s.eventRegistration) { %>

@@ -77,6 +77,12 @@ enum CheckInResult {
   CANCELLED
   UNPAID
   REJECTED
+  // A check-in that was taken back — the wrong person scanned, a code presented
+  // twice by two people, someone admitted before staff spotted a problem. Its
+  // own result rather than a deletion of the SUCCESS row: the admission really
+  // did happen, and a door log that quietly loses it cannot answer "who let
+  // them in, and who reversed it" afterwards. Paired with action CHECK_OUT.
+  UNDONE
 }
 
 // Pure delivery lifecycle — engagement (opened/clicked) is tracked as
@@ -174,6 +180,11 @@ enum AuditAction {
   QR_REGENERATED
   CHECKIN_ACCESS_GRANTED
   CHECKIN_ACCESS_REVOKED
+  // Reversing an admission, unlike the scans that produced it, IS an
+  // administrative action: it changes a person's attendance record after the
+  // fact and lets a spent ticket be used again. It belongs where an admin
+  // looking for "what was changed by hand" will find it.
+  CHECKIN_UNDONE
   // Role changes, kept apart from USER_STATUS_CHANGED because they answer a
   // different question. Status is a membership lifecycle; this is who can act
   // on the system. Granting ADMIN in particular hands over every member's

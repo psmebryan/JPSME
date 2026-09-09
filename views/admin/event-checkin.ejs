@@ -85,6 +85,15 @@ function timeOnly(d) {
     </div>
   </details>
 
+  <!-- Recent check-ins, and the only place a mistake can be corrected without
+       leaving the door. The wrong person gets scanned constantly at a real
+       entrance — the one behind the one you meant, or a code held up by two
+       people — and until now the only remedy was a database edit, which during
+       an event is no remedy at all.
+
+       Removing does not delete anything: the scan that admitted them stays in
+       the log and a second row records the reversal, so the report can still
+       tell "was admitted, then removed" apart from "never came". -->
   <div class="mt-4 admin-card p-4">
     <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Recent check-ins</p>
     <ul data-recent class="mt-2 divide-y divide-slate-100 text-sm">
@@ -94,7 +103,18 @@ function timeOnly(d) {
         <% recent.forEach(function (r) { %>
           <li class="py-2 flex items-center justify-between gap-3">
             <span class="truncate"><%= r.eventRegistration ? r.eventRegistration.fullName : 'Unknown' %></span>
-            <span class="text-slate-500 tabular-nums shrink-0"><%= timeOnly(r.scannedAt) %></span>
+            <span class="flex items-center gap-3 shrink-0">
+              <span class="text-slate-500 tabular-nums"><%= timeOnly(r.scannedAt) %></span>
+              <% if (r.eventRegistration && r.eventRegistration.checkedInAt) { %>
+                <button type="button" data-undo="<%= r.eventRegistration.id %>"
+                        data-undo-name="<%= r.eventRegistration.fullName %>"
+                        class="text-red-600 hover:text-red-700 hover:underline font-medium">Remove</button>
+              <% } else if (r.eventRegistration) { %>
+                <%# The scan happened; the admission it produced was taken back.
+                    Saying so is more useful than hiding the row. %>
+                <span class="text-slate-400 text-xs">Removed</span>
+              <% } %>
+            </span>
           </li>
         <% }) %>
       <% } %>

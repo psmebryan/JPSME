@@ -100,6 +100,11 @@ document.addEventListener('DOMContentLoaded', () => {
     UNPAID: { border: 'border-red-500', bg: 'bg-red-50', text: 'text-red-800', head: 'PAYMENT NOT CONFIRMED' },
     REJECTED: { border: 'border-red-500', bg: 'bg-red-50', text: 'text-red-800', head: 'ACCOUNT REJECTED' },
     NOT_REGISTERED: { border: 'border-red-500', bg: 'bg-red-50', text: 'text-red-800', head: 'NOT REGISTERED' },
+    // Neither green nor red. Removing a check-in is a correction that worked,
+    // not an admission and not a refusal, and colouring it like either would
+    // tell the operator the wrong thing at a glance.
+    UNDONE: { border: 'border-slate-400', bg: 'bg-slate-50', text: 'text-slate-800', head: 'CHECK-IN REMOVED' },
+    NOT_CHECKED_IN: { border: 'border-amber-500', bg: 'bg-amber-50', text: 'text-amber-800', head: 'NOTHING TO REMOVE' },
   };
 
   function line(cls, text) {
@@ -229,6 +234,64 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // --- removing a check-in ---------------------------------------------------
+  //
+  // The correction the door has always needed. Somebody scans the person behind
+  // the one they meant, or one code is held up by two people and the wrong one
+  // walks through — without this the only fix is a database edit, which during
+  // an event means no fix at all.
+  //
+  // Confirmed first, and named in the prompt, because this is the one control
+  // on a screen built for speed that should NOT be fast: it frees a spent
+  // ticket to be scanned again, and an accidental click would do that silently.
+  async function submitUndo(registrationId, name) {
+    if (busy) return;
+    const who = name || 'this person';
+    const question = `Remove ${who}'s check-in? Their ticket can then be scanned again. `
+      + 'The original check-in stays in the report.';
+    // eslint-disable-next-line no-alert, no-restricted-globals
+    if (!confirm(question)) {
+      refocus();
+      return;
+    }
+
+    busy = true;
+    try {
+      const res = await apiFetch(`/api/events/${eventId}/checkin/undo`, {
+        method: 'POST',
+        body: JSON.stringify({ registrationId: Number(registrationId), scannerIdentifier: stationInput.value || undefined }),
+      });
+      render(res.data);
+      refreshStats();
+      // The lookup list, if it is open, is now showing stale state for exactly
+      // the person just changed.
+      if (manualSearch.value.trim().length >= 2) runSearch();
+    } catch (err) {
+      renderFault(err.status === 401 ? 'Your session expired. Reload and sign in again.' : err.message);
+    } finally {
+      busy = false;
+      refocus();
+    }
+  }
+
+  // Delegated, because the recent list is replaced wholesale on every refresh —
+  // a listener bound per button would be lost the moment somebody else scanned.
+  recentList.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-undo]');
+    if (!btn) return;
+    submitUndo(btn.dataset.undo, btn.dataset.undoName);
+  });
+
+  function undoButton(registrationId, name) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'text-red-600 hover:text-red-700 hover:underline font-medium';
+    btn.textContent = 'Remove';
+    btn.dataset.undo = String(registrationId);
+    btn.dataset.undoName = name || '';
+    return btn;
+  }
+
   // --- stats and recent list -------------------------------------------------
   async function refreshStats() {
     try {
@@ -253,10 +316,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const name = document.createElement('span');
         name.className = 'truncate';
         name.textContent = r.eventRegistration ? r.eventRegistration.fullName : 'Unknown';
+
+        const right = document.createElement('span');
+        right.className = 'flex items-center gap-3 shrink-0';
         const time = document.createElement('span');
-        time.className = 'text-slate-500 tabular-nums shrink-0';
+        time.className = 'text-slate-500 tabular-nums';
         time.textContent = new Date(r.scannedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        li.append(name, time);
+        right.appendChild(time);
+
+        // checkedInAt is the registration's state now, not what it was when
+        // this scan happened — so a row whose admission was already taken back
+        // says so instead of offering to remove it a second time.
+        if (r.eventRegistration && r.eventRegistration.checkedInAt) {
+          right.appendChild(undoButton(r.eventRegistration.id, r.eventRegistration.fullName));
+        } else if (r.eventRegistration) {
+          right.appendChild(line('text-slate-400 text-xs', 'Removed'));
+        }
+
+        li.append(name, right);
         recentList.appendChild(li);
       });
     } catch (err) { /* the counts are informational; a failed refresh must not disturb the door */ }
@@ -303,7 +380,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const right = document.createElement('div');
     if (r.checkedInAt) {
+      // The other way to reach a correction: when the mis-scan has scrolled off
+      // the recent list, staff search the person up and remove it here.
+      right.className = 'flex items-center gap-3 shrink-0';
       right.appendChild(line('text-xs text-green-700', 'Already in'));
+      right.appendChild(undoButton(r.id, r.fullName));
+      right.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-undo]');
+        if (btn) submitUndo(btn.dataset.undo, btn.dataset.undoName);
+      });
     } else {
       const btn = document.createElement('button');
       btn.type = 'button';

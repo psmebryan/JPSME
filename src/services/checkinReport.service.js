@@ -14,7 +14,7 @@ const AppError = require('../utils/AppError');
 
 const RESULTS = [
   'SUCCESS', 'ALREADY_CHECKED_IN', 'INVALID_QR', 'WRONG_EVENT',
-  'NOT_REGISTERED', 'CANCELLED', 'UNPAID', 'REJECTED',
+  'NOT_REGISTERED', 'CANCELLED', 'UNPAID', 'REJECTED', 'UNDONE',
 ];
 
 const PAGE_SIZE = 50;
@@ -48,6 +48,11 @@ async function getResultBreakdown(eventId) {
 // Scans per entrance. Counts every attempt and, separately, the ones that
 // actually admitted somebody — a station with a high total and a low success
 // count is usually a station pointed at the wrong queue, which is worth seeing.
+//
+// Undone check-ins get their own column rather than joining "refused". They are
+// the opposite of a refusal: somebody was let in and then taken back out, and
+// folding the two together would make a station that corrected two mistakes
+// look identical to one that turned two people away.
 async function getStationBreakdown(eventId) {
   const grouped = await prisma.eventCheckIn.groupBy({
     by: ['scannerIdentifier', 'result'],
@@ -58,9 +63,12 @@ async function getStationBreakdown(eventId) {
   const stations = new Map();
   grouped.forEach((row) => {
     const key = row.scannerIdentifier || '(unnamed station)';
-    const entry = stations.get(key) || { station: key, total: 0, admitted: 0, refused: 0 };
+    const entry = stations.get(key) || {
+      station: key, total: 0, admitted: 0, refused: 0, undone: 0,
+    };
     entry.total += row._count._all;
     if (row.result === 'SUCCESS') entry.admitted += row._count._all;
+    else if (row.result === 'UNDONE') entry.undone += row._count._all;
     else entry.refused += row._count._all;
     stations.set(key, entry);
   });
@@ -249,6 +257,7 @@ async function exportReportExcel(eventId) {
     { header: 'Total Scans', key: 'total', width: 14 },
     { header: 'Admitted', key: 'admitted', width: 14 },
     { header: 'Refused', key: 'refused', width: 14 },
+    { header: 'Undone', key: 'undone', width: 14 },
   ];
   styleHeader(st);
   summary.stations.forEach((r) => st.addRow(r));

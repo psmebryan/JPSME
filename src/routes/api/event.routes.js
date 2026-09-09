@@ -65,7 +65,8 @@ const eventValidators = [
 const invitationRequestValidators = [
   body('fullName').trim().notEmpty().withMessage('Name is required').isLength({ max: 150 }),
   body('email').trim().notEmpty().withMessage('Email is required').isEmail().withMessage('Enter a valid email address').isLength({ max: 191 }),
-  body('school').optional({ checkFalsy: true }).trim().isLength({ max: 150 }),
+  // `chapter` is the form's Organization field; the name is the column's, kept
+  // so old links and any saved integration keep working.
   body('chapter').optional({ checkFalsy: true }).trim().isLength({ max: 150 }),
   body('company').optional({ checkFalsy: true }).trim().isLength({ max: 150 }),
 ];
@@ -149,6 +150,21 @@ router.post(
     body('scannerIdentifier').optional({ checkFalsy: true }).trim().isLength({ max: 64 }),
   ],
   checkinApi.manualCheckIn
+);
+// Removing an admission sits with the other door actions rather than behind the
+// main-admin gate below: the person who needs it is the operator who just
+// scanned the wrong ticket, and a correction only a main admin can make is one
+// that will not happen while a queue is waiting. The service logs it twice over
+// — a CHECK_OUT row and an audit entry — precisely because it is available
+// widely. Same limiter as the scans, so a stuck client cannot loop on it.
+router.post(
+  '/:id/checkin/undo',
+  apiAuth, verifyCsrfToken, checkinLimiter,
+  [
+    body('registrationId').isInt({ min: 1 }).withMessage('A registration is required'),
+    body('scannerIdentifier').optional({ checkFalsy: true }).trim().isLength({ max: 64 }),
+  ],
+  checkinApi.undoCheckIn
 );
 router.get('/:id/checkin/search', apiAuth, checkinApi.searchRegistrations);
 router.get('/:id/checkin/stats', apiAuth, checkinApi.stats);

@@ -10,6 +10,7 @@
 const prisma = require('../src/config/prisma');
 const qrService = require('../src/services/qr.service');
 const checkinService = require('../src/services/checkin.service');
+const checkinReportService = require('../src/services/checkinReport.service');
 
 const TAG = '__CHKTEST__';
 let passed = 0;
@@ -454,6 +455,192 @@ async function main() {
     const recent = await checkinService.getRecentCheckIns(event.id);
     assertEqual(recent.length, 1, 'only successful admissions appear in the recent feed');
     assertEqual(recent[0].eventRegistration.fullName, a.registration.fullName, 'the right person');
+  });
+
+  // --- removing a check-in --------------------------------------------------
+  //
+  // The correction path. Two things have to be true at once for it to be safe:
+  // the person really is no longer admitted (so the count is right and their
+  // ticket works again), and the fact that they WERE admitted is still on the
+  // record (so a disputed admission can be reconstructed afterwards).
+
+  await test('removing a check-in lets the same ticket be scanned again', async () => {
+    const event = await makeEvent();
+    const { registration } = await makeTicketedRegistration(event);
+
+    await checkinService.checkInByScan({ eventId: event.id, rawScan: registration.qrToken, staffUser: adminSession });
+
+    const undo = await checkinService.undoCheckIn({
+      eventId: event.id, registrationId: registration.id, staffUser: adminSession,
+    });
+    assertEqual(undo.ok, true, 'the removal succeeded');
+    assertEqual(undo.result, 'UNDONE', 'reported as undone');
+
+    const after = await prisma.eventRegistration.findUnique({ where: { id: registration.id } });
+    assertEqual(after.checkedInAt, null, 'no longer checked in');
+
+    // The whole point: the wrong person was let through, so the right one still
+    // has to be able to get in on this ticket.
+    const again = await checkinService.checkInByScan({
+      eventId: event.id, rawScan: registration.qrToken, staffUser: adminSession,
+    });
+    assertEqual(again.result, 'SUCCESS', 'the ticket admits again');
+  });
+
+  await test('removing it does not erase the admission from the door log', async () => {
+    const event = await makeEvent();
+    const { registration } = await makeTicketedRegistration(event);
+
+    await checkinService.checkInByScan({ eventId: event.id, rawScan: registration.qrToken, staffUser: adminSession });
+    await checkinService.undoCheckIn({ eventId: event.id, registrationId: registration.id, staffUser: adminSession });
+
+    const rows = await prisma.eventCheckIn.findMany({
+      where: { eventId: event.id }, orderBy: { id: 'asc' },
+    });
+    assertEqual(rows.length, 2, 'the admission and the reversal are both rows');
+    assertEqual(rows[0].result, 'SUCCESS', 'the admission stands in the log');
+    assertEqual(rows[1].result, 'UNDONE', 'and the reversal is recorded beside it');
+    assertEqual(rows[1].action, 'CHECK_OUT', 'as a check-out, not another check-in');
+    assertEqual(rows[1].scannedBy, admin.id, 'attributed to whoever removed it');
+  });
+
+  await test('the removal is written to the audit log, since it is done by hand', async () => {
+    const event = await makeEvent();
+    const { member, registration } = await makeTicketedRegistration(event);
+
+    await checkinService.checkInByScan({ eventId: event.id, rawScan: registration.qrToken, staffUser: adminSession });
+    await checkinService.undoCheckIn({
+      eventId: event.id, registrationId: registration.id, staffUser: adminSession, scannerIdentifier: 'ENTRANCE-02',
+    });
+
+    const entry = await prisma.auditLog.findFirst({
+      where: { action: 'CHECKIN_UNDONE', targetUserId: member.id },
+    });
+    assert(entry, 'an audit entry exists');
+    assertEqual(entry.actorId, admin.id, 'naming who did it');
+  });
+
+  await test('removing a check-in that is not there changes nothing', async () => {
+    // Two operators can press Remove on the same person a second apart. The
+    // second must be a plain "nothing to do", not an error and not a second
+    // CHECK_OUT row implying two separate reversals.
+    const event = await makeEvent();
+    const { registration } = await makeTicketedRegistration(event);
+
+    const result = await checkinService.undoCheckIn({
+      eventId: event.id, registrationId: registration.id, staffUser: adminSession,
+    });
+    assertEqual(result.ok, false, 'nothing was removed');
+    assertEqual(result.result, 'NOT_CHECKED_IN', 'and it says so plainly');
+
+    const rows = await prisma.eventCheckIn.count({ where: { eventId: event.id } });
+    assertEqual(rows, 0, 'no row is written for a reversal that did not happen');
+  });
+
+  await test('ten operators removing the same check-in at once record one reversal', async () => {
+    const event = await makeEvent();
+    const { registration } = await makeTicketedRegistration(event);
+    await checkinService.checkInByScan({ eventId: event.id, rawScan: registration.qrToken, staffUser: adminSession });
+
+    const results = await Promise.all(Array.from({ length: 10 }, () => checkinService.undoCheckIn({
+      eventId: event.id, registrationId: registration.id, staffUser: adminSession,
+    })));
+
+    assertEqual(results.filter((r) => r.ok).length, 1, 'exactly one removal wins');
+    const undone = await prisma.eventCheckIn.count({ where: { eventId: event.id, result: 'UNDONE' } });
+    assertEqual(undone, 1, 'and exactly one reversal is logged');
+  });
+
+  await test("a check-in cannot be removed from another event's door", async () => {
+    // The same scoping the scan path has. An operator granted one event must
+    // not be able to reach into another's attendance by posting an id.
+    const ours = await makeEvent();
+    const theirs = await makeEvent();
+    const { registration } = await makeTicketedRegistration(theirs);
+    await checkinService.checkInByScan({ eventId: theirs.id, rawScan: registration.qrToken, staffUser: adminSession });
+
+    await assertRejects(
+      () => checkinService.undoCheckIn({ eventId: ours.id, registrationId: registration.id, staffUser: adminSession }),
+      404, 'refused as not belonging to this door',
+    );
+
+    const still = await prisma.eventRegistration.findUnique({ where: { id: registration.id } });
+    assert(still.checkedInAt, 'and they are still checked in');
+  });
+
+  await test('someone with no access to this door cannot remove a check-in', async () => {
+    const event = await makeEvent();
+    const { registration } = await makeTicketedRegistration(event);
+    await checkinService.checkInByScan({ eventId: event.id, rawScan: registration.qrToken, staffUser: adminSession });
+
+    const chapter = await makeUser('CHAPTER_ADMIN');
+    await assertRejects(
+      () => checkinService.undoCheckIn({
+        eventId: event.id, registrationId: registration.id, staffUser: { id: chapter.id, role: 'CHAPTER_ADMIN' },
+      }),
+      403, 'an ungranted chapter admin is refused',
+    );
+
+    const member = await makeUser('USER');
+    await assertRejects(
+      () => checkinService.undoCheckIn({
+        eventId: event.id, registrationId: registration.id, staffUser: { id: member.id, role: 'USER' },
+      }),
+      403, 'and an ordinary member certainly is',
+    );
+  });
+
+  await test('an operator running this door can remove a check-in without being a main admin', async () => {
+    // Deliberate: the person who needs to correct a mis-scan is the one holding
+    // the scanner. A correction only a main admin can make is one that will not
+    // happen while a queue is waiting.
+    const event = await makeEvent();
+    const { registration } = await makeTicketedRegistration(event);
+    const chapter = await makeUser('CHAPTER_ADMIN');
+    const session = { id: chapter.id, role: 'CHAPTER_ADMIN' };
+    await checkinService.grantCheckInAccess({ eventId: event.id, userId: chapter.id, adminUserId: admin.id });
+
+    await checkinService.checkInByScan({ eventId: event.id, rawScan: registration.qrToken, staffUser: session });
+    const undo = await checkinService.undoCheckIn({
+      eventId: event.id, registrationId: registration.id, staffUser: session,
+    });
+    assertEqual(undo.ok, true, 'the granted operator can correct their own mistake');
+  });
+
+  await test('the counts and the recent feed both follow a removal', async () => {
+    const event = await makeEvent();
+    const a = await makeTicketedRegistration(event);
+    await makeTicketedRegistration(event);
+    await checkinService.checkInByScan({ eventId: event.id, rawScan: a.registration.qrToken, staffUser: adminSession });
+    await checkinService.undoCheckIn({ eventId: event.id, registrationId: a.registration.id, staffUser: adminSession });
+
+    const stats = await checkinService.getEventCheckInStats(event.id);
+    assertEqual(stats.checkedIn, 0, 'the attendance count drops back');
+    assertEqual(stats.remaining, 2, 'and everyone is outstanding again');
+
+    // The scan that admitted them is still in the feed — the door screen shows
+    // it as removed rather than pretending it never happened.
+    const recent = await checkinService.getRecentCheckIns(event.id);
+    assertEqual(recent.length, 1, 'the admission is still listed');
+    assertEqual(recent[0].eventRegistration.checkedInAt, null, 'carrying its current state, so the screen can say Removed');
+  });
+
+  await test('an undone scan is reported as its own outcome, not as a refusal', async () => {
+    const event = await makeEvent();
+    const { registration } = await makeTicketedRegistration(event);
+    await checkinService.checkInByScan({
+      eventId: event.id, rawScan: registration.qrToken, staffUser: adminSession, scannerIdentifier: 'ENTRANCE-07',
+    });
+    await checkinService.undoCheckIn({
+      eventId: event.id, registrationId: registration.id, staffUser: adminSession, scannerIdentifier: 'ENTRANCE-07',
+    });
+
+    const stations = await checkinReportService.getStationBreakdown(event.id);
+    const station = stations.find((st) => st.station === 'ENTRANCE-07');
+    assert(station, 'the station appears in the breakdown');
+    assertEqual(station.admitted, 1, 'the admission still counts as one');
+    assertEqual(station.undone, 1, 'the reversal is counted separately');
+    assertEqual(station.refused, 0, 'and never as somebody being turned away');
   });
 }
 
