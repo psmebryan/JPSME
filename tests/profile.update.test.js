@@ -91,12 +91,25 @@ async function main() {
     // The counterpart to the rule above: everything that IS nullable must keep
     // its old clear-on-blank behaviour, or "remove my phone number" silently
     // stops working.
-    await authService.updateProfile(userId, { phone: '', school: '', middleInitial: '' });
+    await authService.updateProfile(userId, { phone: '', middleInitial: '' });
     const u = await read();
     assertEqual(u.phone, null, 'phone cleared');
-    assertEqual(u.school, null, 'school cleared');
     assertEqual(u.middleInitial, null, 'middleInitial cleared');
     assertEqual(u.firstName, 'BRYAN', 'and the name is still not collateral damage');
+  });
+
+  await test('school is left alone entirely, even if a caller sends one', async () => {
+    // The profile form dropped this field — a member's student unit is their
+    // school. The column still holds what registration and imports put there,
+    // and the admin editor still writes it, so a profile save must neither
+    // clear it nor overwrite it. Sending a value here is the strong case: if
+    // the field ever reappears in this code path, this fails.
+    assertEqual((await read()).school, 'Original School', 'still what the fixture set');
+
+    await authService.updateProfile(userId, { phone: '09990000000', school: 'Some Other School' });
+    const u = await read();
+    assertEqual(u.school, 'Original School', 'unchanged by a profile update that sent one');
+    assertEqual(u.phone, '09990000000', 'while the fields it does own still save');
   });
 
   await test('organization can be set and cleared', async () => {

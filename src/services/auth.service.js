@@ -170,16 +170,22 @@ async function getById(id) {
   return toPublicUser(user);
 }
 
-async function updateProfile(userId, { firstName, lastName, middleInitial, phone, school, yearLevel, organizationId }) {
+async function updateProfile(userId, { firstName, lastName, middleInitial, phone, yearLevel, organizationId }) {
   const value = organizationId === '' || organizationId === undefined || organizationId === null ? null : Number(organizationId);
   if (organizationId !== '' && organizationId !== undefined && organizationId !== null && organizationId !== 'null' && Number.isNaN(value)) {
     throw new AppError('Invalid organization selection', 400);
   }
 
+  // school is absent on purpose. The profile form no longer collects it — a
+  // member's student unit is their school, and the two were kept side by side
+  // with nothing keeping them in agreement. Leaving it out of this object is
+  // the point: had it stayed, every profile save from a form that no longer
+  // submits the field would have written null over whatever was there. The
+  // column still exists and is still read by the exports and the admin editor,
+  // so the history is intact; it is only no longer editable from here.
   const data = {
     middleInitial: middleInitial && middleInitial.trim() ? normalizeName(middleInitial) : null,
     phone: phone && phone.trim() ? phone.trim() : null,
-    school: school && school.trim() ? school.trim() : null,
     yearLevel: yearLevel || null,
     organizationId: value,
   };

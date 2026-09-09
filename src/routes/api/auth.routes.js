@@ -78,7 +78,6 @@ const profileValidators = [
     .isLength({ max: 100 }).withMessage('Last name is too long'),
   body('middleInitial').optional({ checkFalsy: true }).trim().isLength({ max: 2 }).withMessage('Middle initial must be at most 2 characters'),
   body('phone').optional({ checkFalsy: true }).trim().isLength({ max: 30 }).withMessage('Phone number is too long'),
-  body('school').optional({ checkFalsy: true }).trim().isLength({ max: 150 }).withMessage('School name is too long'),
   body('yearLevel').optional({ checkFalsy: true }).isIn(['FIRST', 'SECOND', 'THIRD', 'FOURTH']).withMessage('Select a valid year level'),
   body('organizationId').optional({ nullable: true }).custom((value) => {
     if (value === '' || value === null || value === undefined) return true;

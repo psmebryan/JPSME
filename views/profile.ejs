@@ -74,14 +74,14 @@
         </div>
       </div>
 
-      <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <!-- The separate School card that used to sit here said the same thing
+             as this one: a member's student unit IS their school. It was a
+             free-text field nobody could keep consistent, sitting next to the
+             organization it duplicated. The full path is shown underneath now,
+             which is what the old card was really being read for. -->
         <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
-          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">School</p>
-          <p class="mt-2 text-sm font-medium text-gray-900"><%= profileData.school || 'Not provided' %></p>
-        </div>
-
-        <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
-          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Chapter</p>
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Student Unit</p>
           <p class="mt-2 text-sm font-medium text-gray-900">
             <% if (profileData.organization && profileData.organization.name) { %>
               <%= profileData.organization.name %>
@@ -89,6 +89,9 @@
               Not assigned yet
             <% } %>
           </p>
+          <% if (locals.organizationPath) { %>
+            <p class="mt-1 text-xs text-gray-500"><%= organizationPath %></p>
+          <% } %>
         </div>
 
         <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
@@ -164,11 +167,6 @@
               organization you actually belong to.
             </p>
             <p id="chapter-error" class="hidden text-xs text-red-600 mt-1">Please select your organization.</p>
-          </div>
-
-          <div class="md:col-span-2">
-            <label for="school" class="block text-sm font-medium mb-1">School</label>
-            <input id="school" name="school" value="<%= profileData.school || '' %>" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
 
           <div>
@@ -263,7 +261,6 @@
           firstName: formData.get('firstName')?.toString().trim() || '',
           lastName: formData.get('lastName')?.toString().trim() || '',
           middleInitial: formData.get('middleInitial')?.toString().trim() || null,
-          school: formData.get('school')?.toString().trim() || null,
           yearLevel: formData.get('yearLevel') || null,
           phone: formData.get('phone')?.toString().trim() || null,
           organizationId: formData.get('organizationId') || null,
