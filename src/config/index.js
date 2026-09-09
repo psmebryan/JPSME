@@ -99,8 +99,19 @@ function exportComposedDatabaseUrl() {
     const first = trimmed[0];
     const wrapped = (first === '"' || first === "'") && trimmed.length > 1 && trimmed.endsWith(first);
     const cleaned = wrapped ? trimmed.slice(1, -1) : trimmed;
-    if (cleaned !== process.env.DATABASE_URL) process.env.DATABASE_URL = cleaned;
-    return;
+
+    // A blank value means "not set". That reads as pedantic until a hosting
+    // panel will not let you delete a secret — its value field is required —
+    // and the only way to stop overriding the injected DB_* variables is to
+    // empty it. Treating whitespace as a real connection string turns that
+    // perfectly reasonable act into an app that cannot start, and says nothing
+    // about why.
+    if (!cleaned) {
+      delete process.env.DATABASE_URL;
+    } else {
+      if (cleaned !== process.env.DATABASE_URL) process.env.DATABASE_URL = cleaned;
+      return;
+    }
   }
 
   const host = process.env.DB_HOST;
