@@ -36,7 +36,16 @@ async function withMembershipPaymentStatus(users) {
     const membership = paymentService.classifyMembership(u, payment);
     return {
       ...u,
-      membershipPayment: payment ? { status: payment.status, paidAt: payment.paidAt } : null,
+      membershipPayment: payment ? {
+        status: payment.status,
+        paidAt: payment.paidAt,
+        // What an admin quotes back to a member asking about their fee.
+        reference: paymentService.buildPaymentReference(payment),
+        // PayMongo's own id, for the times the question is really
+        // "what happened at the gateway" — the only value their support
+        // can look up.
+        gatewayPaymentId: payment.gatewayPaymentId,
+      } : null,
       membershipTier: membership.tier,
       membershipState: membership.state,
       membershipExpiresAt: membership.expiresAt,

@@ -162,6 +162,25 @@ async function getLatestEventPayment(userId, eventId) {
 }
 
 // Batched, for admin user-list views — one query instead of N.
+// A human-readable reference for a payment: PAY-2026-000123.
+//
+// Derived from the row rather than stored, unlike EventRegistration's
+// registrationNumber. That one is printed on a ticket and scanned at a door, so
+// it has to survive independently of the record; this is only ever read off a
+// screen next to the payment it belongs to. Both inputs are immutable — an id
+// never changes and neither does a creation date — so the derived value is just
+// as stable, without a column, a migration or a backfill for every payment
+// already taken.
+//
+// Same shape as buildRegistrationNumber in qr.service.js, so the two read as
+// one system rather than two conventions.
+function buildPaymentReference(payment) {
+  if (!payment || !payment.id) return null;
+  const created = payment.createdAt instanceof Date ? payment.createdAt : new Date(payment.createdAt);
+  const year = Number.isNaN(created.getTime()) ? new Date().getFullYear() : created.getFullYear();
+  return 'PAY-' + year + '-' + String(payment.id).padStart(6, '0');
+}
+
 async function getLatestMembershipStatusForUsers(userIds) {
   const ids = [...new Set(userIds.map(Number))];
   if (!ids.length) return new Map();
@@ -1104,5 +1123,6 @@ module.exports = {
   processWebhookEvent,
   requestRefund,
   reconcilePayment,
+  buildPaymentReference,
   findStuckPayments,
 };

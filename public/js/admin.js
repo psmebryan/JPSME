@@ -848,7 +848,7 @@ async function loadPendingUsers(table) {
         <tr data-user-id="${u.id}" class="admin-tr align-top">
           <td class="admin-td">${escapeHtml(u.firstName)} ${escapeHtml(u.lastName)}</td>
           <td class="admin-td max-w-[220px] truncate" title="${escapeHtml(u.email)}">${escapeHtml(u.email)}</td>
-          <td class="admin-td max-w-[160px] truncate">${escapeHtml(u.school || '-')}</td>
+          <td class="admin-td">${membershipPaymentReference(u)}</td>
           <td class="admin-td max-w-[140px] truncate">${escapeHtml((u.organization && u.organization.name) || '-')}</td>
           <td class="admin-td">${accountStatusBadge(u)}</td>
       <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
@@ -903,7 +903,7 @@ function memberRowHtml(u) {
     <tr data-user-id="${u.id}" class="admin-tr align-top">
       <td class="admin-td">${escapeHtml(u.firstName)} ${escapeHtml(u.lastName)}</td>
       <td class="admin-td max-w-[220px] truncate" title="${escapeHtml(u.email)}">${escapeHtml(u.email)}</td>
-      <td class="admin-td max-w-[160px] truncate">${escapeHtml(u.school || '-')}</td>
+      <td class="admin-td">${membershipPaymentReference(u)}</td>
       <td class="admin-td max-w-[140px] truncate">${escapeHtml((u.organization && u.organization.name) || '-')}</td>
       <td class="admin-td">${accountStatusBadge(u)}</td>
       <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
@@ -1060,6 +1060,49 @@ function membershipTierBadge(u) {
   const lapsed = u.membershipState === 'EXPIRED';
   return '<span class="badge-slate">Non-Member' + (lapsed ? ' (lapsed)' : '') + '</span>';
 }
+
+// The payment's reference, shown beside its status badge. Replaced the School
+// column, which duplicated the organization next to it and which nobody kept
+// accurate; a member's student unit already says where they study.
+//
+// PayMongo's own id is put in the title attribute rather than the cell: it is
+// the value their support can actually look up, but it is long and opaque, and
+// a table of them is unreadable. Hover to get it, click to copy.
+function membershipPaymentReference(u) {
+  const payment = u.membershipPayment;
+  if (!payment || !payment.reference) return '<span class="text-slate-400">-</span>';
+  const gateway = payment.gatewayPaymentId
+    ? 'PayMongo: ' + payment.gatewayPaymentId
+    : 'No gateway reference yet';
+  return '<button type="button" class="font-mono text-xs underline decoration-dotted hover:text-indigo-700"'
+    + ' data-copy-reference="' + escapeHtml(payment.reference) + '"'
+    + ' title="' + escapeHtml(gateway) + ' — click to copy">'
+    + escapeHtml(payment.reference) + '</button>';
+}
+
+// One delegated listener rather than a handler per row: the members table is
+// re-rendered on every filter, sort and page change, so per-row bindings would
+// be attached and thrown away constantly, and any row rendered after the last
+// binding pass would silently do nothing.
+document.addEventListener('click', async (e) => {
+  const trigger = e.target.closest('[data-copy-reference]');
+  if (!trigger) return;
+  const reference = trigger.getAttribute('data-copy-reference');
+  try {
+    await navigator.clipboard.writeText(reference);
+    showToast(reference + ' copied');
+  } catch (err) {
+    // Clipboard access is refused outside a secure context and in some
+    // browsers without a user gesture it trusts. Selecting the text is a
+    // worse experience than copying it, but it beats appearing to do nothing.
+    const range = document.createRange();
+    range.selectNodeContents(trigger);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    showToast('Press Ctrl+C to copy', 'error');
+  }
+});
 
 function membershipPaymentBadge(u) {
   const payment = u.membershipPayment;
