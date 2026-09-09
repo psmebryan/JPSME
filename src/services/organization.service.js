@@ -122,6 +122,32 @@ async function getOrganizationPathLabel(id, separator = ' › ') {
   return chain.map((o) => o.name).join(separator);
 }
 
+// The same label for a whole list at once, keyed by organization id.
+//
+// getOrganizationPathLabel above walks one organization and costs two queries;
+// calling it per row on a list of every approved member is the N+1 the
+// materialized path exists to avoid. This resolves every ancestor named across
+// the whole list in a single query, the same technique searchOrganizations
+// already uses for its result rows.
+async function getPathLabelsByOrganizationId(organizations, separator = ' › ') {
+  const orgs = (organizations || []).filter(Boolean);
+  if (!orgs.length) return new Map();
+
+  const allIds = new Set();
+  orgs.forEach((o) => parsePathIds(o.path).forEach((i) => allIds.add(i)));
+  const rows = allIds.size
+    ? await prisma.organization.findMany({ where: { id: { in: [...allIds] } }, select: { id: true, name: true } })
+    : [];
+  const nameById = new Map(rows.map((r) => [r.id, r.name]));
+
+  return new Map(orgs.map((o) => [
+    o.id,
+    // filter(Boolean) rather than a placeholder: an ancestor that no longer
+    // exists should shorten the path, not put a gap in the middle of it.
+    parsePathIds(o.path).map((i) => nameById.get(i)).filter(Boolean).join(separator),
+  ]));
+}
+
 // --- Search / admin listing (server-side paginated, per the 5K work) ---
 
 // Registration's organization picker: the member searches instead of choosing
@@ -471,6 +497,7 @@ module.exports = {
   getDescendantIds,
   getOrganizationPath,
   getOrganizationPathLabel,
+  getPathLabelsByOrganizationId,
   searchOrganizations,
   listForAdmin,
   countMembersInSubtree,

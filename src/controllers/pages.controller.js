@@ -862,6 +862,19 @@ const adminInvitationsPage = asyncHandler(async (req, res) => {
       invitationService.getInvitationSummary(eventId),
       invitationService.getInvitedEmailStatusesForEvent(eventId),
     ]);
+
+    // The picker shows where a member actually sits — region › province ›
+    // student unit — rather than just the leaf name. Two units at different
+    // provinces can share a name, and an admin picking people for a regional
+    // event needs to see which is which. Resolved in one query for the whole
+    // list rather than per row.
+    const paths = await organizationService.getPathLabelsByOrganizationId(
+      members.map((m) => m.organization)
+    );
+    members = members.map((m) => ({
+      ...m,
+      organizationPath: m.organization ? (paths.get(m.organization.id) || m.organization.name) : '',
+    }));
   }
 
   renderAdmin(req, res, 'admin/invitations', {

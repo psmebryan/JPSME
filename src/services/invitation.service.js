@@ -5,9 +5,35 @@ const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
 const mailService = require('./mail.service');
 const sheetsSyncService = require('./sheetsSync.service');
+const organizationService = require('./organization.service');
 
 function generateToken() {
   return crypto.randomBytes(24).toString('hex');
+}
+
+// Where each of these members actually sits — region › province › student unit.
+//
+// The picker sends a `chapter` along with every member it selects, but for
+// somebody with an account the database is the authority on their organization,
+// not a data attribute that travelled through a browser. Resolved here in two
+// queries for the whole batch rather than trusting the payload or walking the
+// tree per invitee. External contacts have no account and keep whatever was
+// typed for them.
+async function resolveMemberOrganizationPaths(invitees) {
+  const userIds = [...new Set(
+    invitees.map((i) => Number(i.userId)).filter((id) => Number.isInteger(id) && id > 0)
+  )];
+  if (!userIds.length) return new Map();
+
+  const users = await prisma.user.findMany({
+    where: { id: { in: userIds } },
+    select: { id: true, organization: true },
+  });
+  const labels = await organizationService.getPathLabelsByOrganizationId(users.map((u) => u.organization));
+
+  return new Map(users
+    .filter((u) => u.organization)
+    .map((u) => [u.id, labels.get(u.organization.id) || u.organization.name]));
 }
 
 // Best-effort — never lets a mail-provider failure block the admin's bulk
@@ -44,6 +70,8 @@ async function createInvitations(eventId, invitees) {
   const event = await prisma.event.findUnique({ where: { id: Number(eventId) } });
   if (!event) throw new AppError('Event not found', 404);
 
+  const memberPaths = await resolveMemberOrganizationPaths(invitees);
+
   const results = [];
   // Sequential — this is an admin-initiated bulk action of modest size
   // (dozens, not thousands), and keeps outbound send calls to Brevo gentle
@@ -69,7 +97,10 @@ async function createInvitations(eventId, invitees) {
         userId: invitee.userId ? Number(invitee.userId) : null,
         fullName: invitee.fullName,
         email,
-        chapter: invitee.chapter || null,
+        // A member's own organization wins over whatever the picker sent; an
+        // external contact keeps the typed value, since there is nothing to
+        // look them up by.
+        chapter: memberPaths.get(Number(invitee.userId)) || invitee.chapter || null,
         company: invitee.company || null,
         source: invitee.source === 'SELF_REQUESTED' ? 'SELF_REQUESTED' : 'ADMIN_SENT',
         token: generateToken(),

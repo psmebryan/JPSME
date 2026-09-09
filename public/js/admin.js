@@ -1745,7 +1745,7 @@ function invitationRowHtml(inv, includeEventColumn) {
       ${eventCell}
       <td class="admin-td">${escapeHtml(inv.fullName)}</td>
       <td class="admin-td max-w-[180px] truncate">${escapeHtml(inv.email)}</td>
-      <td class="admin-td">${escapeHtml(inv.chapter) || '-'}</td>
+      <td class="admin-td max-w-[240px] truncate" title="${escapeHtml(inv.chapter)}">${escapeHtml(inv.chapter) || '-'}</td>
       <td class="admin-td">${escapeHtml(inv.company) || '-'}</td>
       <td class="admin-td">${memberOrGuestBadgeHtml(inv)}</td>
       <td class="admin-td">${sourceBadgeHtml(inv.source)}</td>

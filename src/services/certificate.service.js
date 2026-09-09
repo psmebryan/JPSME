@@ -294,9 +294,6 @@ async function listEventCertificateStatus(eventId, filter = 'all') {
       fullName: fullName(reg.user),
       email: reg.user.email,
       phone: reg.phone,
-      // The organization frozen onto the registration, not the member's today —
-      // a certificate for last year's convention names who they were then.
-      organization: reg.organizationPath,
       generated: Boolean(cert),
       generatedAt: cert ? cert.generatedAt : null,
       released: Boolean(cert && cert.released),
@@ -331,7 +328,6 @@ async function exportEventCertificatesExcel(eventId) {
     { header: 'Name', key: 'fullName', width: 28 },
     { header: 'Email', key: 'email', width: 30 },
     { header: 'Phone', key: 'phone', width: 18 },
-    { header: 'Organization', key: 'organization', width: 36 },
     { header: 'Status', key: 'status', width: 16 },
     { header: 'Generated At', key: 'generatedAt', width: 22 },
     { header: 'Download Allowed', key: 'released', width: 18 },
@@ -343,7 +339,6 @@ async function exportEventCertificatesExcel(eventId) {
       fullName: row.fullName,
       email: row.email,
       phone: row.phone || '',
-      organization: row.organization || '',
       status: row.generated ? 'Generated' : 'Not generated',
       generatedAt: row.generatedAt ? formatDate(row.generatedAt) : '',
       released: row.generated ? (row.released ? 'Yes' : 'No') : '',
