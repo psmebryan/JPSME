@@ -29,7 +29,8 @@
     "build": "prisma generate",
     "test:db": "node scripts/test-db-connection.js",
     "test:migration-repair": "node tests/migration.repair.test.js",
-    "test:profile": "node tests/profile.update.test.js"
+    "test:profile": "node tests/profile.update.test.js",
+    "test:seed-admin": "node tests/seedAdmin.test.js"
   },
   "license": "UNLICENSED",
   "dependencies": {

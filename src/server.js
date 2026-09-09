@@ -3,6 +3,7 @@ const path = require('path');
 const net = require('net');
 const { execFile } = require('child_process');
 const { applyMigrationsDirect } = require('./jobs/applyMigrationsDirect');
+const { seedAdminIfRequested } = require('./jobs/seedAdmin');
 const app = require('./app');
 const config = require('./config');
 const prisma = require('./config/prisma');
@@ -114,6 +115,9 @@ async function start() {
   try {
     await prisma.$connect();
     await runMigrationsIfRequested();
+    // After migrations, because on a first deploy the User table does not exist
+    // until they have run. Does nothing unless SEED_ADMIN_ON_BOOT is set.
+    await seedAdminIfRequested(prisma, console);
     app.listen(PORT, () => {
       console.log(`JPSME server running at http://localhost:${PORT}`);
     });
