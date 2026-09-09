@@ -106,7 +106,23 @@ function exportComposedDatabaseUrl() {
     // empty it. Treating whitespace as a real connection string turns that
     // perfectly reasonable act into an app that cannot start, and says nothing
     // about why.
-    if (!cleaned) {
+    // A value with no URL scheme is not a connection string, whatever else it
+    // is. That covers a blank one, and it covers the sentinel someone has to
+    // type when a panel demands a non-empty value but the intent is "ignore
+    // this" — which is the only way to override a secret whose delete will not
+    // take. A real URL that is merely wrong still starts with mysql://, so it
+    // is left alone and fails loudly, as it should; nothing here silently
+    // redirects a typo to a different database.
+    const looksLikeUrl = /^[a-z][a-z0-9+.-]*:\/\//i.test(cleaned);
+
+    if (!cleaned || !looksLikeUrl) {
+      if (cleaned) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `DATABASE_URL is set to ${JSON.stringify(cleaned)}, which is not a connection string — `
+          + 'ignoring it and using the DB_* variables instead.'
+        );
+      }
       delete process.env.DATABASE_URL;
     } else {
       if (cleaned !== process.env.DATABASE_URL) process.env.DATABASE_URL = cleaned;
