@@ -86,7 +86,22 @@ function envFlag(name) {
 //
 // Runs once, at require time, before anything constructs a client.
 function exportComposedDatabaseUrl() {
-  if (process.env.DATABASE_URL) return;
+  // Hosting panels that store secrets as YAML-ish values tell you to wrap a
+  // value in quotes so it is kept as text — advice that is right for "true"
+  // (which would otherwise become a boolean) and wrong here, since a URL is
+  // already unambiguously a string. When the quotes are stored literally the
+  // value becomes "mysql://..." including the quote characters, and every
+  // consumer fails: Prisma reads env("DATABASE_URL") itself and reports an
+  // invalid URL without ever mentioning quotes, which is a long way to travel
+  // from the actual mistake. Cheaper to tolerate than to diagnose.
+  if (process.env.DATABASE_URL) {
+    const trimmed = process.env.DATABASE_URL.trim();
+    const first = trimmed[0];
+    const wrapped = (first === '"' || first === "'") && trimmed.length > 1 && trimmed.endsWith(first);
+    const cleaned = wrapped ? trimmed.slice(1, -1) : trimmed;
+    if (cleaned !== process.env.DATABASE_URL) process.env.DATABASE_URL = cleaned;
+    return;
+  }
 
   const host = process.env.DB_HOST;
   const name = process.env.DB_NAME;
