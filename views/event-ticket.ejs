@@ -21,7 +21,19 @@ function when(e) {
 <div class="max-w-md mx-auto">
   <a href="/profile" class="text-sm text-indigo-600 hover:underline">&larr; Back to my profile</a>
 
-  <div class="mt-3 ticket-card">
+  <!-- Everything the saved image needs, read by public/js/ticket.js. Kept on
+       the wrapper as data attributes rather than an inline script: styleSrc and
+       scriptSrc carry a nonce and no 'unsafe-inline', and a separate file is
+       cacheable besides. -->
+  <div class="mt-3 ticket-card"
+       id="ticket-card-data"
+       data-title="<%= event.title %>"
+       data-when="<%= when(event) %>"
+       data-venue="<%= event.modality === 'ONLINE' ? 'Online' : (event.location || 'Venue to be announced') %>"
+       data-reference="<%= registration.registrationNumber || '' %>"
+       data-name="<%= registration.fullName %>"
+       data-organization="<%= registration.organizationPath || '' %>"
+       data-badge="<%= registration.checkedInAt ? 'Checked in' : 'Confirmed' %>">
     <div class="px-6 pt-6 pb-4 text-center ticket-divider">
       <p class="ticket-eyebrow">PSME Event</p>
       <h1 class="mt-2 ticket-title"><%= event.title %></h1>
@@ -35,7 +47,7 @@ function when(e) {
          both themes. An inline style here would be blocked anyway — styleSrc
          carries a nonce and no 'unsafe-inline'. -->
     <div class="px-6 py-6 flex justify-center">
-      <img src="<%= qrDataUrl %>" alt="Your check-in QR code"
+      <img src="<%= qrDataUrl %>" alt="Your check-in QR code" id="ticket-qr"
            width="280" height="280"
            class="w-[280px] h-[280px] max-w-full">
     </div>
@@ -65,14 +77,29 @@ function when(e) {
     Show this code at the entrance. It belongs to this registration only.
   </p>
 
-  <div class="mt-4 flex flex-wrap justify-center gap-3">
-    <a href="/api/events/<%= event.id %>/ticket.pdf" target="_blank" rel="noopener"
-       class="bg-amber-400 text-indigo-950 px-5 py-2.5 rounded-md hover:bg-amber-300 font-semibold text-sm">
-      Download e-ticket (PDF)
-    </a>
+  <!-- Saving the image is the primary action, so it gets the accent. Most
+       people keep the ticket on their phone; the PDF is for the smaller number
+       who print it. Both are the same size and shape — they were previously a
+       solid button beside a pale outline, which read as "one of these is the
+       real one" when both work perfectly well.
+
+       The image button keeps its href: with JavaScript off the click falls
+       through to the server's plain QR, which still scans. -->
+  <div class="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
     <a href="/api/events/<%= event.id %>/ticket/qr.png"
-       class="bg-white border border-slate-300 text-slate-700 px-5 py-2.5 rounded-md hover:bg-slate-50 text-sm">
-      Save QR image
+       id="save-ticket-image"
+       class="inline-flex items-center justify-center gap-2 bg-amber-400 text-indigo-950 px-5 py-3 rounded-xl hover:bg-amber-300 active:bg-amber-500 font-semibold text-sm shadow-sm transition-colors">
+      <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16" />
+      </svg>
+      Save ticket image
+    </a>
+    <a href="/api/events/<%= event.id %>/ticket.pdf" target="_blank" rel="noopener"
+       class="inline-flex items-center justify-center gap-2 bg-white border border-slate-300 text-slate-800 px-5 py-3 rounded-xl hover:bg-slate-50 hover:border-slate-400 font-semibold text-sm shadow-sm transition-colors">
+      <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 17h6M9 13h6M7 3h7l5 5v11a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z" />
+      </svg>
+      Print-ready PDF
     </a>
   </div>
 
@@ -80,3 +107,5 @@ function when(e) {
     Screen too dim to scan? Turn your brightness up, or bring the printed PDF.
   </p>
 </div>
+
+<script src="/js/ticket.js"></script>
