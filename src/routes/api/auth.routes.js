@@ -69,6 +69,13 @@ const resendVerificationValidators = [
 ];
 
 const profileValidators = [
+  // .optional() rather than .optional({ checkFalsy: true }): a field that is
+  // simply absent is left alone by the service, but one submitted empty is a
+  // real mistake and gets told so, instead of being silently ignored.
+  body('firstName').optional().trim().notEmpty().withMessage('First name cannot be blank')
+    .isLength({ max: 100 }).withMessage('First name is too long'),
+  body('lastName').optional().trim().notEmpty().withMessage('Last name cannot be blank')
+    .isLength({ max: 100 }).withMessage('Last name is too long'),
   body('middleInitial').optional({ checkFalsy: true }).trim().isLength({ max: 2 }).withMessage('Middle initial must be at most 2 characters'),
   body('phone').optional({ checkFalsy: true }).trim().isLength({ max: 30 }).withMessage('Phone number is too long'),
   body('school').optional({ checkFalsy: true }).trim().isLength({ max: 150 }).withMessage('School name is too long'),

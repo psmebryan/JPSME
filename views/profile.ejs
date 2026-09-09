@@ -110,22 +110,60 @@
     <div class="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
       <form id="profile-form" class="space-y-4">
         <div class="grid gap-4 md:grid-cols-2">
-          <div>
-            <label for="middleInitial" class="block text-sm font-medium mb-1">Middle Initial</label>
-            <input id="middleInitial" name="middleInitial" value="<%= profileData.middleInitial || '' %>" maxlength="2" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <div class="md:col-span-2 grid gap-4 sm:grid-cols-[1fr_6rem_1fr]">
+            <div>
+              <label for="firstName" class="block text-sm font-medium mb-1">First Name</label>
+              <input id="firstName" name="firstName" value="<%= profileData.firstName || '' %>" required maxlength="80" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <div>
+              <label for="middleInitial" class="block text-sm font-medium mb-1">M.I.</label>
+              <input id="middleInitial" name="middleInitial" value="<%= profileData.middleInitial || '' %>" maxlength="2" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <div>
+              <label for="lastName" class="block text-sm font-medium mb-1">Last Name</label>
+              <input id="lastName" name="lastName" value="<%= profileData.lastName || '' %>" required maxlength="80" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
           </div>
 
-          <div>
-            <label for="organizationId" class="block text-sm font-medium mb-1">Organization</label>
-            <select id="organizationId" name="organizationId" class="w-full border border-gray-300 rounded-md px-3 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-              <option value="">Not assigned</option>
-              <% (organizations || []).forEach(org => { %>
-                <option value="<%= org.id %>" <%= String(profileData.organizationId) === String(org.id) ? 'selected' : '' %>><%= org.name %></option>
-              <% }) %>
-            </select>
-            <% if (locals.organizationPath) { %>
-              <p class="mt-1 text-xs text-gray-500">Current: <%= organizationPath %></p>
-            <% } %>
+          <!-- Organization. The same guided picker the registration page uses,
+               driven by public/js/auth.js: region, then province, then student
+               unit, each step built from the real children of the one above.
+               data-selected-id makes it open on the member's current branch
+               with every step already chosen, so changing one level does not
+               mean re-picking the whole chain. It replaced a single flat list
+               of every organization, which gave no indication of where an
+               entry sat in the hierarchy. -->
+          <div class="md:col-span-2">
+            <div class="relative mb-3">
+              <label class="block text-sm font-medium mb-1" for="organization-search">
+                Search for your organization
+              </label>
+              <input id="organization-search" type="text" autocomplete="off"
+                placeholder="Type your school, unit, chapter or cluster&hellip;"
+                class="w-full border border-gray-300 rounded-md px-3 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <div id="organization-results"
+                   class="hidden absolute z-20 mt-1 w-full max-h-64 overflow-y-auto rounded-md border border-gray-300 bg-white shadow-lg"></div>
+              <p class="text-xs text-gray-500 mt-1">Or choose it step by step below.</p>
+            </div>
+
+            <div id="organization-cascade" class="space-y-3" data-selected-id="<%= profileData.organizationId || '' %>"></div>
+
+            <input type="hidden" id="organizationId" name="organizationId" value="<%= profileData.organizationId || '' %>">
+
+            <div id="organization-selected" class="hidden mt-3 rounded-md border border-indigo-200 bg-indigo-50 p-3">
+              <p class="text-[11px] font-semibold uppercase tracking-wider text-indigo-700 mb-1">Your organization</p>
+              <p class="text-sm font-semibold text-indigo-950" id="organization-selected-name"></p>
+              <p class="text-xs text-gray-500 mt-0.5" id="organization-selected-path"></p>
+            </div>
+
+            <p class="text-xs text-gray-500 mt-2">
+              Choose as far down as your own organization goes. If your branch has no
+              cluster or chapter, that step simply won't appear &mdash; stop at whichever
+              organization you actually belong to.
+            </p>
+            <p id="chapter-error" class="hidden text-xs text-red-600 mt-1">Please select your organization.</p>
           </div>
 
           <div class="md:col-span-2">
@@ -207,6 +245,11 @@
   </section>
 </div>
 
+<!-- auth.js owns the organization picker (search + cascade). It is
+     entirely guarded by element lookups, so on this page only the
+     picker runs; the login/register handlers inside it find nothing
+     and do nothing. -->
+<script src="/js/auth.js"></script>
 <script src="/js/events.js"></script>
 <script nonce="<%= cspNonce %>">
   document.addEventListener('DOMContentLoaded', () => {
@@ -217,6 +260,8 @@
 
         const formData = new FormData(profileForm);
         const payload = {
+          firstName: formData.get('firstName')?.toString().trim() || '',
+          lastName: formData.get('lastName')?.toString().trim() || '',
           middleInitial: formData.get('middleInitial')?.toString().trim() || null,
           school: formData.get('school')?.toString().trim() || null,
           yearLevel: formData.get('yearLevel') || null,

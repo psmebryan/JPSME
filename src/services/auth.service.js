@@ -170,21 +170,32 @@ async function getById(id) {
   return toPublicUser(user);
 }
 
-async function updateProfile(userId, { middleInitial, phone, school, yearLevel, organizationId }) {
+async function updateProfile(userId, { firstName, lastName, middleInitial, phone, school, yearLevel, organizationId }) {
   const value = organizationId === '' || organizationId === undefined || organizationId === null ? null : Number(organizationId);
   if (organizationId !== '' && organizationId !== undefined && organizationId !== null && organizationId !== 'null' && Number.isNaN(value)) {
     throw new AppError('Invalid organization selection', 400);
   }
 
+  const data = {
+    middleInitial: middleInitial && middleInitial.trim() ? normalizeName(middleInitial) : null,
+    phone: phone && phone.trim() ? phone.trim() : null,
+    school: school && school.trim() ? school.trim() : null,
+    yearLevel: yearLevel || null,
+    organizationId: value,
+  };
+
+  // Unlike every other field here, firstName and lastName are NOT NULL in the
+  // schema and a member always has them. So an absent or blank value means
+  // "leave it as it is", never "clear it" — the pattern the fields above use
+  // would let a form that omitted these erase somebody's name. Uppercased the
+  // same way registration does it, so a name edited later matches one typed at
+  // sign-up rather than sorting separately in the admin list.
+  if (firstName && firstName.trim()) data.firstName = normalizeName(firstName);
+  if (lastName && lastName.trim()) data.lastName = normalizeName(lastName);
+
   const user = await prisma.user.update({
     where: { id: Number(userId) },
-    data: {
-      middleInitial: middleInitial && middleInitial.trim() ? normalizeName(middleInitial) : null,
-      phone: phone && phone.trim() ? phone.trim() : null,
-      school: school && school.trim() ? school.trim() : null,
-      yearLevel: yearLevel || null,
-      organizationId: value,
-    },
+    data,
     include: userInclude,
   });
 

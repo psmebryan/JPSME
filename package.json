@@ -28,7 +28,8 @@
     "postinstall": "prisma generate",
     "build": "prisma generate",
     "test:db": "node scripts/test-db-connection.js",
-    "test:migration-repair": "node tests/migration.repair.test.js"
+    "test:migration-repair": "node tests/migration.repair.test.js",
+    "test:profile": "node tests/profile.update.test.js"
   },
   "license": "UNLICENSED",
   "dependencies": {

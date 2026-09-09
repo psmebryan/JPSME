@@ -206,10 +206,14 @@ const articleDetailPage = asyncHandler(async (req, res) => {
 });
 
 const profilePage = asyncHandler(async (req, res) => {
-  const [userProfile, registrations, orgSeed, membership] = await Promise.all([
+  // No organization list is fetched here any more. The page used to render a
+  // flat <select> of the first 50 organizations; it now uses the same guided
+  // picker as registration, which loads each level on demand from
+  // /api/organizations. Fetching 50 rows on every profile view to populate a
+  // control that no longer exists is just a query nobody reads.
+  const [userProfile, registrations, membership] = await Promise.all([
     authService.getById(req.session.user.id),
     registrationService.getUserRegistrations(req.session.user.id),
-    organizationService.searchOrganizations({ page: 1, pageSize: 50 }),
     paymentService.getMembershipStatus(req.session.user.id),
   ]);
 
@@ -227,7 +231,6 @@ const profilePage = asyncHandler(async (req, res) => {
     userProfile,
     registrations,
     membership,
-    organizations: orgSeed.organizations,
     organizationPath,
     certifiedEventIds,
   });
