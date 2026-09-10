@@ -7,8 +7,14 @@ const sheetsSyncService = require('./sheetsSync.service');
 const organizationService = require('./organization.service');
 const normalizeName = (value) => String(value || '').trim().toUpperCase();
 
+// `status` takes one value or several. Several matters for the invitation
+// picker, which needs approved and pending accounts together: approval is an
+// admin's own to-do list, not a fact about the person, and somebody who has
+// paid in full is still PENDING until that button is pressed.
 async function listByStatus(status) {
-  const where = status ? { status } : {};
+  const where = status
+    ? { status: Array.isArray(status) ? { in: status } : status }
+    : {};
   const users = await prisma.user.findMany({
     where: { ...where, role: { not: 'ADMIN' } },
     orderBy: { createdAt: 'desc' },

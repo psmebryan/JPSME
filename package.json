@@ -33,7 +33,8 @@
     "test:seed-admin": "node tests/seedAdmin.test.js",
     "test:admin-role": "node tests/adminRole.test.js",
     "test:payment-ref": "node tests/paymentReference.test.js",
-    "test:ticket-image": "node tests/ticketImage.test.js"
+    "test:ticket-image": "node tests/ticketImage.test.js",
+    "test:invite-picker": "node tests/invitePicker.test.js"
   },
   "license": "UNLICENSED",
   "dependencies": {

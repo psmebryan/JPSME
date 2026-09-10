@@ -858,7 +858,18 @@ const adminInvitationsPage = asyncHandler(async (req, res) => {
   if (eventId) {
     [selectedEvent, members, summary, invitedEmailStatuses] = await Promise.all([
       eventService.getEventById(eventId),
-      userService.listByStatus('APPROVED'),
+      // Approved AND pending, which is every account except a rejected one.
+      //
+      // Gating this on APPROVED alone conflated two unrelated things: whether
+      // an admin has got round to approving the account, and whether the person
+      // is someone you would invite. A member who has paid in full is PENDING
+      // until that button is pressed, and was invisible here the whole time —
+      // on a newly launched site that is everybody. Non-members are included
+      // for the same reason: the report already badges Member/Non-Member rather
+      // than hiding either, so the picker should offer both.
+      //
+      // REJECTED stays out. That one IS a decision about the person.
+      userService.listByStatus(['APPROVED', 'PENDING']),
       invitationService.getInvitationSummary(eventId),
       invitationService.getInvitedEmailStatusesForEvent(eventId),
     ]);

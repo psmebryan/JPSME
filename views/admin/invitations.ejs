@@ -30,6 +30,26 @@ const invitedEmails = new Map(invitedStatusRows.map((inv) => [inv.email.toLowerC
 // the value is a snapshot of who the invitee was when they were invited.
 const distinctOrganizations = [...new Set(members.map((m) => m.organizationPath || '').filter(Boolean))].sort();
 const opts = typeof filterOptions !== 'undefined' ? filterOptions : { chapters: [], events: [] };
+// The same three-way judgement as memberOrGuestBadge below, applied to an
+// account in the picker rather than an invitation already sent. Deliberately
+// reads membershipExpiresAt, exactly as that one does — if the two used
+// different rules, somebody could be picked as a Member and then appear in the
+// report as a Non-Member a second later.
+//
+// Approval is shown separately because it is a different question. The picker
+// now lists pending accounts (they were invisible before, which on a new site
+// meant everybody), so the row has to say which ones you have not approved yet
+// — otherwise "invite" and "approve" quietly look like the same decision.
+function memberPickerBadges(m) {
+  const active = m.membershipExpiresAt && new Date(m.membershipExpiresAt).getTime() > Date.now();
+  const membership = active
+    ? '<span class="badge-green">Member</span>'
+    : '<span class="badge-amber">Non-Member</span>';
+  const approval = m.status === 'PENDING'
+    ? ' <span class="badge-slate">Pending approval</span>'
+    : '';
+  return membership + approval;
+}
 function memberOrGuestBadge(inv) {
   // Three-way, matching how the org classifies people:
   //   Guest      — no account; invited to this one event only
@@ -218,7 +238,8 @@ function sortArrowHeader(label, key) {
                 <th class="p-2 text-left">Name</th>
                 <th class="p-2 text-left">Email</th>
                 <th class="p-2 text-left">Organization</th>
-                <th class="p-2 text-left">Status</th>
+                <th class="p-2 text-left">Membership</th>
+                <th class="p-2 text-left">Invited</th>
               </tr>
             </thead>
             <tbody id="invite-member-tbody">
@@ -240,12 +261,16 @@ function sortArrowHeader(label, key) {
                   <td class="p-2"><%= m.firstName %> <%= m.lastName %></td>
                   <td class="p-2 text-slate-500 max-w-[180px] truncate"><%= m.email %></td>
                   <td class="p-2 max-w-[260px] truncate" title="<%= organizationName %>"><%= organizationName || '-' %></td>
+                  <td class="p-2 whitespace-nowrap"><%- memberPickerBadges(m) %></td>
                   <td class="p-2"><%- invitedStatus ? invStatusBadge(invitedStatus) : '<span class="text-xs text-slate-400">Not invited</span>' %></td>
                 </tr>
               <% }) %>
             </tbody>
           </table>
-          <% if (members.length === 0) { %><p class="p-3 text-sm text-slate-400">No approved members yet.</p><% } %>
+          <%# "No approved members" would now be misleading: this list is no longer
+              restricted to approved accounts, so reaching here really does mean
+              nobody has an account at all. %>
+          <% if (members.length === 0) { %><p class="p-3 text-sm text-slate-400">Nobody has registered an account yet.</p><% } %>
           <p id="invite-member-empty" class="p-3 text-sm text-slate-400 hidden">No members match your search.</p>
         </div>
         <button type="button" id="invite-add-selected" class="btn-secondary text-sm mt-2">Add Selected to List</button>
