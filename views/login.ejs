@@ -27,28 +27,22 @@
     No account? <a href="/register" class="text-indigo-600 hover:underline">Register here</a>
   </p>
 
-  <details class="mt-4 text-sm">
-    <summary class="text-gray-500 cursor-pointer hover:text-gray-700 py-2">Need to verify your email?</summary>
-    <%# Two different people open this. One already has a code and needs the
-        field to type it in, which is on /verify-email and was reachable from
-        nowhere — they used to land here, resend, and have no way to use what
-        arrived. The other has no code and needs a new one. Both are answered,
-        the shorter path first. %>
-    <p class="mt-2 text-gray-600">
-      Already have a code?
-      <a href="/verify-email" class="text-indigo-600 hover:underline">Enter it here</a>.
-    </p>
-    <p class="mt-3 text-gray-500">Otherwise, send yourself a new one:</p>
-    <form id="resend-verification-form" class="mt-2 flex flex-wrap gap-2">
-      <input type="email" name="email" required placeholder="you@example.com"
-        class="flex-1 min-w-[200px] border border-gray-300 rounded-md px-3 py-2">
-      <%# The same endpoint as the resend form on /verify-email, so it needs the
-          same check — without this it would start failing the moment
-          TURNSTILE_SITE_KEY is set, on a page nobody would think to re-test. %>
-      <%- include('partials/human-check') %>
-      <button type="submit" class="bg-gray-900 text-white px-3 py-2 rounded-md text-sm hover:bg-gray-800">Resend</button>
-    </form>
-  </details>
+  <%#
+    What used to be here: a collapsed "Need to verify your email?" panel hiding
+    a resend form and a captcha. It asked somebody to find a disclosure
+    triangle, retype the address they had just typed above, and read characters
+    out of an image — all to get a code the login button could have sent them.
+
+    Now it does. Signing in with an address that was never confirmed mails the
+    code and takes them to the page with the field, so there is nothing to open
+    and nothing to fill in. The one line left is for somebody who already has a
+    code in their inbox and does not want to sign in again to use it.
+  %>
+  <p class="text-sm text-gray-500 mt-2">
+    Waiting on a verification code?
+    <a href="/verify-email" class="text-indigo-600 hover:underline">Enter it here</a> —
+    or just sign in above and we'll send you a new one.
+  </p>
 </div>
 
 <script src="/js/auth.js"></script>

@@ -61,11 +61,13 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (err) {
         // An unverified account is not a failed login so much as an unfinished
         // one, and the thing it needs is a page this form does not contain.
-        // Leaving them here with a toast was a dead end: the only control on
-        // offer resends a code, and there was nowhere to type the code once it
-        // arrived.
+        //
+        // The server has already mailed the code by the time this runs — the
+        // password was right, which is what makes sending it here safe — so
+        // this is a handover, not a refusal. Said as one: there is no longer
+        // anything for them to go and ask for.
         if (err.code === 'EMAIL_NOT_VERIFIED') {
-          showToast('Verify your email first — taking you there now.', 'error');
+          showToast('Almost there — we just emailed you a code.');
           const typed = new FormData(loginForm).get('email');
           const query = typed ? `?email=${encodeURIComponent(String(typed).trim())}` : '';
           setTimeout(() => { window.location.href = `/verify-email${query}`; }, 900);
@@ -437,10 +439,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         showToast(res.message);
         resendForm.reset();
-        // The resend form is shared between /login and /verify-email. On
-        // /login there is nowhere to enter what was just sent, so somebody who
-        // asks for a code is taken to the page that can accept it. Already on
-        // /verify-email, staying put is correct.
+        // This handler is the public, captcha'd resend — now only rendered on
+        // /verify-email for somebody arriving cold, since signing in sends the
+        // code by itself. The redirect stays because the same form id could be
+        // dropped on another page, and landing on one with no field to type
+        // into is the dead end this whole flow exists to remove.
         if (!window.location.pathname.startsWith('/verify-email')) {
           const typed = formData.get('email');
           const query = typed ? `?email=${encodeURIComponent(String(typed).trim())}` : '';

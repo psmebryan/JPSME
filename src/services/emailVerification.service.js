@@ -59,6 +59,86 @@ async function issueVerificationCode(user) {
   return sendVerificationEmail(user, code);
 }
 
+// How much life a code needs left to be worth reusing. A code with ninety
+// seconds on it is no use to somebody who still has to go and open their
+// inbox, so below this floor a fresh one is issued instead.
+const REUSE_FLOOR_MS = 5 * 60 * 1000;
+
+// Issues a code only when there isn't a usable one already.
+//
+// The caller is the login form, which now sends the code itself rather than
+// leaving the person to work out that they have to go and ask for one. That
+// makes it easy to send two: somebody who registers and then immediately tries
+// to log in would get a second email a minute after the first, with the code
+// in the first one already dead, because a new code replaces the old one. So
+// an outstanding code is reused, and sentAt reports when it actually went out
+// rather than pretending it went out now.
+async function ensureVerificationCode(user) {
+  const existing = await prisma.emailVerificationToken.findUnique({ where: { userId: user.id } });
+
+  if (existing
+    && existing.attempts < MAX_ATTEMPTS
+    && existing.expiresAt.getTime() - Date.now() > REUSE_FLOOR_MS) {
+    return {
+      sent: false,
+      reason: 'still-valid',
+      // Derived rather than stored: the row records when the code dies, and it
+      // was born exactly one TTL before that.
+      sentAt: existing.expiresAt.getTime() - CODE_TTL_MS,
+    };
+  }
+
+  const delivered = await issueVerificationCode(user);
+  return { sent: delivered, reason: delivered ? 'sent' : 'send-failed', sentAt: Date.now() };
+}
+
+// Called at the one moment a correct password meets an unverified address.
+//
+// Sending here is safe in a way that sending from a public form is not: bcrypt
+// has already agreed, so this cannot be used to ask whether an address is
+// registered, and it cannot be aimed at an inbox the sender does not own.
+// That is what lets the code arrive with no captcha in front of it and no
+// button to find — by the time the person reaches the verification page the
+// mail is already on its way.
+async function prepareVerification(email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  const user = await prisma.user.findUnique({ where: { email: normalized } });
+  if (!user || user.emailVerifiedAt) return null;
+
+  const outcome = await ensureVerificationCode(user);
+  if (outcome.reason === 'send-failed') {
+    logger.error('login: unverified address, but the email provider did not accept the code', {
+      email: normalized, userId: user.id,
+    });
+  } else {
+    logger.info(`login: unverified address, code ${outcome.reason}`, { email: normalized, userId: user.id });
+  }
+  return { userId: user.id, email: user.email, ...outcome };
+}
+
+// The resend behind the "Send it again" button, for somebody the server
+// already knows is mid-verification.
+//
+// Unlike resendVerification below, this takes no address from the request —
+// the account comes from the session, put there by a login that got the
+// password right. There is nothing to enumerate and no stranger to mail, so it
+// needs no captcha and no retyped address: the two things that made asking for
+// a second code harder than getting the first.
+async function resendForPending(userId) {
+  const user = await prisma.user.findUnique({ where: { id: Number(userId) } });
+  if (!user || user.emailVerifiedAt) {
+    return { sent: false, reason: 'nothing-to-send', sentAt: Date.now() };
+  }
+
+  // Always a new code, never the outstanding one: they pressed the button
+  // because what they have does not work.
+  const delivered = await issueVerificationCode(user);
+  if (!delivered) {
+    logger.error('resend-pending: code generated but the email provider did not accept it', { userId: user.id });
+  }
+  return { sent: delivered, reason: delivered ? 'sent' : 'send-failed', sentAt: Date.now() };
+}
+
 // One deliberately vague message for every failure below.
 //
 // Distinguishing "no such account", "already verified", "wrong code" and "no
@@ -203,6 +283,9 @@ async function resendVerification(email) {
 
 module.exports = {
   issueVerificationCode,
+  ensureVerificationCode,
+  prepareVerification,
+  resendForPending,
   verifyEmailCode,
   resendVerification,
   CODE_TTL_MS,

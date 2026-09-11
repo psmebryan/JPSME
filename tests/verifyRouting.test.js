@@ -206,6 +206,18 @@ async function main() {
     assert(page.toasts.some((t) => /Invalid email or password/.test(t)), 'the real reason is shown');
   });
 
+  await test('a blocked login says a code is coming, not that something failed', async () => {
+    // The server mails it before this response is even written, so "verify
+    // your email first" describes a chore that is already done for them.
+    const err = Object.assign(new Error('Please verify your email address before logging in'), {
+      status: 403, code: 'EMAIL_NOT_VERIFIED',
+    });
+    const page = runLoginPage({ email: 'ana@example.com', rejectWith: err });
+    await page.handlers.login({ preventDefault() {} });
+
+    assert(page.toasts.some((t) => /emailed you a code/i.test(t)), `says the code is sent, got: ${page.toasts.join(' | ')}`);
+  });
+
   await test('asking for a code from the login page lands on the page that accepts one', async () => {
     // The dead end itself: the login page has a resend button and no field to
     // type the result into.
@@ -228,13 +240,16 @@ async function main() {
   // --- the page offers a way in at all --------------------------------------
 
   await test('the login page links to the verification page for someone who has a code', async () => {
+    // The resend form that used to sit here is gone, and so is the disclosure
+    // triangle that hid it. Signing in sends the code, so the only thing this
+    // page still owes somebody is a way to reach the field — see
+    // tests/verifyFlow.test.js for the rest of that change.
     const ejs = require('ejs');
     const file = path.join(__dirname, '..', 'views', 'login.ejs');
     const html = ejs.render(fs.readFileSync(file, 'utf8'), { cspNonce: 'n', currentUser: null }, { filename: file });
 
     assert(html.includes('/verify-email'), 'the link exists at all');
-    assert(/Already have a code/i.test(html), 'and says what it is for');
-    assert(html.includes('resend-verification-form'), 'the resend form is still there for those without one');
+    assert(/verification code/i.test(html), 'and says what it is for');
   });
 }
 

@@ -120,7 +120,8 @@ async function login(email, password, { context = "user" } = {}) {
 
   if (!user.emailVerifiedAt) {
     // Tagged because the login page acts on this one: it sends them to the
-    // verification page rather than leaving them on a form they cannot pass.
+    // verification page rather than leaving them on a form they cannot pass,
+    // and the controller mails them a fresh code on the way out.
     throw new AppError(
       "Please verify your email address before logging in",
       403,
@@ -128,6 +129,17 @@ async function login(email, password, { context = "user" } = {}) {
     );
   }
 
+  return finalizeLogin(user, { context });
+}
+
+// Everything a login does once the password and the address are both settled.
+//
+// Split out because there are now two ways to arrive here. The usual one is
+// the login form above. The other is finishing verification: somebody who
+// typed the right password a minute ago and has just proved they own the
+// inbox has given the same two answers in the other order, and making them go
+// back and type the password again is friction with nothing behind it.
+async function finalizeLogin(user, { context = "user" } = {}) {
   // REJECTED applicants never get a session. PENDING (verified, awaiting admin
   // review) DOES get a session — they need one to complete their membership
   // payment, since the admin's approval decision is informed by seeing that
@@ -165,6 +177,26 @@ async function login(email, password, { context = "user" } = {}) {
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
   return { ...toPublicUser(user), postApprovalRedirectUrl, isFirstLogin };
+}
+
+// The second entrance to finalizeLogin: verification just succeeded, and the
+// same session proved the password moments earlier. The caller owns the
+// freshness check on that proof; this owns who is allowed through.
+//
+// Returns null rather than throwing for every refusal. A failure to sign
+// somebody in must never read as a failure to verify — the verification is
+// already committed and is the thing they actually came to do.
+async function completeVerifiedLogin(userId) {
+  const user = await prisma.user.findUnique({ where: { id: Number(userId) }, include: userInclude });
+  if (!user || !user.emailVerifiedAt) return null;
+
+  // Staff sign in on their own page, and that separation is deliberate (see
+  // the context checks in finalizeLogin). A verified admin is told to go there
+  // rather than being handed a session from a public form.
+  if (user.role === "ADMIN" || user.role === "CHAPTER_ADMIN") return null;
+  if (user.status === "REJECTED") return null;
+
+  return finalizeLogin(user, { context: "user" });
 }
 
 async function getById(id) {
@@ -221,4 +253,5 @@ async function updateProfileImage(userId, profileImage) {
   return toPublicUser(user);
 }
 
-module.exports = { registerUser, login, getById, updateProfile, updateProfileImage, toPublicUser };
+module.exports = { registerUser, login,
+  completeVerifiedLogin, getById, updateProfile, updateProfileImage, toPublicUser };

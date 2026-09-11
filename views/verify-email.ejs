@@ -1,49 +1,131 @@
-<div class="max-w-md mx-auto">
-  <div class="bg-white border border-gray-200 rounded-lg p-8 shadow-sm">
-    <h1 class="text-2xl font-bold mb-2">Verify your email</h1>
-    <p class="text-sm text-gray-600 mb-6">
-      We emailed you a 6-digit code. Enter it below to confirm your address.
-    </p>
+<%
+/*
+  Two arrivals, one page.
 
-    <form id="verify-code-form" class="space-y-4">
-      <div>
-        <label for="verify-email-input" class="block text-sm font-medium text-gray-700 mb-1">Email address</label>
-        <input id="verify-email-input" name="email" type="email" required
-               value="<%= locals.email || '' %>"
-               autocomplete="email"
-               class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500">
+  The common one is a login that got the password right against an address
+  that was never confirmed. The server already knows who that is, has already
+  mailed the code, and can therefore ask for one thing and nothing else. That
+  is the whole fix: it used to land here demanding a code the person did not
+  have, with the only way to get one buried in a second card below, behind a
+  retyped address and an image captcha.
+
+  The other is somebody arriving cold — a bookmark, an old link, a browser that
+  dropped the session. Nothing is known about them, so they still get the
+  address field and the public resend with its captcha. Unchanged, because for
+  a request that will mail an address the sender chose, that check is the point.
+*/
+%>
+<% const known = Boolean(locals.pendingEmail); %>
+<div class="max-w-md mx-auto">
+  <div class="bg-white border border-gray-200 rounded-lg p-6 sm:p-8 shadow-sm">
+    <div id="verify-panel">
+      <div class="flex flex-col items-center text-center">
+        <img src="<%= locals.logoUrl || '/img/default-logo.svg' %>" alt="JPSME" class="h-14 w-14 object-contain">
+        <h1 class="mt-3 text-2xl font-bold text-gray-900">Enter your code</h1>
+
+        <% if (known) { %>
+          <p class="mt-2 text-sm text-gray-600">
+            We emailed a 6-digit code to<br>
+            <span class="font-semibold text-gray-900 break-all"><%= pendingEmail %></span>
+          </p>
+        <% } else { %>
+          <p class="mt-2 text-sm text-gray-600">
+            Enter the address you registered with and the 6-digit code we emailed you.
+          </p>
+        <% } %>
       </div>
 
-      <div>
-        <label for="verify-code-input" class="block text-sm font-medium text-gray-700 mb-1">6-digit code</label>
+      <form id="verify-code-form" class="mt-6 space-y-5">
+        <% if (known) { %>
+          <%# Not a field. The address came from the server, and there is
+              nothing here for anyone to mistype. %>
+          <input type="hidden" name="email" id="verify-email-input" value="<%= pendingEmail %>">
+        <% } else { %>
+          <div>
+            <label for="verify-email-input" class="block text-sm font-medium text-gray-700 mb-1">Email address</label>
+            <input id="verify-email-input" name="email" type="email" required
+                   value="<%= locals.email || '' %>"
+                   autocomplete="email"
+                   class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500">
+          </div>
+        <% } %>
+
+        <div>
+          <%
+            /*
+              Six boxes rather than one long field, because a six-digit code is
+              six things and looking like six things is most of what makes it
+              quick to type: you can see at a glance how many are left, and a
+              wrong digit is one backspace rather than a re-read.
+
+              autocomplete="one-time-code" sits on the first box only — that is
+              where iOS and Android offer the code straight from the
+              notification, and they fill the whole code into it, which the
+              input handler below spreads across the rest. Pasting anywhere
+              does the same. inputmode="numeric" brings up the number pad.
+            */
+          %>
+          <div class="flex justify-center gap-2 sm:gap-3" id="code-boxes">
+            <% for (let i = 0; i < 6; i++) { %>
+              <input type="text" class="code-digit w-11 h-14 sm:w-12 sm:h-16 rounded-lg border-2 border-gray-300 bg-white text-center text-2xl font-mono font-semibold text-gray-900 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition-colors"
+                     inputmode="numeric" maxlength="1"
+                     aria-label="Digit <%= i + 1 %> of 6"
+                     <%# Unescaped on purpose: this is an attribute, not text.
+                         Escaped, its quotes come out as &quot; and the phone
+                         never recognises the field at all. %>
+                     <%- i === 0 ? 'autocomplete="one-time-code"' : 'autocomplete="off"' %>>
+            <% } %>
+          </div>
+          <%# What actually gets submitted, so the form still works if a box is
+              filled by something the handlers did not anticipate. %>
+          <input type="hidden" name="code" id="verify-code-input">
+          <p class="mt-3 text-center text-xs text-gray-500">The code expires 30 minutes after it is sent.</p>
+        </div>
+
+        <button type="submit" class="w-full bg-indigo-600 text-white px-5 py-3 rounded-md hover:bg-indigo-700 font-medium">
+          Verify my email
+        </button>
+      </form>
+
+      <% if (known) { %>
         <%
           /*
-            inputmode="numeric" brings up the number pad on a phone, and
-            autocomplete="one-time-code" lets iOS and Android offer the code
-            straight from the notification — the whole point of using a code
-            rather than a link is that it is quick to enter, and on a phone that
-            is the difference between one tap and switching apps to copy it.
-            maxlength is 7 rather than 6 so a pasted code with a stray space
-            still lands; the server strips whitespace before checking.
+            The resend that made this page worth rewriting. It sends to the
+            address the server put in the session, so it needs no retyped
+            address and no captcha — see resendPendingVerification in
+            auth.api.js for why that is safe here and not on the public form.
           */
         %>
-        <input id="verify-code-input" name="code" type="text" required
-               inputmode="numeric" autocomplete="one-time-code"
-               maxlength="7" placeholder="000000"
-               class="w-full rounded-lg border border-gray-300 px-3 py-3 text-center text-2xl font-mono tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500">
-        <p class="mt-1 text-xs text-gray-500">The code expires 30 minutes after it is sent.</p>
-      </div>
-
-      <button type="submit" class="w-full bg-indigo-600 text-white px-5 py-2.5 rounded-md hover:bg-indigo-700 font-medium">
-        Verify my email
-      </button>
-    </form>
+        <div class="mt-6 pt-5 border-t border-gray-200 text-center">
+          <p class="text-sm text-gray-600">Didn't get it? Check your spam folder.</p>
+          <form id="pending-resend-form" class="mt-2">
+            <button type="submit" id="pending-resend-button"
+                    data-wait-ms="<%= locals.resendWaitMs || 0 %>"
+                    class="text-sm font-medium text-indigo-600 hover:underline disabled:text-gray-400 disabled:no-underline disabled:cursor-not-allowed">
+              Send it again
+            </button>
+          </form>
+          <p class="mt-4 text-xs text-gray-500">
+            Wrong address?
+            <a href="/login" class="text-gray-700 hover:underline">Sign in as someone else</a>
+          </p>
+        </div>
+      <% } %>
+    </div>
 
     <div id="verify-success" class="hidden text-center py-4">
-      <p class="text-lg font-semibold text-green-700">Email verified</p>
+      <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+        <svg class="h-6 w-6 text-green-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path>
+        </svg>
+      </div>
+      <p class="mt-3 text-lg font-semibold text-gray-900">Email verified</p>
+      <%# Only ever seen when the sign-in shortcut did not apply — a cold
+          arrival, or a session too old to still count as proof of the
+          password. Everyone else is already on their way somewhere. %>
       <p class="text-sm text-gray-600 mt-1">
         <% if (locals.paymentRequired) { %>
-          Log in to complete your membership payment — an admin will review and approve your account once it's received.
+          Log in to complete your membership payment &mdash; an admin will review and approve your account once it's received.
         <% } else { %>
           You can log in now. Paying the membership fee is optional &mdash; you'll find it on your profile whenever you're ready.
         <% } %>
@@ -52,21 +134,24 @@
     </div>
   </div>
 
-  <div class="mt-4 bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-    <h2 class="text-sm font-semibold text-gray-900">Didn't get the code?</h2>
-    <p class="text-xs text-gray-500 mt-1 mb-3">
-      Check your spam folder first. Requesting a new code replaces the old one.
-    </p>
-    <form id="resend-verification-form" class="flex flex-wrap gap-2">
-      <input name="email" type="email" required placeholder="you@example.com"
-             value="<%= locals.email || '' %>"
-             class="flex-1 min-w-[200px] rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500">
-      <%- include('partials/human-check') %>
-      <button type="submit" class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50 text-sm font-medium">
-        Send a new code
-      </button>
-    </form>
-  </div>
+  <% if (!known) { %>
+    <div class="mt-4 bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+      <h2 class="text-sm font-semibold text-gray-900">Need a new code?</h2>
+      <p class="text-xs text-gray-500 mt-1 mb-3">
+        Requesting one replaces the old code. If you know your password, signing in at
+        <a href="/login" class="text-indigo-600 hover:underline">the login page</a> sends one automatically &mdash; no form to fill in.
+      </p>
+      <form id="resend-verification-form" class="flex flex-wrap gap-2">
+        <input name="email" type="email" required placeholder="you@example.com"
+               value="<%= locals.email || '' %>"
+               class="flex-1 min-w-[200px] rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500">
+        <%- include('partials/human-check') %>
+        <button type="submit" class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50 text-sm font-medium">
+          Send a new code
+        </button>
+      </form>
+    </div>
+  <% } %>
 </div>
 
 <script src="/js/auth.js"></script>
@@ -74,24 +159,100 @@
   document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('verify-code-form');
     if (!form) return;
-    const codeInput = document.getElementById('verify-code-input');
 
-    // Straight to the code when the email is already known — the common case
-    // after registering, where retyping an address they just entered is pure
-    // friction.
-    if (document.getElementById('verify-email-input').value) codeInput.focus();
+    const hidden = document.getElementById('verify-code-input');
+    const boxes = Array.prototype.slice.call(document.querySelectorAll('.code-digit'));
+    const emailInput = document.getElementById('verify-email-input');
 
-    // Strip anything that is not a digit as it is typed, so a code pasted with
-    // spaces or a stray character does not fail on a technicality.
-    codeInput.addEventListener('input', () => {
-      const cleaned = codeInput.value.replace(/\D/g, '').slice(0, 6);
-      if (cleaned !== codeInput.value) codeInput.value = cleaned;
+    function currentCode() {
+      return boxes.map((b) => b.value).join('');
+    }
+
+    function sync() {
+      hidden.value = currentCode();
+    }
+
+    // Puts one or more digits in starting at `from`, moves the caret to the
+    // first empty box after them, and submits once all six are there. One
+    // function for typing, pasting and phone autofill, because all three are
+    // the same thing: some digits arrived at some box.
+    function place(from, digits) {
+      let i = from;
+      for (let d = 0; d < digits.length && i < boxes.length; d += 1, i += 1) {
+        boxes[i].value = digits[d];
+      }
+      sync();
+      const caret = Math.min(i, boxes.length - 1);
+      boxes[caret].focus();
+      boxes[caret].select();
+      if (hidden.value.length === boxes.length) submit();
+    }
+
+    boxes.forEach((box, index) => {
+      box.addEventListener('input', () => {
+        const digits = box.value.replace(/[^0-9]/g, '');
+        box.value = '';
+        if (!digits) { sync(); return; }
+        place(index, digits);
+      });
+
+      box.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !box.value && index > 0) {
+          // Reaching back a box on an empty one, so holding backspace clears
+          // the code instead of stopping dead at the first empty field.
+          e.preventDefault();
+          boxes[index - 1].value = '';
+          sync();
+          boxes[index - 1].focus();
+        } else if (e.key === 'ArrowLeft' && index > 0) {
+          e.preventDefault();
+          boxes[index - 1].focus();
+        } else if (e.key === 'ArrowRight' && index < boxes.length - 1) {
+          e.preventDefault();
+          boxes[index + 1].focus();
+        }
+      });
+
+      box.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text') || '';
+        place(index, text.replace(/[^0-9]/g, '').slice(0, boxes.length - index));
+      });
+
+      // So typing over a filled box replaces it rather than being ignored by
+      // maxlength.
+      box.addEventListener('focus', () => box.select());
     });
+
+    function clearBoxes() {
+      boxes.forEach((b) => { b.value = ''; });
+      sync();
+      boxes[0].focus();
+    }
+
+    // Straight to the code when the address is already settled, which is now
+    // the usual case — nobody should have to click into the first box.
+    if (!emailInput || emailInput.type === 'hidden' || emailInput.value) {
+      boxes[0].focus();
+    } else {
+      emailInput.focus();
+    }
+
+    function submit() {
+      if (form.requestSubmit) form.requestSubmit();
+      else form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    }
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const email = form.email.value.trim();
-      const code = codeInput.value.trim();
+      const email = emailInput ? emailInput.value.trim() : '';
+      const code = hidden.value.trim();
+
+      if (code.length !== boxes.length) {
+        showToast('Enter all six digits of your code.', 'error');
+        boxes[Math.max(0, code.length)].focus();
+        return;
+      }
 
       await withPending(form, 'Verifying...', async () => {
         try {
@@ -100,17 +261,89 @@
             body: JSON.stringify({ email, code }),
           });
           showToast(res.message);
-          form.classList.add('hidden');
+
+          // Verified and signed in, because the password was proven minutes
+          // ago in this same session. No second trip through the login form.
+          if (res.data && res.data.loggedIn) {
+            window.location.href = res.data.redirectTo || '/';
+            return;
+          }
+
+          document.getElementById('verify-panel').classList.add('hidden');
           document.getElementById('verify-success').classList.remove('hidden');
         } catch (err) {
           showToast(err.message, 'error');
           // Cleared rather than left in place: the next attempt is a fresh
-          // reading of the email, and a wrong code sitting in the box invites
+          // reading of the email, and a wrong code sitting in the boxes invites
           // resubmitting the same wrong thing.
-          codeInput.value = '';
-          codeInput.focus();
+          clearBoxes();
         }
       });
     });
+
+    // --- resend, with the wait shown rather than enforced silently ----------
+    const resendForm = document.getElementById('pending-resend-form');
+    const resendButton = document.getElementById('pending-resend-button');
+
+    if (resendForm && resendButton) {
+      const LABEL = resendButton.textContent.trim();
+      let remaining = 0;
+      let ticker = null;
+
+      function render() {
+        if (remaining > 0) {
+          resendButton.disabled = true;
+          resendButton.textContent = `Send it again in ${remaining}s`;
+        } else {
+          resendButton.disabled = false;
+          resendButton.textContent = LABEL;
+        }
+      }
+
+      function startCooldown(ms) {
+        remaining = Math.ceil(ms / 1000);
+        render();
+        clearInterval(ticker);
+        if (remaining <= 0) return;
+        ticker = setInterval(() => {
+          remaining -= 1;
+          render();
+          if (remaining <= 0) clearInterval(ticker);
+        }, 1000);
+      }
+
+      // The server sent the code while the login request was still in flight,
+      // so some of the wait is already spent by the time this page paints.
+      startCooldown(Number(resendButton.dataset.waitMs || 0));
+
+      resendForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (resendButton.disabled) return;
+
+        // Started after withPending returns, not inside it: withPending puts
+        // the button's own label and enabled state back when it finishes, so a
+        // cooldown begun in there would be wiped a moment later.
+        let cooldown = null;
+
+        await withPending(resendForm, 'Sending...', async () => {
+          try {
+            const res = await apiFetch('/api/auth/verification/resend', { method: 'POST' });
+            showToast(res.message);
+            clearBoxes();
+            cooldown = (res.data && res.data.cooldownMs) || 60000;
+          } catch (err) {
+            showToast(err.message, 'error');
+            // The session that vouched for the password is gone, so there is
+            // nothing this page can do for them any more — only the login form
+            // can start it again.
+            if (err.code === 'NO_PENDING_VERIFICATION') {
+              setTimeout(() => { window.location.href = '/login'; }, 1500);
+            }
+          }
+        });
+
+        if (cooldown !== null) startCooldown(cooldown);
+      });
+    }
   });
 </script>

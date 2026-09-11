@@ -71,14 +71,33 @@ const registerPage = asyncHandler(async (req, res) => {
 // the person types the code, so this renders the same whether they arrived
 // straight from registering or came back to it hours later.
 //
+// Two arrivals, and they need different pages. Somebody bounced here by a
+// login that got the password right is already known: the server has their
+// address, has just mailed them a code, and can show one field and nothing
+// else. Somebody who came here cold is not known at all, so they still get the
+// address field and the captcha'd public resend — which is the version
+// everybody used to get, and the reason asking for a second code was harder
+// than getting the first.
+//
 // ?email= only prefills the field as a convenience after registering. It
 // confirms nothing on its own — the code is still required, and an address
 // that is not registered is answered exactly like a wrong code.
 const verifyEmailPage = asyncHandler(async (req, res) => {
   const paymentRequired = await settingsService.getMembershipPaymentRequired().catch(() => false);
+  const pending = req.session.pendingVerification || null;
+
+  // Rendered rather than counted down from zero on the client: the code was
+  // sent while the login request was still in flight, so by the time this page
+  // paints, part of the wait is already spent.
+  const sinceSent = pending && pending.sentAt ? Date.now() - pending.sentAt : null;
+
   res.render('verify-email', {
     title: 'Verify your email',
-    email: typeof req.query.email === 'string' ? req.query.email.slice(0, 200) : '',
+    email: pending ? pending.email : (typeof req.query.email === 'string' ? req.query.email.slice(0, 200) : ''),
+    // The address the server itself put there. Shown as text, never as an
+    // editable field — there is nothing here for them to get wrong.
+    pendingEmail: pending ? pending.email : '',
+    resendWaitMs: sinceSent === null ? 0 : Math.max(0, 60 * 1000 - sinceSent),
     paymentRequired,
   });
 });

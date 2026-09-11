@@ -112,6 +112,26 @@ router.post(
   authApi.resendVerification
 );
 
+// The session-scoped resend, for somebody already mid-verification. It mails
+// only the address the server itself put in the session after a correct
+// password, so it carries none of the abuse risk the public one does and none
+// of its friction: no captcha, no retyped address. Still limited, because a
+// button is a button.
+const pendingResendLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 6,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests. Please try again later.' },
+});
+
+router.post(
+  '/verification/resend',
+  verifyCsrfToken,
+  pendingResendLimiter,
+  authApi.resendPendingVerification
+);
+
 // Tight on purpose, and tighter than anything else here. The code being
 // checked is six digits, so this is the one endpoint in the app where
 // unlimited requests would actually be worth an attacker's time: a million
