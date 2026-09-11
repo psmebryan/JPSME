@@ -517,13 +517,42 @@ model StoredFile {
   key       String   @id @db.VarChar(255)
   mimeType  String   @db.VarChar(127)
   size      Int
-  data      Bytes
+  // Nullable, and no longer written to. Files are stored in StoredFileChunk
+  // now; this stays only so anything written before that change is still
+  // readable. See dbStorage.driver's read().
+  data      Bytes?
   createdAt DateTime @default(now())
+
+  chunks    StoredFileChunk[]
 
   // Backs removeFolder(), which deletes by prefix — an event's certificates,
   // say. Without it that is a full scan of every file ever uploaded.
   @@index([createdAt])
   @@map("stored_files")
+}
+
+// A file's bytes, in pieces.
+//
+// One row per file looked obvious and could not work: MySQL refuses — and
+// MariaDB drops the connection outright — on any single statement or result
+// row larger than max_allowed_packet, which is 1 MB by default and is a server
+// setting we do not control on the live host. So a 1.2 MB logo did not fail
+// with a message, it killed the connection, and the upload came back as a bare
+// 500.
+//
+// Chunking makes the file's size irrelevant: every statement and every row
+// carries one chunk, so the only thing that has to fit in a packet is a chunk.
+model StoredFileChunk {
+  key  String @db.VarChar(255)
+  seq  Int
+  data Bytes
+
+  // Cascade, so deleting a file's record takes its bytes with it — there is no
+  // second delete to forget, and an orphaned chunk is unreachable anyway.
+  file StoredFile @relation(fields: [key], references: [key], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([key, seq])
+  @@map("stored_file_chunks")
 }
 
 model Sponsor {

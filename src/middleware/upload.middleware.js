@@ -53,9 +53,18 @@ function makeUpload(allowedMimeTypes, message, maxFileSize) {
 
         if (err instanceof multer.MulterError) {
           if (err.code === 'LIMIT_FILE_SIZE') {
+            // Multer aborts the stream at the limit, so req.file.size is the
+            // limit rather than the file's real size. Content-Length is the
+            // whole multipart body — the file plus a few hundred bytes of
+            // boundary — which is close enough to tell somebody how much they
+            // have to shrink, and is said as "about" because it is not exact.
+            const declared = Number(req.headers['content-length']);
+            const actual = Number.isFinite(declared) && declared > maxFileSize
+              ? `That file is about ${describeSize(declared)}, which is over the ${describeSize(maxFileSize)} limit.`
+              : `That file is over the ${describeSize(maxFileSize)} limit.`;
+
             return next(new AppError(
-              `That file is too large. The limit is ${describeSize(maxFileSize)} — `
-              + 'try exporting it at a smaller size, or saving it as JPEG or WEBP instead of PNG.',
+              `${actual} Try exporting it at a smaller size, or saving it as JPEG or WEBP instead of PNG.`,
               400
             ));
           }

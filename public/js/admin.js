@@ -1186,6 +1186,17 @@ function maybeShowEmptyState(table) {
 // served immutable and cached for a year (they are content-addressed by
 // filename), so without it a replaced image would keep showing the old one
 // here until a hard reload.
+// Checked here as well as on the server, which is the one that actually
+// decides. The point of the browser copy is time: without it somebody on a
+// slow connection watches an 8 MB file upload for a minute before being told
+// it was never going to be accepted.
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+function describeBytes(bytes) {
+  const mb = bytes / (1024 * 1024);
+  return mb < 0.1 ? `${Math.round(bytes / 1024)} KB` : `${mb.toFixed(1)} MB`;
+}
+
 function initSiteImageUpload({ formId, endpoint, field, previewId, emptyId, label }) {
   const form = document.getElementById(formId);
   if (!form) return;
@@ -1193,6 +1204,19 @@ function initSiteImageUpload({ formId, endpoint, field, previewId, emptyId, labe
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const formData = new FormData(form);
+
+    const chosen = form.querySelector('input[type="file"]');
+    const file = chosen && chosen.files && chosen.files[0];
+    if (file && file.size > MAX_IMAGE_BYTES) {
+      // Worded the same as the server's refusal, so the two never read as two
+      // different problems.
+      showToast(
+        `That file is ${describeBytes(file.size)}, which is over the 5 MB limit. `
+        + 'Try exporting it at a smaller size, or saving it as JPEG or WEBP instead of PNG.',
+        'error'
+      );
+      return;
+    }
 
     try {
       const res = await apiFetch(endpoint, { method: 'POST', body: formData });

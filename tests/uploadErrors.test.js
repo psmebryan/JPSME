@@ -109,14 +109,24 @@ async function main() {
     assertEqual(status, 400, 'a 400');
   });
 
-  await test('and it says how big is too big, and what to do instead', async () => {
+  await test('and it says how big the file is, how big is allowed, and what to do', async () => {
+    // "Too large" alone leaves somebody guessing how much to shrink it by, and
+    // guessing means another upload and another wait. Naming both numbers is
+    // the difference between one more attempt and several.
     const { message } = await post('/logo', 'logo', {
       bytes: pngOfSize(6 * 1024 * 1024), filename: 'seal.png', type: 'image/png',
     });
-    assert(/too large/i.test(message), `names the problem, got: ${message}`);
-    assert(/5 MB/.test(message), `names the limit, got: ${message}`);
+    assert(/about 6\.\d MB/.test(message), `names the size they sent, got: ${message}`);
+    assert(/over the 5 MB limit/.test(message), `names the limit, got: ${message}`);
     assert(/JPEG|WEBP|smaller/i.test(message), `suggests a fix, got: ${message}`);
     assert(!/Something went wrong/i.test(message), 'not the generic fallback');
+  });
+
+  await test('a much larger file reports its own size, not a fixed one', async () => {
+    const { message } = await post('/logo', 'logo', {
+      bytes: pngOfSize(12 * 1024 * 1024), filename: 'seal.png', type: 'image/png',
+    });
+    assert(/about 12\.\d MB/.test(message), `the real size, got: ${message}`);
   });
 
   await test('a file of the wrong type lists what is allowed', async () => {

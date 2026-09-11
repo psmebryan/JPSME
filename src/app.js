@@ -8,6 +8,7 @@ const expressLayouts = require('express-ejs-layouts');
 
 const config = require('./config');
 const prisma = require('./config/prisma');
+const storageService = require('./services/storage.service');
 const logger = require('./utils/logger');
 const pagesRoutes = require('./routes/pages.routes');
 const apiRoutes = require('./routes/api');
@@ -204,9 +205,12 @@ app.use('/uploads', async (req, res, next) => {
   if (key.includes('..') || !/^uploads\/[A-Za-z0-9/._-]+$/.test(key)) return next();
 
   try {
+    // Metadata only. The bytes are fetched further down, and only when they
+    // are actually going to be sent — a 304 or a HEAD must not pull a
+    // five-megabyte file out of the database in order to throw it away.
     const file = await prisma.storedFile.findUnique({
       where: { key },
-      select: { mimeType: true, size: true, data: true, createdAt: true },
+      select: { mimeType: true, size: true, createdAt: true },
     });
     if (!file) return next();
 
@@ -221,7 +225,14 @@ app.use('/uploads', async (req, res, next) => {
     if (req.headers['if-none-match'] === etag) return res.status(304).end();
 
     if (req.method === 'HEAD') return res.end();
-    return res.end(Buffer.from(file.data));
+
+    // Through the storage service rather than reading the column directly.
+    // A file is no longer one row — it is stored in chunks, because MySQL
+    // refuses any statement or result row over max_allowed_packet (1 MB by
+    // default, and not ours to change on the live host). Reassembling it is
+    // the driver's job, and reaching past it here is what made every upload
+    // over a megabyte a 500 on the way back out as well as on the way in.
+    return res.end(await storageService.read(key));
   } catch (err) {
     return next(err);
   }
