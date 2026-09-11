@@ -175,6 +175,47 @@ const getLogo = asyncHandler(async (req, res) => {
   return success(res, { logoUrl });
 });
 
+// The other three site images. One handler shape, three settings — the only
+// thing that differs is which folder the file lands in and which setting
+// records it, so they share a builder rather than being copied three times.
+//
+// The previous image is deleted after the new one is recorded, not before: if
+// the upload fails the site keeps the image it had, and a delete that fails
+// leaves an orphan row rather than a page with a missing picture.
+function makeSiteImageUploader({ folder, prefix, get, set, key, label }) {
+  return asyncHandler(async (req, res) => {
+    if (!req.file) return error(res, `No ${label} uploaded`, 400);
+
+    const previous = await get();
+    const publicPath = await storageService.saveUpload(req.file.buffer, {
+      folder,
+      prefix,
+      extension: path.extname(req.file.originalname).toLowerCase(),
+    });
+    await set(publicPath);
+
+    if (previous && previous !== publicPath) {
+      await storageService.remove(String(previous).replace(/^\/+/, '')).catch(() => {});
+    }
+    return success(res, { [key]: publicPath }, `${label} updated`);
+  });
+}
+
+const uploadFavicon = makeSiteImageUploader({
+  folder: 'favicon', prefix: 'favicon', key: 'faviconUrl', label: 'Favicon',
+  get: () => settingsService.getFaviconUrl(), set: (p) => settingsService.setFaviconUrl(p),
+});
+
+const uploadHeroImage = makeSiteImageUploader({
+  folder: 'hero', prefix: 'hero', key: 'heroImageUrl', label: 'Hero image',
+  get: () => settingsService.getHeroImageUrl(), set: (p) => settingsService.setHeroImageUrl(p),
+});
+
+const uploadOgImage = makeSiteImageUploader({
+  folder: 'og', prefix: 'og', key: 'ogImageUrl', label: 'Link preview image',
+  get: () => settingsService.getOgImageUrl(), set: (p) => settingsService.setOgImageUrl(p),
+});
+
 // feePhp arrives as a decimal peso string (e.g. "500.00") from the admin form;
 // stored internally as integer centavos to avoid float currency math. This
 // controls what every future applicant is charged, so it's validated directly
@@ -333,4 +374,4 @@ const setOrganizationActiveApi = asyncHandler(async (req, res) => {
   return success(res, result, isActive ? 'Organization reactivated' : 'Organization deactivated');
 });
 
-module.exports = { listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, getMembershipPaymentRequired, updateMembershipPaymentRequired, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin, getOrganizationTreeLevel, createChildOrganization, deleteOrganizationApi, setOrganizationActiveApi };
+module.exports = { uploadFavicon, uploadHeroImage, uploadOgImage, listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, getMembershipPaymentRequired, updateMembershipPaymentRequired, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin, getOrganizationTreeLevel, createChildOrganization, deleteOrganizationApi, setOrganizationActiveApi };

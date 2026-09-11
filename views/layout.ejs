@@ -5,6 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="csrf-token" content="<%= csrfToken %>">
   <title><%= title %> | JPSME</title>
+
+  <%# The tab icon. An uploaded one wins; otherwise the bundled SVG, which is
+      better than the 404 /favicon.ico was answering on every page load — a
+      browser asks for it whether or not the page mentions one. %>
+  <link rel="icon" href="<%= locals.faviconUrl || '/img/favicon.svg' %>">
+  <link rel="apple-touch-icon" href="<%= locals.faviconUrl || locals.logoUrl || '/img/default-logo.svg' %>">
+
+  <%# What Messenger, Facebook and Viber show when the address is pasted.
+      Without these a shared link renders as a bare grey box, which reads as a
+      dead link rather than as an organisation's site. %>
+  <meta property="og:site_name" content="JPSME">
+  <meta property="og:title" content="<%= title %> | JPSME">
+  <meta property="og:description" content="Junior Philippine Society of Mechanical Engineers — connecting members, one event at a time.">
+  <meta property="og:type" content="website">
+  <% if (locals.ogImageUrl) { %>
+    <meta property="og:image" content="<%= ogImageUrl %>">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="<%= ogImageUrl %>">
+  <% } %>
+
   <link rel="stylesheet" href="/css/tailwind.css">
 </head>
 <body class="min-h-screen flex flex-col bg-[#080f29] text-white overflow-x-hidden">

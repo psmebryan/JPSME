@@ -343,14 +343,21 @@ const adminEventsPage = asyncHandler(async (req, res) => {
 });
 
 const adminSettingsPage = asyncHandler(async (req, res) => {
-  const [logoUrl, membershipFeeCentavos, paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired] = await Promise.all([
+  const [logoUrl, faviconUrl, heroImageUrl, ogImageUrl, membershipFeeCentavos, paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired] = await Promise.all([
     settingsService.getLogoUrl(),
+    settingsService.getFaviconUrl(),
+    settingsService.getHeroImageUrl(),
+    settingsService.getOgImageUrl(),
     settingsService.getMembershipFeeCentavos(),
     settingsService.getPaymentsEnabled(),
     settingsService.getGatewaySurchargePercent(),
     settingsService.getMembershipPaymentRequired(),
   ]);
-  renderAdmin(req, res, 'admin/settings', { title: 'Site Settings', logoUrl, membershipFeeCentavos, paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired });
+  renderAdmin(req, res, 'admin/settings', {
+    title: 'Site Settings',
+    logoUrl, faviconUrl, heroImageUrl, ogImageUrl,
+    membershipFeeCentavos, paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired,
+  });
 });
 
 const adminSponsorsPage = asyncHandler(async (req, res) => {

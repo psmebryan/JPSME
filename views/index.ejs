@@ -1,15 +1,56 @@
 <% const displayEvents = events.slice(0, 3); %>
 <div class="-mx-4 -my-8 overflow-hidden bg-[#080f29] text-white sm:-mx-6 lg:-mx-8">
-  <section class="relative isolate overflow-hidden border-b border-[#26365f] bg-[radial-gradient(circle_at_14%_18%,#1c1442_0,transparent_32%),linear-gradient(112deg,#0b0924_0%,#0b1028_58%,#080d20_100%)]">
-    <div class="mx-auto grid max-w-[1280px] items-center gap-12 px-5 py-14 sm:px-8 sm:py-20 lg:min-h-[620px] lg:grid-cols-2 lg:px-12 lg:py-24">
+  <%#
+    The hero, built to match the JPSME banner artwork: navy at both edges with
+    gold burning through the middle, over a technical drawing.
+
+    The drawing is public/img/blueprint.svg rather than the raster banner. The
+    host wipes uploaded files on every deploy, so shipping it with the code is
+    what stops the hero going blank at the next publish — and a vector stays
+    sharp on a phone and on a 4K monitor from the same two kilobytes.
+
+    An uploaded hero image, when one is set in Admin - Settings, covers all of
+    it. Rendered as a positioned <img> rather than an inline background-image
+    because styleSrc carries a nonce and no 'unsafe-inline', so a style
+    attribute built from a database value would simply be dropped.
+  %>
+  <section class="relative isolate overflow-hidden border-b border-amber-400/25">
+    <%# Layer 1: the gold-through-navy gradient the banner is built on. %>
+    <div class="absolute inset-0 -z-30 bg-[linear-gradient(100deg,#141a5c_0%,#1e2470_22%,#8a6a1e_46%,#f5c518_53%,#8a6a1e_60%,#1e2470_80%,#101641_100%)]"></div>
+    <%# Layer 2: the drawing, tiled. Screen blend keeps the white linework
+        bright over the navy and lets it burn out over the gold, which is what
+        the original artwork does. %>
+    <div class="absolute inset-0 -z-20 bg-[url('/img/blueprint.svg')] bg-[length:420px_420px] opacity-[0.22] mix-blend-screen"></div>
+    <%# Layer 3: darkens the edges so white text stays readable across the gold
+        band, which is far too bright to sit type on directly. %>
+    <div class="absolute inset-0 -z-10 bg-[linear-gradient(90deg,#080f29_0%,rgba(8,15,41,.92)_30%,rgba(8,15,41,.55)_50%,rgba(8,15,41,.9)_72%,#080f29_100%)]"></div>
+
+    <% if (locals.heroImageUrl) { %>
+      <img src="<%= heroImageUrl %>" alt="" aria-hidden="true" class="absolute inset-0 -z-10 h-full w-full object-cover">
+      <div class="absolute inset-0 -z-10 bg-[#080f29]/70"></div>
+    <% } %>
+
+    <div class="mx-auto grid max-w-[1280px] items-center gap-12 px-5 py-16 sm:px-8 sm:py-24 lg:min-h-[640px] lg:grid-cols-[1.1fr_.9fr] lg:px-12">
       <div class="max-w-[630px]">
-        <p class="mb-8 inline-flex rounded-full border border-amber-400 px-3 py-1 text-xs font-bold text-amber-400">NATIONAL STUDENT ORGANIZATION</p>
-        <h1 class="text-5xl font-extrabold tracking-tight sm:text-6xl">JPSME</h1>
-        <p class="mt-4 max-w-xl text-2xl font-bold leading-tight text-amber-400 sm:text-3xl">Junior Philippine Society of Mechanical Engineers</p>
-        <p class="mt-5 max-w-2xl text-base leading-7 text-slate-400 sm:text-lg">&quot;Connecting members, one event at a time.&quot; Building the path for next-generation Pinoy mechanical engineering leaders, innovators, and certified practitioners.</p>
-        <a href="/register" class="mt-7 inline-flex items-center rounded-lg bg-amber-400 px-7 py-3.5 text-sm font-extrabold text-[#071126] transition hover:bg-amber-300">Be a Member Now <span class="ml-1 text-lg">&rarr;</span></a>
+        <p class="mb-8 inline-flex rounded-full border border-amber-400 bg-[#080f29]/60 px-3 py-1 text-xs font-bold tracking-[.18em] text-amber-400">NATIONAL STUDENT ORGANIZATION</p>
+        <h1 class="text-6xl font-extrabold tracking-tight drop-shadow-[0_2px_12px_rgba(8,15,41,.9)] sm:text-7xl">JPSME</h1>
+        <p class="mt-4 max-w-xl text-2xl font-bold leading-tight text-amber-400 drop-shadow-[0_2px_10px_rgba(8,15,41,.9)] sm:text-3xl">Junior Philippine Society of Mechanical Engineers</p>
+        <p class="mt-5 max-w-2xl text-base leading-7 text-slate-300 drop-shadow-[0_1px_8px_rgba(8,15,41,.95)] sm:text-lg">&quot;Connecting members, one event at a time.&quot; Building the path for next-generation Pinoy mechanical engineering leaders, innovators, and certified practitioners.</p>
+        <div class="mt-8 flex flex-wrap gap-3">
+          <a href="/register" class="inline-flex items-center rounded-lg bg-amber-400 px-7 py-3.5 text-sm font-extrabold text-[#071126] shadow-lg shadow-black/30 transition hover:bg-amber-300">Be a Member Now <span class="ml-1 text-lg">&rarr;</span></a>
+          <a href="/events" class="inline-flex items-center rounded-lg border border-amber-400/70 bg-[#080f29]/60 px-7 py-3.5 text-sm font-extrabold text-amber-400 transition hover:bg-amber-400 hover:text-[#071126]">See Events</a>
+        </div>
       </div>
-      <div class="mx-auto flex aspect-square w-full max-w-[420px] items-center justify-center rounded-[26px] border-4 border-amber-400/20 bg-[#101a39] p-12 shadow-2xl shadow-black/20"><img src="<%= locals.logoUrl || '/img/default-logo.svg' %>" alt="JPSME seal" class="h-full w-full object-contain drop-shadow-[0_0_28px_rgba(251,191,36,.2)]"></div>
+
+      <%# The seal, lit rather than boxed. The old frame was a plate the logo
+          sat on; against the drawing it reads better as the thing the light is
+          coming from. %>
+      <div class="relative mx-auto flex aspect-square w-full max-w-[420px] items-center justify-center">
+        <div class="absolute inset-[12%] rounded-full bg-amber-300/25 blur-3xl"></div>
+        <div class="absolute inset-[4%] rounded-full border border-amber-400/30"></div>
+        <div class="absolute inset-[-2%] rounded-full border border-amber-400/15"></div>
+        <img src="<%= locals.logoUrl || '/img/default-logo.svg' %>" alt="JPSME seal" class="relative h-[86%] w-[86%] object-contain drop-shadow-[0_0_36px_rgba(245,197,24,.45)]">
+      </div>
     </div>
   </section>
 

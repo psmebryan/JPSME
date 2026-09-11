@@ -1,5 +1,11 @@
 <div class="admin-card p-8 w-full max-w-sm">
-  <h1 class="admin-h1 text-center mb-6">Admin Login</h1>
+  <%# Same reasoning as the member login: the page was a bare white card with
+      no indication of which site it belonged to. %>
+  <div class="mb-6 flex flex-col items-center text-center">
+    <img src="<%= locals.logoUrl || '/img/default-logo.svg' %>" alt="JPSME" class="h-16 w-16 object-contain">
+    <h1 class="admin-h1 mt-3">Admin Login</h1>
+    <p class="mt-1 text-sm text-slate-500">JPSME administration</p>
+  </div>
   <form id="login-form" class="space-y-4">
     <input type="hidden" name="context" value="admin">
     <div>

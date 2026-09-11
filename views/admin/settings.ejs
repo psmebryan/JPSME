@@ -1,15 +1,79 @@
 <h1 class="admin-h1 mb-6">Site Settings</h1>
 
-<div class="admin-card p-6 max-w-md mb-6">
-  <h2 class="font-semibold mb-4">Site Logo</h2>
-  <img id="logo-preview" src="<%= logoUrl %>" alt="Current logo" class="h-20 mb-4 object-contain">
-  <form id="logo-form" class="space-y-3">
-    <input type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/svg+xml" required
-      class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
-    <button type="submit" class="btn-primary">
-      Upload New Logo
-    </button>
-  </form>
+<%#
+  The four site images, together, because they are one decision: what the
+  organisation looks like everywhere it appears. Each says where it shows up,
+  since the difference between them is not obvious from a filename.
+
+  All four survive a deploy now - they are stored in the database rather than on
+  disk, which the host wipes on every publish.
+%>
+<div class="admin-card p-6 mb-6">
+  <h2 class="font-semibold mb-1">Site Images</h2>
+  <p class="mb-5 text-xs text-slate-500">
+    PNG, JPEG, WEBP or SVG. These are kept in the database, so they stay put when the site is republished.
+  </p>
+
+  <div class="grid gap-5 sm:grid-cols-2">
+
+    <section class="rounded-lg border border-slate-200 p-4">
+      <h3 class="text-sm font-semibold text-slate-900">Logo</h3>
+      <p class="mt-0.5 mb-3 text-xs text-slate-500">The seal. Shown in the navbar, the footer, both login pages and the home page.</p>
+      <div class="mb-3 flex h-24 items-center justify-center rounded border border-slate-200 bg-slate-50 p-2">
+        <img id="logo-preview" src="<%= logoUrl %>" alt="Current logo" class="max-h-full max-w-full object-contain">
+      </div>
+      <form id="logo-form" class="space-y-2">
+        <input type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/svg+xml" required
+          class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
+        <button type="submit" class="btn-primary w-full">Upload Logo</button>
+      </form>
+    </section>
+
+    <section class="rounded-lg border border-slate-200 p-4">
+      <h3 class="text-sm font-semibold text-slate-900">Favicon</h3>
+      <p class="mt-0.5 mb-3 text-xs text-slate-500">The small icon in the browser tab. Upload a simplified version &mdash; a detailed seal is unreadable at that size.</p>
+      <div class="mb-3 flex h-24 items-center justify-center rounded border border-slate-200 bg-slate-50 p-2">
+        <img id="favicon-preview" src="<%= faviconUrl || '/img/favicon.svg' %>" alt="Current favicon" class="h-12 w-12 object-contain">
+      </div>
+      <form id="favicon-form" class="space-y-2">
+        <input type="file" name="image" accept="image/png,image/jpeg,image/webp,image/svg+xml" required
+          class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
+        <button type="submit" class="btn-secondary w-full">Upload Favicon</button>
+      </form>
+    </section>
+
+    <section class="rounded-lg border border-slate-200 p-4">
+      <h3 class="text-sm font-semibold text-slate-900">Home Page Banner</h3>
+      <p class="mt-0.5 mb-3 text-xs text-slate-500">Sits behind the top of the home page. Wide and short works best &mdash; around 1500&times;500. Leave it unset for the built-in blueprint artwork.</p>
+      <div class="mb-3 flex h-24 items-center justify-center overflow-hidden rounded border border-slate-200 bg-slate-50">
+        <% if (heroImageUrl) { %>
+          <img id="hero-preview" src="<%= heroImageUrl %>" alt="Current banner" class="h-full w-full object-cover">
+        <% } else { %>
+          <img id="hero-preview" src="" alt="" class="hidden h-full w-full object-cover">
+          <span id="hero-empty" class="text-xs text-slate-400">Using the built-in blueprint</span>
+        <% } %>
+      </div>
+      <form id="hero-form" class="space-y-2">
+        <input type="file" name="image" accept="image/png,image/jpeg,image/webp" required
+          class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
+        <button type="submit" class="btn-secondary w-full">Upload Banner</button>
+      </form>
+    </section>
+
+    <section class="rounded-lg border border-slate-200 p-4">
+      <h3 class="text-sm font-semibold text-slate-900">Link Preview</h3>
+      <p class="mt-0.5 mb-3 text-xs text-slate-500">What Messenger, Facebook and Viber show when someone shares the site. A square around 1080&times;1080 suits it. Falls back to the logo.</p>
+      <div class="mb-3 flex h-24 items-center justify-center rounded border border-slate-200 bg-slate-50 p-2">
+        <img id="og-preview" src="<%= ogImageUrl || logoUrl %>" alt="Current link preview" class="max-h-full max-w-full object-contain">
+      </div>
+      <form id="og-form" class="space-y-2">
+        <input type="file" name="image" accept="image/png,image/jpeg,image/webp" required
+          class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
+        <button type="submit" class="btn-secondary w-full">Upload Preview Image</button>
+      </form>
+    </section>
+
+  </div>
 </div>
 
 <div class="admin-card p-6 max-w-md">

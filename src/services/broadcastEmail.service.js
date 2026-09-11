@@ -12,11 +12,21 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// See mail.service.js's identical comment — nodemailer's attachments
-// contract needs a real local path, one of the few remaining spots that
-// can't go through storageService's normal read/readStream.
-function attachmentToAbsolutePath(publicPath) {
-  return storageService.getAbsolutePath(publicPath);
+// See mail.service.js's attachmentFor — attachments travel as bytes rather
+// than as a path, because the file lives in the database and there is no path
+// to give. nodemailer accepts { filename, content } just as readily.
+//
+// Read once here rather than per recipient: a broadcast goes to everybody, and
+// re-reading the same image a few hundred times would be a few hundred queries
+// for one unchanging file.
+async function attachmentFor(publicPath) {
+  try {
+    const content = await storageService.read(String(publicPath).replace(/^\/+/, ''));
+    return { filename: path.basename(publicPath), content };
+  } catch (err) {
+    console.error('broadcast: attachment could not be read, sending without it:', err.message);
+    return null;
+  }
 }
 
 function textToHtml(text) {
@@ -93,7 +103,8 @@ async function processBroadcastSending(broadcastId, recipients) {
 
   const attachments = [];
   if (broadcast.attachmentImage) {
-    attachments.push({ filename: path.basename(broadcast.attachmentImage), path: attachmentToAbsolutePath(broadcast.attachmentImage) });
+    const attachment = await attachmentFor(broadcast.attachmentImage);
+    if (attachment) attachments.push(attachment);
   }
 
   let sentCount = 0;

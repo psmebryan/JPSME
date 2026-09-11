@@ -191,7 +191,11 @@ const config = {
   },
 
   storage: {
-    get driver() { return oneOf('STORAGE_DRIVER', ['local'], 'local'); },
+    // Defaults to the database because the host wipes the filesystem on every
+    // deploy — "local" there means uploads silently disappear at the next
+    // publish. Kept selectable so a host with real persistent disk can use it,
+    // and so the old behaviour is one env var away if this ever needs undoing.
+    get driver() { return oneOf('STORAGE_DRIVER', ['database', 'local'], 'database'); },
   },
 
   jobs: {

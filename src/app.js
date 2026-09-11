@@ -174,6 +174,59 @@ app.set('layout', 'layout');
 // would silently remove that protection.
 app.use('/uploads', express.static(path.join(__dirname, '..', 'public', 'uploads'), { maxAge: '7d', etag: true }));
 
+// Uploads now live in the database (see dbStorage.driver.js — the host wipes
+// the filesystem on every deploy), so this answers what express.static above
+// could not find. Second, not first, on purpose: a file still sitting on disk
+// from before the switch keeps being served from there, so nothing that
+// currently works stops working.
+//
+// The same CSP reasoning as the static mount applies, and for the same reason
+// this sits after helmet(): an uploaded SVG can carry a <script>, and what
+// neutralises it is the CSP header attached to every response including this
+// one.
+app.use('/uploads', async (req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+
+  // Rebuilt from the decoded path rather than used raw. There is no filesystem
+  // behind this — the key is an exact-match column lookup — but a key is also
+  // never anything but the shape the app generates, so anything else is a 404
+  // rather than a query.
+  let key;
+  try {
+    key = `uploads${decodeURIComponent(req.path)}`;
+  } catch (err) {
+    return next(); // malformed percent-encoding
+  }
+  // Anything that is not the shape this app generates is a 404 rather than a
+  // query. There is no filesystem behind this, so traversal has nothing to
+  // reach — but a key is always a generated filename, and treating it as
+  // exactly that keeps it so.
+  if (key.includes('..') || !/^uploads\/[A-Za-z0-9/._-]+$/.test(key)) return next();
+
+  try {
+    const file = await prisma.storedFile.findUnique({
+      where: { key },
+      select: { mimeType: true, size: true, data: true, createdAt: true },
+    });
+    if (!file) return next();
+
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Content-Length', file.size);
+    // Generated filenames carry a timestamp and random suffix, so a given URL
+    // can never serve different bytes later — which is what makes immutable
+    // honest here rather than optimistic.
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    const etag = `"${file.createdAt.getTime().toString(36)}-${file.size.toString(36)}"`;
+    res.setHeader('ETag', etag);
+    if (req.headers['if-none-match'] === etag) return res.status(304).end();
+
+    if (req.method === 'HEAD') return res.end();
+    return res.end(Buffer.from(file.data));
+  } catch (err) {
+    return next(err);
+  }
+});
+
 // Everything else (app JS/CSS/images) lives at a FIXED filename that does
 // change as the app is developed — long caching here would silently serve
 // stale JS to anyone who'd already loaded the page (this is exactly what
@@ -204,7 +257,21 @@ app.use((req, res, next) => {
 // API routes don't render views, so they skip this DB lookup.
 app.use(async (req, res, next) => {
   if (!req.path.startsWith('/api/')) {
-    res.locals.logoUrl = await settingsService.getLogoUrl().catch(() => '/img/default-logo.svg');
+    // Four site images, resolved together in one pass. The navbar and footer
+    // render the logo on every page; the favicon and link-preview go in the
+    // <head> of every page; the hero image is read by the home page. Each
+    // falls back rather than throwing, so a settings lookup failure degrades
+    // to the built-in artwork instead of a 500 on every route.
+    const [logoUrl, faviconUrl, heroImageUrl, ogImageUrl] = await Promise.all([
+      settingsService.getLogoUrl().catch(() => '/img/default-logo.svg'),
+      settingsService.getFaviconUrl().catch(() => null),
+      settingsService.getHeroImageUrl().catch(() => null),
+      settingsService.getOgImageUrl().catch(() => null),
+    ]);
+    res.locals.logoUrl = logoUrl;
+    res.locals.faviconUrl = faviconUrl;
+    res.locals.heroImageUrl = heroImageUrl;
+    res.locals.ogImageUrl = ogImageUrl;
     // Public by design — it identifies the site to Turnstile and is meant to
     // be read by the browser. Empty when unconfigured, which is how the views
     // know to render nothing rather than a broken widget.

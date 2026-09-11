@@ -1179,8 +1179,15 @@ function maybeShowEmptyState(table) {
 }
 
 // --- Site logo upload (admin/settings page) ---
-function initLogoUpload() {
-  const form = document.getElementById('logo-form');
+// The four site images on admin/settings. One shape, four instances: upload,
+// swap the preview, say so. They differ only in endpoint and response field.
+//
+// The cache-buster on the preview matters more than it looks: uploads are
+// served immutable and cached for a year (they are content-addressed by
+// filename), so without it a replaced image would keep showing the old one
+// here until a hard reload.
+function initSiteImageUpload({ formId, endpoint, field, previewId, emptyId, label }) {
+  const form = document.getElementById(formId);
   if (!form) return;
 
   form.addEventListener('submit', async (e) => {
@@ -1188,13 +1195,38 @@ function initLogoUpload() {
     const formData = new FormData(form);
 
     try {
-      const res = await apiFetch('/api/admin/settings/logo', { method: 'POST', body: formData });
-      showToast('Logo updated');
-      const preview = document.getElementById('logo-preview');
-      if (preview) preview.src = `${res.data.logoUrl}?t=${Date.now()}`;
+      const res = await apiFetch(endpoint, { method: 'POST', body: formData });
+      showToast(`${label} updated`);
+
+      const preview = document.getElementById(previewId);
+      if (preview) {
+        preview.src = `${res.data[field]}?t=${Date.now()}`;
+        preview.classList.remove('hidden');
+      }
+      document.getElementById(emptyId)?.classList.add('hidden');
+      form.reset();
     } catch (err) {
       showToast(err.message, 'error');
     }
+  });
+}
+
+function initLogoUpload() {
+  initSiteImageUpload({
+    formId: 'logo-form', endpoint: '/api/admin/settings/logo',
+    field: 'logoUrl', previewId: 'logo-preview', label: 'Logo',
+  });
+  initSiteImageUpload({
+    formId: 'favicon-form', endpoint: '/api/admin/settings/favicon',
+    field: 'faviconUrl', previewId: 'favicon-preview', label: 'Favicon',
+  });
+  initSiteImageUpload({
+    formId: 'hero-form', endpoint: '/api/admin/settings/hero-image',
+    field: 'heroImageUrl', previewId: 'hero-preview', emptyId: 'hero-empty', label: 'Banner',
+  });
+  initSiteImageUpload({
+    formId: 'og-form', endpoint: '/api/admin/settings/og-image',
+    field: 'ogImageUrl', previewId: 'og-preview', label: 'Link preview',
   });
 }
 

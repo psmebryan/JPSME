@@ -28,12 +28,20 @@ function getAppUrl() {
   return config.appUrl;
 }
 
-// nodemailer's attachments contract (both the Brevo shim and the real SMTP
-// transport in config/mailer.js) needs a real local path — one of the few
-// remaining spots that can't go through storageService's normal
-// read/readStream, see its getAbsolutePath doc comment.
-function attachmentToAbsolutePath(publicPath) {
-  return storageService.getAbsolutePath(publicPath);
+// Attachments travel as bytes rather than as a path. nodemailer accepts either
+// { filename, path } or { filename, content }, and only the second works when
+// the file lives in the database rather than on disk.
+//
+// Returns null rather than throwing if the file has gone: an approval email
+// arriving without its artwork is better than an approval email not arriving.
+async function attachmentFor(publicPath) {
+  try {
+    const content = await storageService.read(String(publicPath).replace(/^\/+/, ''));
+    return { filename: path.basename(publicPath), content };
+  } catch (err) {
+    logger.warn('mail: attachment could not be read, sending without it', { publicPath, reason: err.message });
+    return null;
+  }
 }
 
 // Templates are authored as plain text with {{token}} placeholders (same
@@ -109,7 +117,8 @@ async function sendMemberApprovedEmail(user) {
 
     const attachments = [];
     if (template.attachmentImage) {
-      attachments.push({ filename: path.basename(template.attachmentImage), path: attachmentToAbsolutePath(template.attachmentImage) });
+      const attachment = await attachmentFor(template.attachmentImage);
+      if (attachment) attachments.push(attachment);
     }
 
     await transporter.sendMail({
@@ -172,7 +181,8 @@ async function sendEventRegistrationEmail(user, event) {
     const attachments = [];
     const attachmentSource = template.attachmentImage || event.imageUrl;
     if (attachmentSource) {
-      attachments.push({ filename: path.basename(attachmentSource), path: attachmentToAbsolutePath(attachmentSource) });
+      const attachment = await attachmentFor(attachmentSource);
+      if (attachment) attachments.push(attachment);
     }
 
     // The e-ticket, when there is one to attach. buildTicketAttachment returns

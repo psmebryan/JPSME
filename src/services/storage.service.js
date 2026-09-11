@@ -1,5 +1,7 @@
 const crypto = require('crypto');
+const config = require('../config');
 const localDriver = require('./storage/localStorage.driver');
+const dbDriver = require('./storage/dbStorage.driver');
 
 // The only module in the app that should ever read/write an uploaded or
 // generated file. Every controller/service that used to reach for fs/path
@@ -7,13 +9,14 @@ const localDriver = require('./storage/localStorage.driver');
 // disk today, S3 later) is a change to the driver this delegates to, not a
 // repo-wide search-and-replace.
 //
-//   JPSME code -> storageService -> localStorage.driver.js (today)
+//   JPSME code -> storageService -> dbStorage.driver.js    (today)
+//   JPSME code -> storageService -> localStorage.driver.js  (opt-in)
 //   JPSME code -> storageService -> s3Storage.driver.js     (later)
 //
-// config.storage.driver is already validated (config/index.js's oneOf()) to
-// only allow 'local' — there's deliberately no if/else here yet, since a
-// second driver doesn't exist. It plugs in at this one line.
-const driver = localDriver;
+// The database is the default because this host wipes the filesystem on every
+// deploy: "local" there means an uploaded logo works until the next publish
+// and then 404s everywhere. See dbStorage.driver.js.
+const driver = config.storage.driver === 'local' ? localDriver : dbDriver;
 
 function generateFilename(prefix, extension) {
   return `${prefix}-${Date.now()}-${crypto.randomBytes(6).toString('hex')}${extension}`;
@@ -80,16 +83,11 @@ function getUrl(key) {
   return driver.getUrl(key);
 }
 
-// Escape hatch for the one legitimate remaining need for a real filesystem
-// path: nodemailer's SMTP transport (the Brevo fallback path) takes
-// attachments as { filename, path }, a contract from a third-party library
-// this app doesn't control. Nothing else in the app should call this — an
-// S3 driver has no local path to return, so this would need to change
-// (e.g. download-to-temp-file-first) if that fallback transport is ever
-// actually exercised against S3-backed storage.
-function getAbsolutePath(key) {
-  return driver.resolvePath(key);
-}
+// Was an escape hatch returning a real filesystem path, for email attachments:
+// nodemailer takes them as { filename, path }. That only ever worked for a
+// driver backed by files, and the database driver has no path to give — so the
+// caller reads the bytes instead and passes { filename, content }, which both
+// transports accept and which no driver has to special-case.
 
 module.exports = {
   saveUpload,
@@ -101,5 +99,4 @@ module.exports = {
   exists,
   getUrl,
   isManagedKey,
-  getAbsolutePath,
 };

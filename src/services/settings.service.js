@@ -3,6 +3,22 @@ const prisma = require('../config/prisma');
 const LOGO_KEY = 'site_logo';
 const DEFAULT_LOGO = '/img/default-logo.svg';
 
+// Three more uploadable site images, each answering a different question.
+//
+// The favicon is the tab icon — its own upload rather than a resized logo,
+// because a detailed seal is unreadable at 16px and the right artwork for it
+// is usually a cropped or simplified version.
+//
+// The hero image sits behind the top of the home page. Null means the built-in
+// blueprint treatment, which is drawn in CSS and so cannot 404 or be lost.
+//
+// The link preview is what Messenger, Facebook and Viber show when somebody
+// pastes the address. It falls back to the logo, since a logo on a card is far
+// better than the blank box an unset one produces.
+const FAVICON_KEY = 'site_favicon';
+const HERO_IMAGE_KEY = 'site_hero_image';
+const OG_IMAGE_KEY = 'site_og_image';
+
 // Stored in centavos (PHP's smallest unit, matching PayMongo's own amount
 // convention) so payment code never has to deal with float currency math.
 const MEMBERSHIP_FEE_KEY = 'membership_fee_centavos';
@@ -58,6 +74,37 @@ async function setLogoUrl(publicPath) {
   return setSetting(LOGO_KEY, publicPath);
 }
 
+// Null rather than a placeholder path: every caller renders these
+// conditionally, and a path to a file that was never uploaded is just a 404
+// waiting to happen in a <link> tag.
+async function getFaviconUrl() {
+  return getSetting(FAVICON_KEY, null);
+}
+
+async function setFaviconUrl(publicPath) {
+  return setSetting(FAVICON_KEY, publicPath);
+}
+
+async function getHeroImageUrl() {
+  return getSetting(HERO_IMAGE_KEY, null);
+}
+
+async function setHeroImageUrl(publicPath) {
+  return setSetting(HERO_IMAGE_KEY, publicPath);
+}
+
+// Falls back to the logo rather than to nothing — a shared link with the seal
+// on it reads as the organisation; one with an empty box reads as broken.
+async function getOgImageUrl() {
+  const explicit = await getSetting(OG_IMAGE_KEY, null);
+  if (explicit) return explicit;
+  return getLogoUrl();
+}
+
+async function setOgImageUrl(publicPath) {
+  return setSetting(OG_IMAGE_KEY, publicPath);
+}
+
 async function getMembershipFeeCentavos() {
   const value = await getSetting(MEMBERSHIP_FEE_KEY, String(DEFAULT_MEMBERSHIP_FEE_CENTAVOS));
   const parsed = Number(value);
@@ -102,6 +149,12 @@ module.exports = {
   setSetting,
   getLogoUrl,
   setLogoUrl,
+  getFaviconUrl,
+  setFaviconUrl,
+  getHeroImageUrl,
+  setHeroImageUrl,
+  getOgImageUrl,
+  setOgImageUrl,
   getMembershipFeeCentavos,
   setMembershipFeeCentavos,
   getPaymentsEnabled,

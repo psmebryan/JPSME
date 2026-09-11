@@ -39,7 +39,8 @@
     "test:membership-access": "node tests/membershipAccess.test.js",
     "test:resend": "node tests/resendVerification.test.js",
     "test:verify-routing": "node tests/verifyRouting.test.js",
-    "test:session-race": "node tests/sessionRace.test.js"
+    "test:session-race": "node tests/sessionRace.test.js",
+    "test:site-images": "node tests/siteImages.test.js"
   },
   "license": "UNLICENSED",
   "dependencies": {

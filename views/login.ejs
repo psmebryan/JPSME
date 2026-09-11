@@ -1,5 +1,12 @@
 <div class="max-w-md mx-auto bg-white border border-gray-200 rounded-lg p-8 shadow-sm">
-  <h1 class="text-2xl font-bold mb-6">Login</h1>
+  <%# The seal, so the page identifies itself. A login form is the page most
+      likely to be reached from an emailed link, where somebody arrives with no
+      other clue whose site this is. Uses the uploaded logo, same as the navbar. %>
+  <div class="mb-6 flex flex-col items-center text-center">
+    <img src="<%= locals.logoUrl || '/img/default-logo.svg' %>" alt="JPSME" class="h-16 w-16 object-contain">
+    <h1 class="mt-3 text-2xl font-bold">Login</h1>
+    <p class="mt-1 text-sm text-gray-500">Junior Philippine Society of Mechanical Engineers</p>
+  </div>
   <form id="login-form" class="space-y-4">
     <input type="hidden" name="context" value="user">
     <div>

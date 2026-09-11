@@ -11,7 +11,7 @@ const dataTransferApi = require('../../controllers/api/dataTransfer.api');
 const jobApi = require('../../controllers/api/job.api');
 const { apiAdmin, apiAdminOrChapterAdmin } = require('../../middleware/auth.middleware');
 const { verifyCsrfToken } = require('../../middleware/csrf.middleware');
-const { uploadLogo, uploadSponsorLogo, uploadCertificateBackground, uploadEmailAttachment, uploadDataWorkbook } = require('../../middleware/upload.middleware');
+const { uploadLogo, uploadEventImage, uploadSponsorLogo, uploadCertificateBackground, uploadEmailAttachment, uploadDataWorkbook } = require('../../middleware/upload.middleware');
 const verifyImageSignature = require('../../middleware/verifyImageSignature');
 
 const certificateTemplateValidators = [
@@ -100,6 +100,10 @@ router.post('/users/:id/reject', verifyCsrfToken, param('id').isInt(), adminApi.
 
 router.get('/settings/logo', adminApi.getLogo);
 router.post('/settings/logo', verifyCsrfToken, uploadLogo.single('logo'), verifyImageSignature, adminApi.uploadLogo);
+// The other three site images, same gate and same signature check as the logo.
+router.post('/settings/favicon', verifyCsrfToken, uploadLogo.single('image'), verifyImageSignature, adminApi.uploadFavicon);
+router.post('/settings/hero-image', verifyCsrfToken, uploadEventImage.single('image'), verifyImageSignature, adminApi.uploadHeroImage);
+router.post('/settings/og-image', verifyCsrfToken, uploadLogo.single('image'), verifyImageSignature, adminApi.uploadOgImage);
 router.put(
   '/settings/membership-fee',
   verifyCsrfToken,

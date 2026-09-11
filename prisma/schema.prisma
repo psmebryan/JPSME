@@ -500,6 +500,32 @@ model EventInvitation {
   @@map("event_invitations")
 }
 
+// Uploaded files, kept in the database rather than on disk.
+//
+// The host wipes the filesystem on every deploy, so a logo uploaded through
+// the admin panel survived exactly until the next publish and then 404'd on
+// every page — which is what was happening to the site logo and every sponsor
+// image. Anything a person uploads has to outlive a deploy, and the database
+// is the only thing here that does.
+//
+// `key` is the same identifier the local driver used as a path
+// ("uploads/logo/logo-1699-abc.png"), so switching drivers needed no new key
+// format and no data migration. Generated filenames already carry a timestamp
+// and random suffix, which is what makes it safe to serve these immutable and
+// cached forever.
+model StoredFile {
+  key       String   @id @db.VarChar(255)
+  mimeType  String   @db.VarChar(127)
+  size      Int
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  // Backs removeFolder(), which deletes by prefix — an event's certificates,
+  // say. Without it that is a full scan of every file ever uploaded.
+  @@index([createdAt])
+  @@map("stored_files")
+}
+
 model Sponsor {
   id        Int      @id @default(autoincrement())
   name      String
