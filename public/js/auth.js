@@ -59,6 +59,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         window.location.href = destination;
       } catch (err) {
+        // An unverified account is not a failed login so much as an unfinished
+        // one, and the thing it needs is a page this form does not contain.
+        // Leaving them here with a toast was a dead end: the only control on
+        // offer resends a code, and there was nowhere to type the code once it
+        // arrived.
+        if (err.code === 'EMAIL_NOT_VERIFIED') {
+          showToast('Verify your email first — taking you there now.', 'error');
+          const typed = new FormData(loginForm).get('email');
+          const query = typed ? `?email=${encodeURIComponent(String(typed).trim())}` : '';
+          setTimeout(() => { window.location.href = `/verify-email${query}`; }, 900);
+          return;
+        }
         showToast(err.message, 'error');
       }
       });
@@ -425,6 +437,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         showToast(res.message);
         resendForm.reset();
+        // The resend form is shared between /login and /verify-email. On
+        // /login there is nowhere to enter what was just sent, so somebody who
+        // asks for a code is taken to the page that can accept it. Already on
+        // /verify-email, staying put is correct.
+        if (!window.location.pathname.startsWith('/verify-email')) {
+          const typed = formData.get('email');
+          const query = typed ? `?email=${encodeURIComponent(String(typed).trim())}` : '';
+          setTimeout(() => { window.location.href = `/verify-email${query}`; }, 1200);
+        }
       } catch (err) {
         showToast(err.errors?.[0]?.msg || err.message, 'error');
       }

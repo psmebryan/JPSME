@@ -34,6 +34,9 @@ async function apiFetch(url, options = {}) {
       ? [{ msg: err.message }].concat(payload.errors)
       : payload.errors;
     err.status = response.status;
+    // Set only for the failures the server has deliberately tagged, so a caller
+    // can branch on the reason instead of on the wording. Null everywhere else.
+    err.code = payload.code || null;
     throw err;
   }
 

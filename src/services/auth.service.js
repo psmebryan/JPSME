@@ -119,9 +119,12 @@ async function login(email, password, { context = "user" } = {}) {
   }
 
   if (!user.emailVerifiedAt) {
+    // Tagged because the login page acts on this one: it sends them to the
+    // verification page rather than leaving them on a form they cannot pass.
     throw new AppError(
       "Please verify your email address before logging in",
       403,
+      'EMAIL_NOT_VERIFIED',
     );
   }
 

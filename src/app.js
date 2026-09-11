@@ -288,7 +288,14 @@ app.use((err, req, res, next) => {
   }
 
   if (req.path.startsWith('/api/')) {
-    return res.status(statusCode).json({ success: false, message: safeMessage });
+    // Only an AppError's own code is echoed. An unexpected error can carry a
+    // `code` of its own (Node puts one on system errors, Prisma on query
+    // errors) and passing that through would leak internals to the client.
+    return res.status(statusCode).json({
+      success: false,
+      message: safeMessage,
+      code: isKnownError ? (err.code || null) : null,
+    });
   }
 
   return res.status(statusCode).render('error', {

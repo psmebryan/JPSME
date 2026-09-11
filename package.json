@@ -37,7 +37,8 @@
     "test:invite-picker": "node tests/invitePicker.test.js",
     "test:approval-email": "node tests/approvalEmail.test.js",
     "test:membership-access": "node tests/membershipAccess.test.js",
-    "test:resend": "node tests/resendVerification.test.js"
+    "test:resend": "node tests/resendVerification.test.js",
+    "test:verify-routing": "node tests/verifyRouting.test.js"
   },
   "license": "UNLICENSED",
   "dependencies": {
