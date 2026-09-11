@@ -50,10 +50,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // A submitted answer is spent whether it was right or wrong, so after any
-  // attempt the image on screen is stale. Reloading it on a failed submit
-  // saves the person typing an answer that could not work no matter what.
-  document.addEventListener('submit', () => {
+  // A submitted answer is spent whether it was right or wrong, so after an
+  // attempt the image on screen is stale. Reloading it saves the person typing
+  // an answer that could not work no matter what.
+  //
+  // Only for a form that actually carries a challenge. This used to fire on
+  // ANY submit on the page, which on /login meant the login form: 400ms after
+  // pressing Login — almost exactly how long a login takes — this fetched
+  // /api/captcha, and that endpoint writes to the session. Two requests, one
+  // session, last write wins: the captcha request had loaded the session
+  // before login saved the user into it, so saving afterwards put the
+  // logged-out copy back. The login succeeded, the next page found no session,
+  // and the person landed back on the login form with no error to explain it.
+  document.addEventListener('submit', (event) => {
+    const form = event.target;
+    if (!form || typeof form.querySelector !== 'function') return;
+    if (!form.querySelector('[name="challengeAnswer"]')) return;
     setTimeout(load, 400);
   }, true);
 

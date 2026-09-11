@@ -36,9 +36,24 @@ router.get('/csrf-token', (req, res) => success(res, { csrfToken: req.session.cs
 //
 // Returns nothing when Turnstile is configured, because then Turnstile is the
 // check and the page should not be drawing a second one.
+// Reloaded before writing, because this is the one GET in the app that
+// modifies the session, and express-session saves the WHOLE object at the end
+// of a request. Any other request in flight against the same session has its
+// own older copy, and whichever finishes last wins — so issuing a challenge
+// could silently undo a login that had just been saved by a request running
+// alongside it. Reloading first means the copy about to be written includes
+// whatever landed in the meantime.
+//
+// reload fails for a session that has never been stored, which is the ordinary
+// case for a first-time visitor — nothing exists to clobber then, so that path
+// just proceeds.
 router.get('/captcha', (req, res) => {
   if (captchaService.isTurnstileConfigured()) return success(res, { svg: null });
-  return success(res, challengeService.issue(req.session));
+
+  if (typeof req.session.reload !== 'function') {
+    return success(res, challengeService.issue(req.session));
+  }
+  return req.session.reload(() => success(res, challengeService.issue(req.session)));
 });
 
 router.use('/auth', authRoutes);
