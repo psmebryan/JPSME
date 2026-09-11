@@ -6,6 +6,21 @@ const DEFAULT_MEMBER_APPROVED_SUBJECT = 'Welcome to JPSME, {{firstName}}!';
 const DEFAULT_MEMBER_APPROVED_BODY =
   'Hi {{firstName}},\n\nYour JPSME membership has been approved. Welcome to {{chapterName}} Chapter!\n\nYou can now log in and access your member profile.\n\n- JPSME National';
 
+// Deliberately says nothing about membership. This one goes to somebody whose
+// account an admin has accepted, which is true whether or not they have ever
+// paid a peso — telling a non-member they are "now a member of JPSME" is the
+// exact confusion this template exists to end.
+const DEFAULT_ACCOUNT_APPROVED_SUBJECT = 'Your JPSME account is ready, {{firstName}}';
+const DEFAULT_ACCOUNT_APPROVED_BODY = [
+  'Hi {{firstName}},',
+  '',
+  'Your JPSME account has been approved. You can now log in, update your profile and register for events.',
+  '',
+  'To become a full JPSME member — and receive your Certificate of Membership — complete your membership payment from your profile page.',
+  '',
+  '- JPSME National',
+].join('\n');
+
 const DEFAULT_EVENT_SUBJECT = "You're registered for {{eventTitle}}!";
 const DEFAULT_EVENT_BODY =
   'Hi {{firstName}},\n\nYou are registered for {{eventTitle}} on {{eventDate}}.\n\nLocation: {{eventLocation}}\n{{zoomLink}}\n\nSee you there!\n\n- JPSME National';
@@ -43,6 +58,33 @@ async function setMemberApprovedAttachment(publicPath) {
   const template = await getMemberApprovedTemplate();
   if (template.attachmentImage) await storageService.remove(template.attachmentImage);
   return prisma.emailTemplate.update({ where: { id: template.id }, data: { attachmentImage: publicPath } });
+}
+
+// --- Account-approved template (single global row) ---
+//
+// No attachment upload, unlike the membership email above. That one carries a
+// membership card or certificate image; this one is telling somebody their
+// login works, and there is nothing to attach to that.
+
+async function getAccountApprovedTemplate() {
+  let template = await prisma.emailTemplate.findFirst({ where: { purpose: 'ACCOUNT_APPROVED' } });
+  if (!template) {
+    template = await prisma.emailTemplate.create({
+      data: { purpose: 'ACCOUNT_APPROVED', subject: DEFAULT_ACCOUNT_APPROVED_SUBJECT, bodyHtml: DEFAULT_ACCOUNT_APPROVED_BODY },
+    });
+  }
+  return template;
+}
+
+async function upsertAccountApprovedTemplate({ subject, bodyHtml }) {
+  const template = await getAccountApprovedTemplate();
+  return prisma.emailTemplate.update({
+    where: { id: template.id },
+    data: {
+      subject: subject !== undefined ? subject : template.subject,
+      bodyHtml: bodyHtml !== undefined ? bodyHtml : template.bodyHtml,
+    },
+  });
 }
 
 // --- Event templates (one row per event PER PURPOSE — eventId alone is no
@@ -115,6 +157,8 @@ async function deleteEventTemplateAssets(eventId) {
 
 module.exports = {
   getMemberApprovedTemplate,
+  getAccountApprovedTemplate,
+  upsertAccountApprovedTemplate,
   upsertMemberApprovedTemplate,
   setMemberApprovedAttachment,
   getEventTemplate,

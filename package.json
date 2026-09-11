@@ -35,7 +35,8 @@
     "test:payment-ref": "node tests/paymentReference.test.js",
     "test:ticket-image": "node tests/ticketImage.test.js",
     "test:invite-picker": "node tests/invitePicker.test.js",
-    "test:approval-email": "node tests/approvalEmail.test.js"
+    "test:approval-email": "node tests/approvalEmail.test.js",
+    "test:membership-access": "node tests/membershipAccess.test.js"
   },
   "license": "UNLICENSED",
   "dependencies": {

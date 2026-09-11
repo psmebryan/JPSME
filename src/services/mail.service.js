@@ -105,6 +105,36 @@ async function sendMemberApprovedEmail(user) {
   }
 }
 
+// Sent when an admin approves the account itself. Distinct from the one above,
+// which is sent when a membership payment confirms and is the only message
+// allowed to say somebody is a member.
+//
+// No attachment: sendMemberApprovedEmail carries whatever membership artwork
+// has been uploaded, and attaching it here would hand a membership card to
+// somebody who has not bought one. Best-effort, like every other send here.
+async function sendAccountApprovedEmail(user) {
+  try {
+    const template = await emailTemplateService.getAccountApprovedTemplate();
+    const fields = {
+      firstName: user.firstName,
+      lastName: user.lastName,
+      fullName: fullName(user),
+      email: user.email,
+      organizationName: user.organization ? user.organization.name : 'JPSME National',
+      chapterName: user.organization ? user.organization.name : 'JPSME National',
+    };
+
+    await transporter.sendMail({
+      from: MAIL_FROM,
+      to: user.email,
+      subject: substituteTokens(template.subject, fields),
+      html: textToHtml(substituteTokens(template.bodyHtml, fields)),
+    });
+  } catch (err) {
+    console.error('Failed to send account-approved email to', user.email, ':', err.message);
+  }
+}
+
 // Fires when a user successfully registers (or re-registers) for an event.
 // Uses that event's own customizable template. Best-effort, same as above.
 async function sendEventRegistrationEmail(user, event) {
@@ -195,4 +225,10 @@ async function sendEventInvitationEmail(invitation, event) {
   });
 }
 
-module.exports = { sendVerificationEmail, sendMemberApprovedEmail, sendEventRegistrationEmail, sendEventInvitationEmail };
+module.exports = {
+  sendVerificationEmail,
+  sendMemberApprovedEmail,
+  sendAccountApprovedEmail,
+  sendEventRegistrationEmail,
+  sendEventInvitationEmail,
+};

@@ -24,7 +24,32 @@ function initAdminPage() {
 // --- Email templates (admin/emails and admin/event-email pages) ---
 function initEmailTemplates() {
   initMemberEmailModule();
+  initAccountEmailModule();
   initEventEmailModule();
+}
+
+// The email sent when an account is approved — distinct from the membership
+// one below, which only goes out once a payment clears. Text only: the
+// attachment belongs to the membership email, and attaching membership artwork
+// here would hand it to people who have not bought a membership.
+function initAccountEmailModule() {
+  const module = document.getElementById('account-email-module');
+  if (!module) return;
+
+  const textForm = document.getElementById('account-email-text-form');
+  textForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(textForm);
+    try {
+      await apiFetch('/api/admin/emails/account-approved', {
+        method: 'PUT',
+        body: JSON.stringify(Object.fromEntries(formData)),
+      });
+      showToast('Email updated');
+    } catch (err) {
+      showToast(err.errors?.[0]?.msg || err.message, 'error');
+    }
+  });
 }
 
 function initMemberEmailModule() {

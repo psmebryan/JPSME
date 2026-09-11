@@ -235,6 +235,9 @@ router.post(
   adminEmailApi.uploadMemberApprovedAttachment
 );
 
+router.get('/emails/account-approved', adminEmailApi.getAccountApprovedTemplate);
+router.put('/emails/account-approved', verifyCsrfToken, emailTemplateValidators, adminEmailApi.updateAccountApprovedTemplate);
+
 router.get('/emails/events/:eventId/template', param('eventId').isInt(), adminEmailApi.getEventTemplate);
 router.put(
   '/emails/events/:eventId/template',

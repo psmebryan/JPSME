@@ -75,8 +75,27 @@ const updateEventInvitationTemplate = asyncHandler(async (req, res) => {
   return success(res, { template }, 'Invitation email updated');
 });
 
+// --- Account-approved template (main admin only) ---
+//
+// No attachment endpoint, unlike the membership one above: that email carries
+// membership artwork, and this one goes to people who have not bought a
+// membership.
+
+const getAccountApprovedTemplate = asyncHandler(async (req, res) => {
+  const template = await emailTemplateService.getAccountApprovedTemplate();
+  return success(res, { template });
+});
+
+const updateAccountApprovedTemplate = asyncHandler(async (req, res) => {
+  if (!checkValidation(req, res)) return;
+  const template = await emailTemplateService.upsertAccountApprovedTemplate(req.body);
+  return success(res, { template }, 'Account-approved email updated');
+});
+
 module.exports = {
   getMemberApprovedTemplate,
+  getAccountApprovedTemplate,
+  updateAccountApprovedTemplate,
   updateMemberApprovedTemplate,
   uploadMemberApprovedAttachment,
   getEventTemplate,

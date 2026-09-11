@@ -3,6 +3,9 @@ const ExcelJS = require('exceljs');
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
 const storageService = require('./storage.service');
+// A leaf module on purpose — importing payment.service here would close the
+// loop payment -> registration -> event -> certificate.
+const membershipService = require('./membership.service');
 const { substituteTokens, formatDate, fullName } = require('../utils/templateTokens');
 
 const DEFAULT_MEMBERSHIP_TITLE = 'Certificate of Membership';
@@ -140,11 +143,32 @@ async function setEventTemplateBackground(eventId, publicPath) {
 
 // --- Membership certificate (generated on demand, never stored) ---
 
+// The certificate is the document that says somebody IS a member of JPSME, so
+// the only people who may hold one are members: the fee is paid and the year is
+// current. Approval alone used to be enough, which meant any approved account
+// could download a certificate of a membership it had never bought.
+//
+// Enforced here rather than only on the route, because a certificate that
+// depends on which handler you came through is one refactor away from being
+// issued by a handler that forgot. The route stays gated too — this is the
+// backstop, not the only lock.
 async function renderMembershipCertificateForUser(userId) {
   const user = await prisma.user.findUnique({ where: { id: Number(userId) }, include: { organization: true } });
   if (!user) throw new AppError('User not found', 404);
   if (user.status !== 'APPROVED') {
     throw new AppError('Only approved members can download a membership certificate', 403);
+  }
+
+  const membership = await membershipService.getMembershipStatus(user.id);
+  if (membership.tier !== membershipService.MEMBERSHIP_TIERS.MEMBER) {
+    // Says which of the two it is. "Not a member" sends somebody who paid last
+    // year hunting for a fault that is really just a lapsed year.
+    throw new AppError(
+      membership.state === 'EXPIRED'
+        ? 'Your membership has expired. Renew it to download your certificate again.'
+        : 'A membership certificate is issued once your membership payment is confirmed.',
+      403
+    );
   }
 
   const template = await getMembershipTemplate();

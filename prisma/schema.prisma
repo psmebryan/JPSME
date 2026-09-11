@@ -828,7 +828,17 @@ model AuditLog {
 }
 
 enum EmailTemplatePurpose {
+  // Two different messages that used to be one. MEMBER_APPROVED is sent when a
+  // membership payment is confirmed — "you are now a member of JPSME" — and is
+  // the only one that may claim membership. ACCOUNT_APPROVED is sent when an
+  // admin approves the account itself: it says the account is usable, which is
+  // true of a non-member too.
+  //
+  // They were the same email, fired on approval, so an account that had never
+  // paid was told it was a member. Splitting them is what lets each one say
+  // something that is actually true of the person receiving it.
   MEMBER_APPROVED
+  ACCOUNT_APPROVED
   EVENT_REGISTRATION
   EVENT_INVITATION
 }

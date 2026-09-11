@@ -1,7 +1,8 @@
 const crypto = require('crypto');
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
-const { sendVerificationEmail, sendMemberApprovedEmail } = require('./mail.service');
+const { sendVerificationEmail, sendMemberApprovedEmail, sendAccountApprovedEmail } = require('./mail.service');
+const membershipService = require('./membership.service');
 
 // A typed six-digit code rather than a clicked link.
 //
@@ -111,25 +112,37 @@ async function verifyEmailCode(email, code) {
     prisma.emailVerificationToken.delete({ where: { userId: user.id } }),
   ]);
 
-  // An account can be approved before its address is verified — an admin
-  // working the approvals queue has no way to tell, and a payment confirmation
-  // approves automatically. setStatus holds the approval email back in that
-  // case rather than telling somebody they are in while login still refuses
-  // them, so this is where the held email finally goes out: the account is
-  // approved and the address is now known to be theirs.
+  // Catching up an account that was approved before its address was verified.
+  //
+  // setStatus now refuses to approve an unverified account at all, so nothing
+  // new lands in this state — but accounts approved before that rule existed
+  // still do, and they were never told. They are told here, at the first moment
+  // the message is both true and going to an address we know is theirs.
+  //
+  // Which message depends on what they actually are. Someone who has paid gets
+  // the membership email; someone approved but unpaid gets the account one.
+  // Sending the membership email to a non-member is the exact mistake this
+  // whole split exists to stop, and it would be no less wrong here.
   //
   // Best-effort and after the transaction, like every other send in this app —
   // a mail failure must never undo a verification the person completed
   // correctly, which would leave them unable to verify at all.
   if (user.status === 'APPROVED') {
     try {
-      // Re-read for the organization the template substitutes; `user` above was
+      // Re-read for the organization the templates substitute; `user` above was
       // loaded with the verification token, not the organization.
       const approved = await prisma.user.findUnique({
         where: { id: user.id },
         include: { organization: true },
       });
-      if (approved) sendMemberApprovedEmail(approved);
+      if (approved) {
+        const membership = await membershipService.getMembershipStatus(approved.id);
+        if (membership.tier === membershipService.MEMBERSHIP_TIERS.MEMBER) {
+          sendMemberApprovedEmail(approved);
+        } else {
+          sendAccountApprovedEmail(approved);
+        }
+      }
     } catch (err) {
       console.error('verifyEmailCode: failed to send the held approval email to', user.email, ':', err.message);
     }

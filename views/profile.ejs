@@ -11,6 +11,13 @@
     </div>
 
     <div class="p-6 md:p-8">
+      <%
+        // NONE is not a problem state — membership payment is optional, so an
+        // account that has simply never paid says so neutrally. Only EXPIRED
+        // gets the amber treatment and the Renew action.
+        const ms = locals.membership || { state: 'NONE' };
+        const msExpiry = ms.expiresAt ? new Date(ms.expiresAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : null;
+      %>
       <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
         <div class="flex items-center gap-4">
           <img
@@ -27,7 +34,16 @@
           </div>
         </div>
 
-        <% if (profileData.status === 'APPROVED') { %>
+        <%# The certificate is the document that says somebody IS a member of
+            JPSME, so it is offered to members and nobody else. Being approved
+            only means the account was accepted.
+
+            Nothing is shown in its place for a non-member: the Membership card
+            immediately below already explains where they stand and carries the
+            Pay/Renew button, and a second explanation up here would just be the
+            same sentence twice. The route refuses it either way, so this is
+            about not dangling a button that cannot work. %>
+        <% if (ms.state === 'ACTIVE') { %>
           <a href="/api/certificates/membership/download" target="_blank"
              class="inline-flex items-center justify-center rounded-md bg-amber-400 px-5 py-2.5 font-semibold text-indigo-950 hover:bg-amber-300">
             Download Certificate of Membership
@@ -35,13 +51,6 @@
         <% } %>
       </div>
 
-      <%
-        // NONE is not a problem state — membership payment is optional, so an
-        // account that has simply never paid says so neutrally. Only EXPIRED
-        // gets the amber treatment and the Renew action.
-        const ms = locals.membership || { state: 'NONE' };
-        const msExpiry = ms.expiresAt ? new Date(ms.expiresAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : null;
-      %>
       <div class="mt-8 rounded-xl border <%= ms.state === 'EXPIRED' ? 'border-amber-300' : 'border-gray-200' %> bg-gray-50 p-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -56,12 +65,14 @@
             <% } else if (ms.state === 'EXPIRED') { %>
               <p class="mt-2 text-sm font-medium text-gray-900">Expired on <%= msExpiry %></p>
               <p class="text-xs text-gray-500 mt-0.5">
-                Renew to start another year. Your account and details stay as they are either way.
+                Renew to start another year, and to download your Certificate of Membership again.
+                Your account and details stay as they are either way.
               </p>
             <% } else { %>
               <p class="mt-2 text-sm font-medium text-gray-900">No paid membership</p>
               <p class="text-xs text-gray-500 mt-0.5">
-                Paying is optional &mdash; you can use your account without it.
+                Paying is optional &mdash; you can use your account, register for events and receive
+                invitations without it. Membership adds your Certificate of Membership.
               </p>
             <% } %>
           </div>

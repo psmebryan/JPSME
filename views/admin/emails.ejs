@@ -1,37 +1,128 @@
-<div id="member-email-module" class="max-w-3xl">
+<%
+/*
+  Two emails, one page, because the pair only makes sense read together: which
+  one a person gets depends entirely on whether they have paid, and editing
+  either without seeing the other is how they ended up saying the same thing.
+
+  They were one email once. It fired when an admin approved an account and said
+  "your JPSME membership has been approved" — to everybody, including the many
+  people who had never paid a peso. Approval and membership are different
+  facts, so they are now different emails.
+*/
+%>
+<div class="max-w-3xl">
   <div class="mb-6">
-    <h1 class="admin-h1">Membership Email</h1>
-    <p class="admin-subtitle">Sent automatically when an admin approves a pending applicant.</p>
+    <h1 class="admin-h1">Membership Emails</h1>
+    <p class="admin-subtitle">
+      Two automatic emails. Which one someone gets depends on whether they have paid.
+    </p>
   </div>
 
-  <section class="admin-card p-6 mb-6">
-    <h2 class="font-semibold mb-4">Attached Image</h2>
-    <% if (template.attachmentImage) { %>
-      <img id="member-email-attachment-preview" src="<%= template.attachmentImage %>" alt="Email attachment" class="mb-4 h-40 rounded border border-slate-200 object-contain bg-slate-50">
-    <% } else { %>
-      <div id="member-email-attachment-empty" class="mb-4 flex h-40 items-center justify-center rounded border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-400">No image attached — optional</div>
-      <img id="member-email-attachment-preview" src="" alt="Email attachment" class="mb-4 hidden h-40 rounded border border-slate-200 object-contain bg-slate-50">
-    <% } %>
-    <form id="member-email-attachment-form" class="space-y-3">
-      <input type="file" name="attachment" accept="image/png,image/jpeg,image/webp,image/svg+xml" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
-      <button type="submit" class="btn-primary">Upload Image</button>
-    </form>
-  </section>
+  <!-- A table rather than prose: "who gets which, and when" is the thing an
+       admin comes to this page unsure about, and it is two rows long. -->
+  <div class="admin-card p-0 mb-8 overflow-hidden">
+    <table class="admin-table">
+      <thead class="admin-table-head">
+        <tr>
+          <th class="admin-th">Email</th>
+          <th class="admin-th">Sent when</th>
+          <th class="admin-th">Goes to</th>
+        </tr>
+      </thead>
+      <tbody class="admin-tbody">
+        <tr class="admin-tr">
+          <td class="admin-td font-medium text-slate-900">Account Approved</td>
+          <td class="admin-td">You approve a pending account</td>
+          <td class="admin-td"><span class="badge-amber">Non-Members</span></td>
+        </tr>
+        <tr class="admin-tr">
+          <td class="admin-td font-medium text-slate-900">Membership Confirmed</td>
+          <td class="admin-td">A membership payment clears, including renewals</td>
+          <td class="admin-td"><span class="badge-green">Members</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 
-  <section class="admin-card p-6">
-    <h2 class="font-semibold mb-1">Email Content</h2>
-    <p class="mb-4 text-xs text-slate-500">Available tokens: <code>{{fullName}}</code>, <code>{{firstName}}</code>, <code>{{lastName}}</code>, <code>{{email}}</code>, <code>{{chapterName}}</code></p>
-    <form id="member-email-text-form" class="space-y-4">
-      <div>
-        <label for="member-email-subject" class="form-label">Subject</label>
-        <input id="member-email-subject" name="subject" value="<%= template.subject %>" maxlength="200" class="form-input">
-      </div>
-      <div>
-        <label for="member-email-body" class="form-label">Body</label>
-        <textarea id="member-email-body" name="bodyHtml" rows="8" maxlength="5000" class="form-input"><%= template.bodyHtml %></textarea>
-        <p class="mt-1 text-xs text-slate-400">Plain text — line breaks are preserved in the sent email.</p>
-      </div>
-      <button type="submit" class="btn-primary">Save Changes</button>
-    </form>
-  </section>
+  <!-- --- Account approved --------------------------------------------------- -->
+  <div id="account-email-module" class="mb-10">
+    <div class="mb-4">
+      <h2 class="text-lg font-semibold text-slate-900">Account Approved</h2>
+      <p class="admin-subtitle">
+        Sent when you approve a pending account. The person can log in, edit their profile and
+        register for events &mdash; but they are not a member until they pay, so this email
+        should not tell them they are one.
+      </p>
+    </div>
+
+    <section class="admin-card p-6">
+      <h3 class="font-semibold mb-1">Email Content</h3>
+      <p class="mb-4 text-xs text-slate-500">
+        Available tokens: <code>{{fullName}}</code>, <code>{{firstName}}</code>,
+        <code>{{lastName}}</code>, <code>{{email}}</code>, <code>{{organizationName}}</code>
+      </p>
+      <form id="account-email-text-form" class="space-y-4">
+        <div>
+          <label for="account-email-subject" class="form-label">Subject</label>
+          <input id="account-email-subject" name="subject" value="<%= accountTemplate.subject %>" maxlength="200" class="form-input">
+        </div>
+        <div>
+          <label for="account-email-body" class="form-label">Body</label>
+          <textarea id="account-email-body" name="bodyHtml" rows="8" maxlength="5000" class="form-input"><%= accountTemplate.bodyHtml %></textarea>
+          <p class="mt-1 text-xs text-slate-400">Plain text &mdash; line breaks are preserved in the sent email.</p>
+        </div>
+        <button type="submit" class="btn-primary">Save Changes</button>
+      </form>
+    </section>
+  </div>
+
+  <!-- --- Membership confirmed ----------------------------------------------- -->
+  <div id="member-email-module">
+    <div class="mb-4">
+      <h2 class="text-lg font-semibold text-slate-900">Membership Confirmed</h2>
+      <p class="admin-subtitle">
+        Sent when a membership payment clears, renewals included. This is the only email that
+        should say someone is a member of JPSME &mdash; it is the only one that goes solely to
+        people who have paid.
+      </p>
+    </div>
+
+    <section class="admin-card p-6 mb-6">
+      <h3 class="font-semibold mb-1">Attached Image</h3>
+      <p class="mb-4 text-xs text-slate-500">
+        Optional. Attached to this email only &mdash; a membership card or similar belongs with
+        the people who bought one.
+      </p>
+      <% if (template.attachmentImage) { %>
+        <img id="member-email-attachment-preview" src="<%= template.attachmentImage %>" alt="Email attachment" class="mb-4 h-40 rounded border border-slate-200 object-contain bg-slate-50">
+      <% } else { %>
+        <div id="member-email-attachment-empty" class="mb-4 flex h-40 items-center justify-center rounded border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-400">No image attached &mdash; optional</div>
+        <img id="member-email-attachment-preview" src="" alt="Email attachment" class="mb-4 hidden h-40 rounded border border-slate-200 object-contain bg-slate-50">
+      <% } %>
+      <form id="member-email-attachment-form" class="space-y-3">
+        <input type="file" name="attachment" accept="image/png,image/jpeg,image/webp,image/svg+xml" required class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
+        <button type="submit" class="btn-primary">Upload Image</button>
+      </form>
+    </section>
+
+    <section class="admin-card p-6">
+      <h3 class="font-semibold mb-1">Email Content</h3>
+      <p class="mb-4 text-xs text-slate-500">
+        Available tokens: <code>{{fullName}}</code>, <code>{{firstName}}</code>,
+        <code>{{lastName}}</code>, <code>{{email}}</code>, <code>{{chapterName}}</code>
+      </p>
+      <form id="member-email-text-form" class="space-y-4">
+        <div>
+          <label for="member-email-subject" class="form-label">Subject</label>
+          <input id="member-email-subject" name="subject" value="<%= template.subject %>" maxlength="200" class="form-input">
+        </div>
+        <div>
+          <label for="member-email-body" class="form-label">Body</label>
+          <textarea id="member-email-body" name="bodyHtml" rows="8" maxlength="5000" class="form-input"><%= template.bodyHtml %></textarea>
+          <p class="mt-1 text-xs text-slate-400">Plain text &mdash; line breaks are preserved in the sent email.</p>
+        </div>
+        <button type="submit" class="btn-primary">Save Changes</button>
+      </form>
+    </section>
+  </div>
 </div>

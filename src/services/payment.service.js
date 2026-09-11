@@ -8,6 +8,7 @@ const auditService = require('./audit.service');
 const registrationService = require('./registration.service');
 const userService = require('./user.service');
 const mailService = require('./mail.service');
+const membershipService = require('./membership.service');
 const sheetsSyncService = require('./sheetsSync.service');
 const invitationService = require('./invitation.service');
 const qrService = require('./qr.service');
@@ -59,93 +60,18 @@ function appUrl() {
 
 // --- Reads ---
 
-// A paid membership is good for one year from the moment it is confirmed.
-const MEMBERSHIP_VALIDITY_YEARS = 1;
-
-// Calendar arithmetic, not 365 days. The two only agree when no 29 February
-// falls in between: paying on 1 March 2027 and adding 365 days lands on
-// 29 February 2028, a day short of the anniversary. Members would silently
-// lose a day whenever their year spanned a leap day.
-//
-// setFullYear also handles the one date that has no anniversary — a membership
-// bought on 29 February rolls to 1 March, which is the later of the two
-// candidate dates and so never shortens what was paid for.
-function addYears(date, years) {
-  const d = new Date(date);
-  d.setFullYear(d.getFullYear() + years);
-  return d;
-}
-
-// Renewing extends from whichever is later — the existing expiry, or today.
-// Paying early therefore never forfeits the remainder of the current year,
-// while renewing after a lapse starts a fresh year rather than back-dating one
-// that has already run out.
-function nextMembershipExpiry(currentExpiry, from = new Date()) {
-  const base = currentExpiry && new Date(currentExpiry) > from ? new Date(currentExpiry) : from;
-  return addYears(base, MEMBERSHIP_VALIDITY_YEARS);
-}
-
-// How the app classifies people, and how the three categories relate:
-//
-//   MEMBER      — has an account and a membership inside its validity year
-//   NON_MEMBER  — has an account but has never paid, or has lapsed
-//   GUEST       — has no account at all; exists only as an EventInvitation
-//                 row with a null userId, created for one specific event
-//
-// GUEST is deliberately absent from this function: it is not a state a User
-// can be in. Someone with no account has no User row to classify, so guests
-// are identified where they actually live — by an invitation without a userId.
-//
-// MEMBER/NON_MEMBER are derived from payment state on every read rather than
-// stored, because a stored copy would silently go stale the moment a
-// membership lapsed with nothing running to update it.
-const MEMBERSHIP_TIERS = { MEMBER: 'MEMBER', NON_MEMBER: 'NON_MEMBER', GUEST: 'GUEST' };
-
-// Pure, and takes the payment as an argument, so a list view can classify a
-// page of members from data it has already batched instead of issuing a query
-// per row. `latestMembershipPayment` may be null/undefined.
-function classifyMembership(user, latestMembershipPayment) {
-  let expiresAt = user && user.membershipExpiresAt;
-
-  // Backfill for anyone who paid before expiry was tracked: derive the date
-  // from their payment rather than showing them as never having paid.
-  if (!expiresAt && latestMembershipPayment
-      && latestMembershipPayment.status === 'PAID' && latestMembershipPayment.paidAt) {
-    expiresAt = addYears(latestMembershipPayment.paidAt, MEMBERSHIP_VALIDITY_YEARS);
-  }
-
-  if (!expiresAt) {
-    return { tier: MEMBERSHIP_TIERS.NON_MEMBER, state: 'NONE', expiresAt: null, daysRemaining: null };
-  }
-
-  const msLeft = new Date(expiresAt).getTime() - Date.now();
-  const active = msLeft > 0;
-  return {
-    tier: active ? MEMBERSHIP_TIERS.MEMBER : MEMBERSHIP_TIERS.NON_MEMBER,
-    state: active ? 'ACTIVE' : 'EXPIRED',
-    expiresAt,
-    daysRemaining: Math.ceil(msLeft / 86400000),
-  };
-}
-
-// Single-user convenience over classifyMembership, for the member's own pages.
-// NONE and EXPIRED both classify as NON_MEMBER but stay distinguishable here,
-// since only EXPIRED is something to renew.
-async function getMembershipStatus(userId) {
-  const user = await prisma.user.findUnique({
-    where: { id: Number(userId) },
-    select: { membershipExpiresAt: true },
-  });
-  if (!user) throw new AppError('User not found', 404);
-
-  const latest = user.membershipExpiresAt ? null : await prisma.payment.findFirst({
-    where: { userId: Number(userId), purpose: 'MEMBERSHIP_REGISTRATION', status: 'PAID' },
-    orderBy: { paidAt: 'desc' },
-    select: { status: true, paidAt: true },
-  });
-
-  return classifyMembership(user, latest);
-}
+// Membership itself now lives in membership.service — see the note at the
+// top of that file for why it had to leave this one. Pulled back in here
+// and re-exported unchanged, so every existing caller of
+// paymentService.classifyMembership / getMembershipStatus keeps working.
+const {
+  MEMBERSHIP_VALIDITY_YEARS,
+  MEMBERSHIP_TIERS,
+  addYears,
+  nextMembershipExpiry,
+  classifyMembership,
+  getMembershipStatus,
+} = membershipService;
 
 async function getLatestMembershipPayment(userId) {
   return prisma.payment.findFirst({
@@ -701,8 +627,10 @@ async function applyPaymentPaid(localPayment, { gatewayPaymentId, gatewayFeeCent
   // Auto-approve membership on confirmed payment (reverses the earlier
   // "admin manually reviews payment status before approving" design, per
   // explicit request). Reuses userService.setStatus exactly as the manual
-  // admin-approve button does — same status transition, same approval email
-  // — rather than re-implementing it here. Deliberately does NOT touch an
+  // admin-approve button does — same status transition — rather than
+  // re-implementing it here, though the email differs: the admin button sends
+  // the account-approved one, and this path sends the membership one below,
+  // which is the only message that may claim membership. Deliberately does NOT touch an
   // already-REJECTED account: a late-arriving payment confirmation must
   // never silently override an admin's explicit rejection decision. Runs
   // after the payment transaction commits, same as the event-registration
@@ -725,8 +653,34 @@ async function applyPaymentPaid(localPayment, { gatewayPaymentId, gatewayFeeCent
         await userService.setStatus(localPayment.userId, 'APPROVED', {
           reason: 'MEMBERSHIP_PAYMENT_CONFIRMED',
           paymentId: localPayment.id,
+          // The membership email below supersedes the account-approved one:
+          // this person is not merely approved, they have paid. Two emails a
+          // second apart, the weaker one first, would only muddle it.
+          skipApprovalEmail: true,
         });
       }
+
+      // "You are now a member of JPSME" — sent here and nowhere else, because
+      // this is the only moment it is true. It used to be sent on approval,
+      // which told every approved applicant they were a member whether or not
+      // they had ever paid.
+      //
+      // Fires on renewals too, not just the first payment: somebody who has
+      // just paid for another year should be told their membership is current,
+      // and a renewal is not a status transition so nothing else would say so.
+      //
+      // Re-read so the organization the template substitutes is loaded, and so
+      // the expiry above is the one the member actually has now.
+      //
+      // Not sent to a REJECTED account. The approval above already refuses to
+      // overturn an admin's rejection, and welcoming somebody to JPSME in the
+      // same breath would undo that in the only place they would actually see
+      // it. Payment in flight when a rejection lands is the way this happens.
+      const member = await prisma.user.findUnique({
+        where: { id: localPayment.userId },
+        include: { organization: true },
+      });
+      if (member && member.status !== 'REJECTED') mailService.sendMemberApprovedEmail(member);
     } catch (err) {
       console.error('applyPaymentPaid: failed to auto-approve membership for payment', localPayment.id, err.message);
       // Previously this console.error was the ONLY record of the failure —

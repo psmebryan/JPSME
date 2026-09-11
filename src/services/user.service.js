@@ -113,10 +113,32 @@ async function listMembersForAdmin({
 // without needing a separate flag). `reason`/`paymentId` give a human-usable
 // answer to "why was this member approved?" without needing to cross-reference
 // timestamps against the payments table by hand.
-async function setStatus(userId, status, { actorId = null, reason = null, paymentId = null } = {}) {
+async function setStatus(userId, status, {
+  actorId = null, reason = null, paymentId = null, skipApprovalEmail = false,
+} = {}) {
   const user = await prisma.user.findUnique({ where: { id: Number(userId) } });
   if (!user) throw new AppError('User not found', 404);
   if (user.role === 'ADMIN') throw new AppError('Cannot change status of an admin account', 400);
+
+  // An unverified address cannot be approved. Approving one produced an account
+  // that had been accepted but could not log in — the login gate refuses an
+  // unverified address — so the approval was a decision about somebody nobody
+  // had confirmed was reachable, let alone real.
+  //
+  // Refused rather than deferred: a queue of approved-but-unusable accounts is
+  // worse than an admin being told to wait, because nothing ever revisits them.
+  // The approvals list already flags each row Verified/Unverified, so this is
+  // not a surprise — it is the same fact, enforced.
+  //
+  // Rejection is deliberately still allowed: turning down an application that
+  // never confirmed its address is exactly when you would want to.
+  if (status === 'APPROVED' && !user.emailVerifiedAt) {
+    throw new AppError(
+      'This account cannot be approved yet — its email address has not been verified. '
+      + 'Ask them to enter the code sent to their address, then approve.',
+      400
+    );
+  }
 
   const updated = await prisma.user.update({
     where: { id: Number(userId) },
@@ -136,20 +158,21 @@ async function setStatus(userId, status, { actorId = null, reason = null, paymen
     });
   }
 
-  // Only send on a genuine PENDING/REJECTED -> APPROVED transition, not a
-  // redundant re-approval of an already-approved account.
+  // Only on a genuine PENDING/REJECTED -> APPROVED transition, not a redundant
+  // re-approval of an already-approved account.
   //
-  // And never to an address that has not been verified yet. An unverified
-  // account still appears in the approvals queue, so an admin can approve one
-  // without realising — and the result was two contradictory emails: "here is
-  // your verification code" followed by "your membership has been approved",
-  // while logging in still answered "please verify your email address first".
+  // And it is the ACCOUNT email, not the membership one. Approval means an
+  // admin has accepted the account; it says nothing about whether the person
+  // has paid. Sending "you are now a member of JPSME" here told every approved
+  // applicant they were a member when most of them were not — membership is
+  // what the fee buys, and payment.service sends that one when it confirms.
   //
-  // The approval itself stands; it is only the email that waits. Verifying
-  // sends it (see emailVerification.service), which is the first moment the
-  // message is both true and deliverable to an address we know they own.
-  if (status === 'APPROVED' && user.status !== 'APPROVED' && updated.emailVerifiedAt) {
-    mailService.sendMemberApprovedEmail(updated);
+  // skipApprovalEmail is for exactly that path: a confirmed payment approves
+  // the account and then sends the membership email, and firing both would
+  // land two messages in the same inbox in the same second, the weaker one
+  // first.
+  if (status === 'APPROVED' && user.status !== 'APPROVED' && !skipApprovalEmail) {
+    mailService.sendAccountApprovedEmail(updated);
   }
 
   if (user.status !== status) {

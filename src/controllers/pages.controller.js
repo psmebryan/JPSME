@@ -399,8 +399,14 @@ const adminEventCertificatePage = asyncHandler(async (req, res) => {
 });
 
 const adminEmailsPage = asyncHandler(async (req, res) => {
-  const template = await emailTemplateService.getMemberApprovedTemplate();
-  renderAdmin(req, res, 'admin/emails', { title: 'Membership Email', template });
+  // Two templates on one page, because the pair only makes sense read together:
+  // which one somebody gets depends entirely on whether they have paid, and an
+  // admin editing one needs to see what the other already says.
+  const [template, accountTemplate] = await Promise.all([
+    emailTemplateService.getMemberApprovedTemplate(),
+    emailTemplateService.getAccountApprovedTemplate(),
+  ]);
+  renderAdmin(req, res, 'admin/emails', { title: 'Membership Emails', template, accountTemplate });
 });
 
 const adminEventEmailsListPage = asyncHandler(async (req, res) => {
