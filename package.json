@@ -40,7 +40,8 @@
     "test:resend": "node tests/resendVerification.test.js",
     "test:verify-routing": "node tests/verifyRouting.test.js",
     "test:session-race": "node tests/sessionRace.test.js",
-    "test:site-images": "node tests/siteImages.test.js"
+    "test:site-images": "node tests/siteImages.test.js",
+    "test:upload-errors": "node tests/uploadErrors.test.js"
   },
   "license": "UNLICENSED",
   "dependencies": {
