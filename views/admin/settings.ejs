@@ -30,10 +30,21 @@
     </section>
 
     <section class="rounded-lg border border-slate-200 p-4">
-      <h3 class="text-sm font-semibold text-slate-900">Favicon</h3>
-      <p class="mt-0.5 mb-3 text-xs text-slate-500">The small icon in the browser tab. Upload a simplified version &mdash; a detailed seal is unreadable at that size.</p>
-      <div class="mb-3 flex h-24 items-center justify-center rounded border border-slate-200 bg-slate-50 p-2">
-        <img id="favicon-preview" src="<%= faviconUrl || '/img/favicon.svg' %>" alt="Current favicon" class="h-12 w-12 object-contain">
+      <h3 class="text-sm font-semibold text-slate-900">Favicon <span class="font-normal text-slate-400">&mdash; optional</span></h3>
+      <p class="mt-0.5 mb-3 text-xs text-slate-500">
+        The small icon in the browser tab. <strong>Your logo is used automatically</strong>, so you only need this if you
+        want something different &mdash; a seal with a ring of lettering can turn to mush at 16 pixels, so a
+        simplified crop often reads better.
+      </p>
+      <div class="mb-3 flex h-24 items-center justify-center gap-4 rounded border border-slate-200 bg-slate-50 p-2">
+        <%# Shown at the size it is actually used, beside a legible one. Picking
+            favicon artwork by looking at a large preview is how an unreadable
+            one gets chosen. %>
+        <img id="favicon-preview" src="<%= faviconUrl %>" alt="Current favicon" class="h-12 w-12 object-contain">
+        <span class="flex flex-col items-center gap-1">
+          <img src="<%= faviconUrl %>" alt="" class="h-4 w-4 object-contain">
+          <span class="text-[10px] text-slate-400">actual size</span>
+        </span>
       </div>
       <form id="favicon-form" class="space-y-2">
         <input type="file" name="image" accept="image/png,image/jpeg,image/webp,image/svg+xml" required

@@ -16,6 +16,9 @@ const DEFAULT_LOGO = '/img/default-logo.svg';
 // pastes the address. It falls back to the logo, since a logo on a card is far
 // better than the blank box an unset one produces.
 const FAVICON_KEY = 'site_favicon';
+// Drawn for 16 pixels, unlike the default logo placeholder — so it wins when
+// there is no real logo to fall back to.
+const DEFAULT_FAVICON = '/img/favicon.svg';
 const HERO_IMAGE_KEY = 'site_hero_image';
 const OG_IMAGE_KEY = 'site_og_image';
 
@@ -77,8 +80,20 @@ async function setLogoUrl(publicPath) {
 // Null rather than a placeholder path: every caller renders these
 // conditionally, and a path to a file that was never uploaded is just a 404
 // waiting to happen in a <link> tag.
+// Falls back to the logo, the same way the link preview does. A favicon IS
+// just a picture, and the logo is already the right picture — asking for it to
+// be uploaded a second time before the tab shows anything was needless work
+// for a worse result.
+//
+// The separate upload stays, because the best favicon is usually a simplified
+// crop: a seal with a ring of lettering turns to mush at 16 pixels. That is a
+// reason to offer the choice, not a reason to withhold the default.
 async function getFaviconUrl() {
-  return getSetting(FAVICON_KEY, null);
+  const explicit = await getSetting(FAVICON_KEY, null);
+  if (explicit) return explicit;
+
+  const logo = await getLogoUrl();
+  return logo && logo !== DEFAULT_LOGO ? logo : DEFAULT_FAVICON;
 }
 
 async function setFaviconUrl(publicPath) {

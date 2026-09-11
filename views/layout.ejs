@@ -6,11 +6,12 @@
   <meta name="csrf-token" content="<%= csrfToken %>">
   <title><%= title %> | JPSME</title>
 
-  <%# The tab icon. An uploaded one wins; otherwise the bundled SVG, which is
-      better than the 404 /favicon.ico was answering on every page load — a
-      browser asks for it whether or not the page mentions one. %>
+  <%# The tab icon. settings.service picks it: an uploaded favicon, else the
+      uploaded logo, else the bundled 16px-legible SVG. Always something —
+      a browser requests /favicon.ico whether or not the page mentions one,
+      which is what used to 404 on every page load. %>
   <link rel="icon" href="<%= locals.faviconUrl || '/img/favicon.svg' %>">
-  <link rel="apple-touch-icon" href="<%= locals.faviconUrl || locals.logoUrl || '/img/default-logo.svg' %>">
+  <link rel="apple-touch-icon" href="<%= locals.logoUrl || locals.faviconUrl || '/img/default-logo.svg' %>">
 
   <%# What Messenger, Facebook and Viber show when the address is pasted.
       Without these a shared link renders as a bare grey box, which reads as a

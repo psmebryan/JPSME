@@ -59,6 +59,9 @@ async function cleanup() {
   await prisma.siteSetting.deleteMany({
     where: { key: { in: ['site_favicon', 'site_hero_image', 'site_og_image'] } },
   }).catch(() => {});
+  // The logo is a real setting this suite overwrites, so it is cleared rather
+  // than left pointing at a test fixture.
+  await prisma.siteSetting.deleteMany({ where: { value: { contains: TAG } } }).catch(() => {});
 }
 
 async function main() {
@@ -164,11 +167,31 @@ async function main() {
 
   // --- the settings ---------------------------------------------------------
 
-  await test('an unset favicon and banner are null, not a path to nothing', async () => {
-    // Both are rendered conditionally; a made-up path would just be a 404 in a
-    // <link> tag on every page.
-    assertEqual(await settingsService.getFaviconUrl(), null, 'favicon');
+  await test('an unset banner is null, not a path to nothing', async () => {
+    // It is rendered conditionally; a made-up path would just be a 404.
     assertEqual(await settingsService.getHeroImageUrl(), null, 'banner');
+  });
+
+  await test('the favicon is the logo, without having to upload it twice', async () => {
+    // A favicon IS just a picture, and the logo is already the right picture.
+    // Asking for a second upload before the tab showed anything was needless
+    // work for a worse result.
+    await prisma.siteSetting.deleteMany({ where: { key: 'site_favicon' } }).catch(() => {});
+    const logo = await settingsService.setLogoUrl(`/uploads/${TAG}/seal.png`)
+      .then(() => settingsService.getLogoUrl());
+    assertEqual(await settingsService.getFaviconUrl(), logo, 'follows the logo');
+  });
+
+  await test('but an uploaded favicon wins, for when the seal is unreadable small', async () => {
+    await settingsService.setFaviconUrl(`/uploads/${TAG}/tab.png`);
+    assertEqual(await settingsService.getFaviconUrl(), `/uploads/${TAG}/tab.png`, 'the explicit one');
+  });
+
+  await test('with no logo either, the icon drawn for 16px wins over the placeholder', async () => {
+    // The default logo is a placeholder that was never drawn to survive being
+    // shrunk to a tab icon; the bundled favicon was.
+    await prisma.siteSetting.deleteMany({ where: { key: { in: ['site_favicon', 'site_logo'] } } }).catch(() => {});
+    assertEqual(await settingsService.getFaviconUrl(), '/img/favicon.svg', 'the purpose-built one');
   });
 
   await test('the link preview falls back to the logo rather than to nothing', async () => {
