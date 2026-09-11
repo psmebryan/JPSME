@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
-const { sendVerificationEmail } = require('./mail.service');
+const { sendVerificationEmail, sendMemberApprovedEmail } = require('./mail.service');
 
 // A typed six-digit code rather than a clicked link.
 //
@@ -110,6 +110,30 @@ async function verifyEmailCode(email, code) {
     prisma.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date() } }),
     prisma.emailVerificationToken.delete({ where: { userId: user.id } }),
   ]);
+
+  // An account can be approved before its address is verified — an admin
+  // working the approvals queue has no way to tell, and a payment confirmation
+  // approves automatically. setStatus holds the approval email back in that
+  // case rather than telling somebody they are in while login still refuses
+  // them, so this is where the held email finally goes out: the account is
+  // approved and the address is now known to be theirs.
+  //
+  // Best-effort and after the transaction, like every other send in this app —
+  // a mail failure must never undo a verification the person completed
+  // correctly, which would leave them unable to verify at all.
+  if (user.status === 'APPROVED') {
+    try {
+      // Re-read for the organization the template substitutes; `user` above was
+      // loaded with the verification token, not the organization.
+      const approved = await prisma.user.findUnique({
+        where: { id: user.id },
+        include: { organization: true },
+      });
+      if (approved) sendMemberApprovedEmail(approved);
+    } catch (err) {
+      console.error('verifyEmailCode: failed to send the held approval email to', user.email, ':', err.message);
+    }
+  }
 
   return user;
 }

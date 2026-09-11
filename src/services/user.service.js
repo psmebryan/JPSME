@@ -138,7 +138,17 @@ async function setStatus(userId, status, { actorId = null, reason = null, paymen
 
   // Only send on a genuine PENDING/REJECTED -> APPROVED transition, not a
   // redundant re-approval of an already-approved account.
-  if (status === 'APPROVED' && user.status !== 'APPROVED') {
+  //
+  // And never to an address that has not been verified yet. An unverified
+  // account still appears in the approvals queue, so an admin can approve one
+  // without realising — and the result was two contradictory emails: "here is
+  // your verification code" followed by "your membership has been approved",
+  // while logging in still answered "please verify your email address first".
+  //
+  // The approval itself stands; it is only the email that waits. Verifying
+  // sends it (see emailVerification.service), which is the first moment the
+  // message is both true and deliverable to an address we know they own.
+  if (status === 'APPROVED' && user.status !== 'APPROVED' && updated.emailVerifiedAt) {
     mailService.sendMemberApprovedEmail(updated);
   }
 
