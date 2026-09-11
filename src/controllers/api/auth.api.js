@@ -81,7 +81,14 @@ const resendVerification = asyncHandler(async (req, res) => {
 
   await emailVerificationService.resendVerification(req.body.email);
   // Same response whether or not the email exists/is already verified, to prevent enumeration.
-  return success(res, null, 'If that email needs verifying, a new code is on its way.');
+  //
+  // The second sentence gives a real person the one thing the vague first
+  // sentence cannot: what to do when no code arrives because there was nothing
+  // to send. It leaks nothing — it is said to everybody, so it distinguishes
+  // no address from any other. Without it, an already-verified account looks
+  // exactly like broken email, which is how this endpoint got reported as a
+  // bug when it was working correctly.
+  return success(res, null, 'If that email needs verifying, a new code is on its way. Already verified? You can just log in.');
 });
 
 // Confirms an address from the six-digit code that was emailed. Takes the

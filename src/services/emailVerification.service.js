@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
+const logger = require('../utils/logger');
 const { sendVerificationEmail, sendMemberApprovedEmail, sendAccountApprovedEmail } = require('./mail.service');
 const membershipService = require('./membership.service');
 
@@ -153,13 +154,37 @@ async function verifyEmailCode(email, code) {
 
 // Always resolves without revealing whether the email exists, to avoid account
 // enumeration — the caller cannot tell a sent code from a silent no-op.
+//
+// That silence is right for the response and wrong for the server log. Two of
+// the three outcomes here send nothing, and from outside all three look
+// identical, so "the resend button does not work" and "the resend button
+// correctly did nothing" are the same observation. Whoever is running the site
+// has no way to tell them apart, and the natural conclusion is that email is
+// broken — which is exactly the wrong place to start looking.
+//
+// So the outcome is logged. It leaks nothing: it goes to the server log, not
+// the response, and the person reading it can already query the users table.
 async function resendVerification(email) {
-  const user = await prisma.user.findUnique({
-    where: { email: String(email || '').trim().toLowerCase() },
-  });
-  if (user && !user.emailVerifiedAt) {
-    await issueVerificationCode(user);
+  const normalized = String(email || '').trim().toLowerCase();
+  const user = await prisma.user.findUnique({ where: { email: normalized } });
+
+  if (!user) {
+    // Worth distinguishing from "already verified" because the usual cause is
+    // an address that does not match what was stored — note that the route
+    // runs normalizeEmail() first, which strips dots from a Gmail address. An
+    // account created outside the registration form (seeded, imported, or
+    // inserted by hand) can therefore hold an address this will never find.
+    logger.info('resend-verification: no account for that address, nothing sent', { email: normalized });
+    return;
   }
+
+  if (user.emailVerifiedAt) {
+    logger.info('resend-verification: already verified, nothing sent', { email: normalized, userId: user.id });
+    return;
+  }
+
+  await issueVerificationCode(user);
+  logger.info('resend-verification: new code sent', { email: normalized, userId: user.id });
 }
 
 module.exports = {
