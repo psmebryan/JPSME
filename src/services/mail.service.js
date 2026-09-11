@@ -5,6 +5,24 @@ const emailTemplateService = require('./emailTemplate.service');
 const ticketService = require('./ticket.service');
 const storageService = require('./storage.service');
 const { substituteTokens, formatDate, fullName } = require('../utils/templateTokens');
+const logger = require('../utils/logger');
+
+// Every send in this file is best-effort: a provider failure must never undo
+// the thing that triggered it, or a Brevo outage would start failing
+// registrations and approvals that already committed.
+//
+// What that must NOT mean is invisible. These failures were reported with a
+// bare console.error, which does not reach the structured log anyone actually
+// reads — so a resend that never left the building looked identical to one
+// that did, and the provider's own explanation (an unauthorised IP, a rejected
+// sender, an exhausted quota) was sitting in a stream nobody was watching.
+//
+// Reported through the logger instead, and the outcome returned, so a caller
+// that wants to say what happened can.
+function reportSendFailure(kind, to, err) {
+  logger.error(`mail: ${kind} failed to send`, { to, reason: err && err.message });
+  return false;
+}
 
 function getAppUrl() {
   return config.appUrl;
@@ -64,8 +82,9 @@ async function sendVerificationEmail(user, code) {
         If you did not create a JPSME account, you can ignore this email.</p>
       `,
     });
+    return true;
   } catch (err) {
-    console.error('Failed to send verification email to', user.email, ':', err.message);
+    return reportSendFailure('verification code', user.email, err);
   }
 }
 
@@ -101,7 +120,7 @@ async function sendMemberApprovedEmail(user) {
       attachments,
     });
   } catch (err) {
-    console.error('Failed to send member-approved email to', user.email, ':', err.message);
+    reportSendFailure('member approved', user.email, err);
   }
 }
 
@@ -131,7 +150,7 @@ async function sendAccountApprovedEmail(user) {
       html: textToHtml(substituteTokens(template.bodyHtml, fields)),
     });
   } catch (err) {
-    console.error('Failed to send account-approved email to', user.email, ':', err.message);
+    reportSendFailure('account approved', user.email, err);
   }
 }
 
@@ -179,7 +198,7 @@ async function sendEventRegistrationEmail(user, event) {
       attachments,
     });
   } catch (err) {
-    console.error('Failed to send event-registration email to', user.email, ':', err.message);
+    reportSendFailure('event registration', user.email, err);
   }
 }
 

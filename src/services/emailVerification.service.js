@@ -52,7 +52,11 @@ async function issueVerificationCode(user) {
     create: { userId: user.id, ...data },
   });
 
-  await sendVerificationEmail(user, code);
+  // Returns whether the email actually went out. The send is best-effort and
+  // swallows its own failure — correct, since the code is already stored and
+  // the person can ask for another — but a caller that reports "a new code was
+  // sent" has to be able to tell, or it says so when nothing left the building.
+  return sendVerificationEmail(user, code);
 }
 
 // One deliberately vague message for every failure below.
@@ -183,8 +187,18 @@ async function resendVerification(email) {
     return;
   }
 
-  await issueVerificationCode(user);
-  logger.info('resend-verification: new code sent', { email: normalized, userId: user.id });
+  const delivered = await issueVerificationCode(user);
+  if (delivered) {
+    logger.info('resend-verification: new code sent', { email: normalized, userId: user.id });
+  } else {
+    // The distinction that matters most, and the one the first version of this
+    // logging got wrong: it said "new code sent" whether or not the provider
+    // took it, because the send reports its own failure and returns quietly.
+    // The provider's own reason is on the line above this one.
+    logger.error('resend-verification: code generated but the email provider did not accept it', {
+      email: normalized, userId: user.id,
+    });
+  }
 }
 
 module.exports = {

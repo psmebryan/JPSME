@@ -16,6 +16,7 @@
 
 const sent = [];
 const logged = [];
+let deliverable = true;
 
 const mailPath = require.resolve('../src/services/mail.service');
 require.cache[mailPath] = {
@@ -23,7 +24,10 @@ require.cache[mailPath] = {
   filename: mailPath,
   loaded: true,
   exports: {
-    sendVerificationEmail: (user, code) => { sent.push({ to: user.email, code }); },
+    // Returns true the way a real successful send does. `deliverable` lets a
+    // test play the provider refusing, which is a different outcome from
+    // "nothing to send" and has to be logged differently.
+    sendVerificationEmail: (user, code) => { sent.push({ to: user.email, code }); return deliverable; },
     sendMemberApprovedEmail: () => {},
     sendAccountApprovedEmail: () => {},
     sendEventRegistrationEmail: () => {},
@@ -40,6 +44,7 @@ require.cache[loggerPath] = {
   exports: Object.assign({}, realLogger, {
     info: (message, meta) => { logged.push({ message, meta }); },
     warn: (message, meta) => { logged.push({ message, meta }); },
+    error: (message, meta) => { logged.push({ message, meta }); },
   }),
 };
 
@@ -54,6 +59,7 @@ async function test(name, fn) {
   try {
     sent.length = 0;
     logged.length = 0;
+    deliverable = true;
     await fn();
     console.log(`PASS: ${name}`);
     passed += 1;
@@ -168,6 +174,32 @@ async function main() {
     await emailVerificationService.resendVerification(`  ${TAG.toUpperCase()}CASE@EXAMPLE.TEST  `);
     assertEqual(sent.length, 1, 'found despite the case and padding');
     assertEqual(sent[0].to, user.email, 'the right account');
+  });
+
+  await test('a provider that refuses is NOT reported as sent', async () => {
+    // The first version of this logging said "new code sent" whether or not the
+    // provider took it, because the send reports its own failure and returns
+    // quietly. That turned a visible outage into a silent one, which is worse
+    // than the silence it was written to fix.
+    const user = await makeUser({ verified: false });
+    deliverable = false;
+    await emailVerificationService.resendVerification(user.email);
+
+    assert(!/new code sent/.test(loggedMessages()), `must not claim success, got: ${loggedMessages()}`);
+    assert(/did not accept it/.test(loggedMessages()), `says the provider refused, got: ${loggedMessages()}`);
+  });
+
+  await test('a refused send still leaves a usable code on file', async () => {
+    // The code is stored before the send, on purpose: the person can ask again
+    // once the provider is working, and an admin can read it to them.
+    const user = await makeUser({ verified: false });
+    deliverable = false;
+    await emailVerificationService.resendVerification(user.email);
+
+    const rows = await prisma.emailVerificationToken.count({ where: { userId: user.id } });
+    assertEqual(rows, 1, 'the code is on file');
+    const ok = await emailVerificationService.verifyEmailCode(user.email, sent[0].code);
+    assert(ok, 'and it still verifies');
   });
 
   await test('nothing throws on a blank or missing address', async () => {
