@@ -20,9 +20,20 @@ const loginLimiter = rateLimit({
 });
 
 // Limits how often verification emails can be (re)requested for a given IP.
+//
+// This is now the main thing standing behind the public resend, since the
+// visible check in front of it is gone — so it is worth being precise about
+// what it has to hold back. The endpoint cannot mail a stranger: it sends only
+// to an address that is already registered and still unverified, and says the
+// same thing either way. What is left is somebody who knows such an address
+// replacing its code repeatedly to keep the owner from using one.
+//
+// 10 rather than 5, for the same reason the baseline went up: the count is per
+// address, and a campus is one address. Five resends per quarter-hour shared
+// across a lab is a limit honest people hit first.
 const resendVerificationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 10,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many requests. Please try again later.' },
@@ -101,13 +112,27 @@ router.post(
   verifyImageSignature,
   authApi.uploadProfileImage
 );
-// Protected because it mails an arbitrary address on demand — the cheapest
-// way to use this site to send someone else mail they did not ask for.
+// No visible check in front of this one any more.
+//
+// The line it used to be defended against — "mails an arbitrary address on
+// demand" — was never quite true, and the difference matters. It mails only an
+// address that already has an account and has not yet confirmed it, and it
+// answers identically whether or not that is the case. So it cannot be pointed
+// at a stranger's inbox, and it cannot be used to find out who has an account.
+//
+// What it could still do is pester one known, unverified registrant by
+// replacing their code. That is what the limiter above is for, and what the
+// honeypot below catches in the ordinary scripted case.
+//
+// Weighed against that: the person meeting this check has already been told
+// their code did not arrive, and is now being asked to read distorted letters
+// before they can be sent another. That is the point in the whole flow where
+// somebody gives up.
 router.post(
   '/resend-verification',
   verifyCsrfToken,
   resendVerificationLimiter,
-  requireHuman(),
+  requireHuman({ challenge: false }),
   resendVerificationValidators,
   authApi.resendVerification
 );

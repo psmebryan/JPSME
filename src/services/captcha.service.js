@@ -97,7 +97,14 @@ async function verifyTurnstileToken(token, remoteIp) {
 
 // Express middleware. Applied per route rather than globally so it is obvious
 // at the route which forms are protected and which are deliberately not.
-function requireHuman() {
+//
+// `challenge: false` keeps the honeypot and drops the visible check. It is for
+// a route where the visible check costs a real person more than it saves —
+// where what an attacker gains by passing it is small, and what an honest
+// visitor loses by failing it is the whole task. The honeypot stays because it
+// costs nobody anything: a field no human sees, which most scripted abuse
+// fills anyway.
+function requireHuman({ challenge = true } = {}) {
   return async (req, res, next) => {
     if (failedHoneypot(req.body)) {
       logger.warn('captcha: honeypot filled', { path: req.path, ip: req.ip });
@@ -109,6 +116,8 @@ function requireHuman() {
         errors: null,
       });
     }
+
+    if (!challenge) return next();
 
     // No Turnstile keys: the built-in challenge is the visible layer instead.
     if (!isTurnstileConfigured()) {

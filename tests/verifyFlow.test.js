@@ -995,32 +995,16 @@ async function main() {
     assert(page.toasts.some((t) => /email address above/i.test(t)), `and says what to do, got: ${page.toasts.join(' | ')}`);
   });
 
-  await test('a resend with an address typed is allowed through', async () => {
+  await test('a resend needs the address and nothing else', async () => {
+    // No captcha in the way. Somebody here has already been told their code did
+    // not arrive; asking them to read distorted letters before they can be sent
+    // another is the point in this flow where people give up.
     const page = runVerifyPage({ cold: true });
     page.typeEmail('ana@example.com');
-    page.typeChallenge('ABCDE');
     const prevented = page.clickResend();
 
     assertEqual(prevented, false, 'nothing in the way');
     assertEqual(page.carried.value, 'ana@example.com', 'and the address goes with it');
-  });
-
-  await test('the captcha answer is carried too, not typed twice', async () => {
-    const page = runVerifyPage({ cold: true });
-    page.typeEmail('ana@example.com');
-    page.typeChallenge('ABCDE');
-
-    assertEqual(page.carriedChallenge.value, 'ABCDE', 'carried into the resend');
-    assertEqual(page.carriedChallenge.defaultValue, 'ABCDE', 'and survives the reset');
-  });
-
-  await test('a resend with the captcha blank is stopped, and says which box', async () => {
-    const page = runVerifyPage({ cold: true });
-    page.typeEmail('ana@example.com');
-    const prevented = page.clickResend();
-
-    assertEqual(prevented, true, 'stopped');
-    assert(page.toasts.some((t) => /characters shown/i.test(t)), `names the box, got: ${page.toasts.join(' | ')}`);
   });
 
   await test('the cold resend waits a minute too, and counts it down', async () => {
@@ -1154,14 +1138,36 @@ async function main() {
     }
   });
 
-  await test('the cold resend carries the answer rather than asking twice', async () => {
+  await test('the resend form asks for no characters, but keeps the hidden check', async () => {
     const html = renderView('verify-email.ejs', Object.assign({}, base, {
       email: '', pendingEmail: '', resendWaitMs: 0, paymentRequired: false,
     }));
     const markup = html.slice(0, html.lastIndexOf('<script nonce'));
+    const resend = markup.slice(markup.indexOf('id="resend-verification-form"'));
 
-    assert(/id="carried-challenge"[^>]*>/.test(markup), 'a hidden field for the answer');
-    assert(/id="carried-token"[^>]*>/.test(markup), 'and one for a Turnstile token');
+    assert(!resend.includes('challenge-answer'), 'nothing to read and retype');
+    assert(resend.includes('name="website"'), 'but the honeypot is still there, because it costs nobody anything');
+    assert(!markup.includes('carried-challenge'), 'and no answer to carry across any more');
+  });
+
+  await test('the resend route runs the quiet check, not the visible one', async () => {
+    const routes = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'api', 'auth.routes.js'), 'utf8');
+    const block = routes.slice(routes.indexOf("'/resend-verification'"));
+    const end = block.indexOf('authApi.resendVerification');
+    assert(end > -1, 'found the route');
+    const middleware = block.slice(0, end);
+    assert(/requireHuman\(\{\s*challenge:\s*false\s*\}\)/.test(middleware),
+      'the honeypot without the challenge');
+  });
+
+  await test('the verify route still runs the visible one', async () => {
+    // The two must not drift together. Dropping the check in front of the code
+    // would be a different decision from dropping it in front of the resend,
+    // and it is the one that actually guards a million guesses.
+    const routes = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'api', 'auth.routes.js'), 'utf8');
+    const block = routes.slice(routes.indexOf("'/verify-code'"));
+    const middleware = block.slice(0, block.indexOf('authApi.verifyEmailCode'));
+    assert(/requireHuman\(\)/.test(middleware), 'the full check, challenge included');
   });
 
   await test('the verify route actually runs the human check', async () => {

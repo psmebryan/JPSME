@@ -207,13 +207,12 @@
           </p>
 
           <form id="resend-verification-form" class="mt-3">
-            <%# All three filled from the fields above rather than typed twice.
-                The page holds one challenge, so the answer typed to verify is
-                the same answer this needs; whichever action goes first spends
-                it, and captcha.js issues a fresh one. %>
+            <%# The address, taken from the field above rather than typed twice.
+                No challenge answer: this resend no longer asks for one. See the
+                route in auth.routes.js for why — it can only ever mail somebody
+                who is already waiting on a code. %>
             <input type="hidden" name="email" id="carried-email" value="<%= locals.email || '' %>">
-            <input type="hidden" name="challengeAnswer" id="carried-challenge" value="">
-            <input type="hidden" name="captchaToken" id="carried-token" value="">
+            <%- include('partials/human-check', { challenge: false }) %>
             <button type="submit" id="cold-resend-button"
                     class="w-full rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed">
               Resend
@@ -522,30 +521,17 @@
     const carried = document.getElementById('carried-email');
 
     if (coldResend && carried && emailInput) {
-      const carriedChallenge = document.getElementById('carried-challenge');
-      const carriedToken = document.getElementById('carried-token');
-
-      // Copies a live field's value into the hidden one the resend submits.
+      // Copies the typed address into the hidden field the resend submits.
       // Both value and defaultValue: auth.js calls form.reset() after a
       // successful send and reset restores defaultValue, so setting only the
-      // value would empty everything after the first resend and fail the
-      // second with nothing on screen to explain it.
-      const copy = (from, into) => {
-        if (!into) return;
-        const value = from ? String(from.value || '').trim() : '';
-        into.value = value;
-        into.defaultValue = value;
-      };
-
+      // value would empty it after the first resend and fail the second with
+      // nothing on screen to explain it.
       const carry = () => {
-        copy(emailInput, carried);
-        copy(document.querySelector('[name="challengeAnswer"]'), carriedChallenge);
-        copy(document.querySelector('[name="captchaToken"]'), carriedToken);
+        const value = String(emailInput.value || '').trim();
+        carried.value = value;
+        carried.defaultValue = value;
       };
       emailInput.addEventListener('input', carry);
-      document.addEventListener('input', (e) => {
-        if (e.target && e.target.name === 'challengeAnswer') carry();
-      });
       carry();
 
       const coldButton = document.getElementById('cold-resend-button');
@@ -566,11 +552,6 @@
           };
 
           if (!carried.value) return stop('Enter your email address above first.', emailInput);
-
-          const challenge = document.querySelector('[name="challengeAnswer"]');
-          if (challenge && !challenge.value.trim()) {
-            return stop('Type the characters shown first.', challenge);
-          }
 
           // The same minute the signed-in resend waits. Enforced here because
           // this endpoint answers everybody identically to avoid confirming an

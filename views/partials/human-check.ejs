@@ -33,7 +33,16 @@
   </label>
 </div>
 
-<% if (locals.turnstileSiteKey) { %>
+<%
+  /*
+    `challenge: false` renders the honeypot and nothing else, for a form whose
+    route runs requireHuman({ challenge: false }). The two have to agree: a
+    visible box with no server check is theatre, and a server check with no box
+    is a form nobody can submit.
+  */
+%>
+<% if (locals.challenge === false) { %>
+<% } else if (locals.turnstileSiteKey) { %>
   <div class="cf-turnstile my-3"
        data-sitekey="<%= turnstileSiteKey %>"
        data-response-field-name="captchaToken"
