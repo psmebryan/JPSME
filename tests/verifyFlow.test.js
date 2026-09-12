@@ -201,11 +201,13 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 function runVerifyPage({
   pendingEmail = 'ana@example.com', resendWaitMs = 0, reply = null,
-  expiresInMs = null, codeLifetimeMs = 3 * 60 * 1000,
+  expiresInMs = null, codeLifetimeMs = 3 * 60 * 1000, cold = false,
 } = {}) {
   const html = renderView('verify-email.ejs', {
     cspNonce: 'n', currentUser: null, logoUrl: '/img/default-logo.svg',
-    email: pendingEmail, pendingEmail, resendWaitMs, paymentRequired: false,
+    email: cold ? '' : pendingEmail,
+    pendingEmail: cold ? '' : pendingEmail,
+    resendWaitMs, paymentRequired: false,
     expiresInMs, codeLifetimeMs,
   });
 
@@ -217,7 +219,11 @@ function runVerifyPage({
   for (let i = 0; i < 6; i += 1) boxes.push(makeEl({}));
 
   const hidden = makeEl({ type: 'hidden' });
-  const emailInput = makeEl({ type: 'hidden', value: pendingEmail });
+  // A cold page renders a real, empty field; a known one renders a hidden
+  // input the server already filled.
+  const emailInput = cold
+    ? makeEl({ type: 'email', value: '' })
+    : makeEl({ type: 'hidden', value: pendingEmail });
   const submits = [];
   const form = makeEl({
     requestSubmit() { form.fire('submit', { preventDefault() {} }); },
@@ -228,6 +234,11 @@ function runVerifyPage({
   const successPanel = makeEl({});
   const ring = makeEl({});
   const submitButton = makeEl({ textContent: 'Verify my email' });
+  // Only on the cold page: the hidden field the typed address is carried into,
+  // and the form that sends it.
+  const carried = cold ? makeEl({ type: 'hidden', value: '', defaultValue: '' }) : null;
+  const coldButton = cold ? makeEl({ textContent: 'Send a new code to this address' }) : null;
+  const coldResend = cold ? makeEl({ querySelector: () => coldButton }) : null;
   const note = makeEl({ textContent: '' });
   const resendPrompt = makeEl({ textContent: '' });
   // Rendered only when the server knows how long is left, so the stub mirrors
@@ -249,6 +260,8 @@ function runVerifyPage({
     'expiry-note': note,
     'resend-prompt': resendPrompt,
     'verify-submit': submitButton,
+    'resend-verification-form': coldResend,
+    'carried-email': carried,
   };
 
   const toasts = [];
@@ -320,10 +333,26 @@ function runVerifyPage({
     return 1 - (offset / CIRCUMFERENCE);
   }
 
+  // Typing into the address field, which is what carries it across.
+  function typeEmail(value) {
+    emailInput.value = value;
+    emailInput.fire('input');
+  }
+
+  function clickResend() {
+    let prevented = false;
+    coldButton.fire('click', {
+      preventDefault() { prevented = true; },
+      stopPropagation() {},
+    });
+    return prevented;
+  }
+
   return {
     boxes, hidden, form, resendButton, resendForm, panel, successPanel, ring, label, note,
-    resendPrompt, submitButton, toasts, nav, submits, requests, type, paste, key,
-    advance, ringFraction,
+    resendPrompt, submitButton, emailInput, carried, coldButton, coldResend,
+    toasts, nav, submits, requests, type, paste, key,
+    advance, ringFraction, typeEmail, clickResend,
   };
 }
 
@@ -945,6 +974,49 @@ async function main() {
     assertEqual(page.submitButton.disabled, false, 'and nothing disabled by a clock that never started');
   });
 
+  // --- typing the address once ----------------------------------------------
+
+  await test('the address typed for the code is the one the resend uses', async () => {
+    const page = runVerifyPage({ cold: true });
+    page.typeEmail('  ana@example.com  ');
+
+    assertEqual(page.carried.value, 'ana@example.com', 'carried across, trimmed');
+  });
+
+  await test('the carried address survives the form being reset', async () => {
+    // auth.js calls form.reset() after a successful send, and reset restores
+    // defaultValue — not the value. Without setting both, the address would
+    // silently empty itself after the first resend and the second would fail
+    // validation with nothing on screen to explain why.
+    const page = runVerifyPage({ cold: true });
+    page.typeEmail('ana@example.com');
+
+    assertEqual(page.carried.defaultValue, 'ana@example.com', 'a reset restores the address');
+  });
+
+  await test('a resend with nothing typed is stopped before it is sent', async () => {
+    const page = runVerifyPage({ cold: true });
+    const prevented = page.clickResend();
+
+    assertEqual(prevented, true, 'the submit never happens');
+    assert(page.toasts.some((t) => /email address above/i.test(t)), `and says what to do, got: ${page.toasts.join(' | ')}`);
+  });
+
+  await test('a resend with an address typed is allowed through', async () => {
+    const page = runVerifyPage({ cold: true });
+    page.typeEmail('ana@example.com');
+    const prevented = page.clickResend();
+
+    assertEqual(prevented, false, 'nothing in the way');
+    assertEqual(page.carried.value, 'ana@example.com', 'and the address goes with it');
+  });
+
+  await test('a known page carries nothing, because nothing is typed', async () => {
+    const page = runVerifyPage({ expiresInMs: 180000 });
+    assertEqual(page.carried, null, 'no carried field');
+    assertEqual(page.coldResend, null, 'and no public resend');
+  });
+
   // --- the pages ------------------------------------------------------------
 
   const base = { cspNonce: 'n', currentUser: null, logoUrl: '/img/default-logo.svg' };
@@ -966,7 +1038,11 @@ async function main() {
     assert(/type="hidden" name="email"/.test(html), 'the address is not a field they can get wrong');
     assert(html.includes('>ana@example.com<'), 'it is shown, so they know where to look');
     assert(!html.includes('challenge-answer'), 'no captcha between them and a second code');
-    assert(!html.includes('resend-verification-form'), 'and no address to retype');
+    // Matched on the id attribute, not the bare name: the shared inline script
+    // mentions both ids, and a test that cannot tell markup from the script
+    // that looks for it is a test that passes when the form is still there.
+    assert(!/id="resend-verification-form"/.test(html), 'and no public resend form');
+    assert(!/id="carried-email"/.test(html), 'and no address to carry, because none is typed');
     assert(html.includes('data-wait-ms="42000"'), 'the wait already spent is carried over');
   });
 
@@ -979,9 +1055,37 @@ async function main() {
 
     assertEqual((html.match(/class="code-digit/g) || []).length, 6, 'same six boxes');
     assert(/id="verify-email-input" name="email" type="email"/.test(html), 'an address field');
-    assert(html.includes('resend-verification-form'), 'the public resend');
+    assert(/id="resend-verification-form"/.test(html), 'the public resend');
     assert(html.includes('challenge-answer'), 'still behind a captcha');
     assert(!/id="pending-resend-button"/.test(html), 'and no session resend it could not use');
+  });
+
+  await test('a cold visitor types their address once, not twice', async () => {
+    // The resend used to be a second card with a second email input, directly
+    // below the field that already had the address in it. Two fields, one
+    // answer, and the second under a heading that read like a different task.
+    const html = renderView('verify-email.ejs', Object.assign({}, base, {
+      email: '', pendingEmail: '', resendWaitMs: 0, paymentRequired: false,
+    }));
+
+    assertEqual((html.match(/type="email"/g) || []).length, 1, 'exactly one field to type into');
+    assert(/id="carried-email"[^>]*type="hidden"|type="hidden"[^>]*id="carried-email"/.test(html)
+      || /<input type="hidden" name="email" id="carried-email"/.test(html), 'the resend carries it instead');
+    assert(!html.includes('Need a new code?'), 'and the second card is gone');
+  });
+
+  await test('the cold page offers the road with no captcha on it first', async () => {
+    // Signing in sends a code by itself. Somebody who knows their password
+    // should not be reading wobbly letters to get where they are allowed.
+    const html = renderView('verify-email.ejs', Object.assign({}, base, {
+      email: '', pendingEmail: '', resendWaitMs: 0, paymentRequired: false,
+    }));
+
+    const prompt = html.indexOf("Didn't get the code?");
+    const signIn = html.indexOf('sends one automatically');
+    const captcha = html.indexOf('challenge-answer');
+    assert(prompt > -1 && signIn > prompt, 'the easier way is offered under the prompt');
+    assert(signIn < captcha, 'and before the captcha, not after it');
   });
 
   await test('only the first box asks the phone for the code', async () => {

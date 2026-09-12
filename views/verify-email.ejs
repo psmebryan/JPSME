@@ -10,9 +10,12 @@
   retyped address and an image captcha.
 
   The other is somebody arriving cold — a bookmark, an old link, a browser that
-  dropped the session. Nothing is known about them, so they still get the
-  address field and the public resend with its captcha. Unchanged, because for
-  a request that will mail an address the sender chose, that check is the point.
+  dropped the session. Nothing is known about them, so they still get an address
+  field and a captcha: this is a request that will mail whatever address it is
+  handed, which is exactly what the check is for. But they type that address
+  once. It used to be twice, in two fields in two cards, because entering a code
+  and asking for one were built as separate tasks — and anybody without a code
+  had to do both.
 */
 %>
 <% const known = Boolean(locals.pendingEmail); %>
@@ -156,6 +159,45 @@
             <a href="/login" class="text-gray-700 hover:underline">Sign in as someone else</a>
           </p>
         </div>
+      <% } else { %>
+        <%
+          /*
+            The cold resend, in the same card and sharing the field above it.
+
+            It used to be a second card with a second email input, so somebody
+            who had just typed their address to enter a code had to type the
+            same address again to be sent one — two fields, one answer, and the
+            second one sitting under a heading that read like a different task.
+
+            The address is carried across in a hidden field kept in step with
+            the one above (see the script). The captcha stays, and only here:
+            this endpoint mails whatever address is handed to it, which is the
+            one thing on the page an attacker would actually want. The signed-in
+            resend has no such field and needs no such check.
+          */
+        %>
+        <div class="mt-6 pt-5 border-t border-gray-200">
+          <p class="text-sm text-gray-600">Didn't get the code?</p>
+
+          <%# Offered first, because it is genuinely the shorter road: signing
+              in sends a code by itself, with no captcha and nothing to fill
+              in. Somebody who knows their password should not be reading an
+              image of wobbly letters to get where they are already allowed. %>
+          <p class="mt-1 text-xs text-gray-500">
+            If you know your password, <a href="/login" class="text-indigo-600 hover:underline">signing in</a>
+            sends one automatically &mdash; nothing to fill in. Otherwise:
+          </p>
+
+          <form id="resend-verification-form" class="mt-3">
+            <%# Filled from the field above rather than typed again. %>
+            <input type="hidden" name="email" id="carried-email" value="<%= locals.email || '' %>">
+            <%- include('partials/human-check') %>
+            <button type="submit"
+                    class="w-full rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+              Send a new code to this address
+            </button>
+          </form>
+        </div>
       <% } %>
     </div>
 
@@ -180,24 +222,6 @@
     </div>
   </div>
 
-  <% if (!known) { %>
-    <div class="mt-4 bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-      <h2 class="text-sm font-semibold text-gray-900">Need a new code?</h2>
-      <p class="text-xs text-gray-500 mt-1 mb-3">
-        Requesting one replaces the old code. If you know your password, signing in at
-        <a href="/login" class="text-indigo-600 hover:underline">the login page</a> sends one automatically &mdash; no form to fill in.
-      </p>
-      <form id="resend-verification-form" class="flex flex-wrap gap-2">
-        <input name="email" type="email" required placeholder="you@example.com"
-               value="<%= locals.email || '' %>"
-               class="flex-1 min-w-[200px] rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500">
-        <%- include('partials/human-check') %>
-        <button type="submit" class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50 text-sm font-medium">
-          Send a new code
-        </button>
-      </form>
-    </div>
-  <% } %>
 </div>
 
 <script src="/js/auth.js"></script>
@@ -425,6 +449,44 @@
         }
       });
     });
+
+    // --- the cold resend shares the field above it --------------------------
+    //
+    // public/js/auth.js owns the submit itself; all this does is make sure the
+    // address is in the form by the time it reads it, so nobody types it twice.
+    const coldResend = document.getElementById('resend-verification-form');
+    const carried = document.getElementById('carried-email');
+
+    if (coldResend && carried && emailInput) {
+      const carry = () => {
+        const value = emailInput.value.trim();
+        carried.value = value;
+        // defaultValue as well as value: auth.js calls form.reset() after a
+        // successful send, and reset restores defaultValue — without this the
+        // address would silently empty itself after the first resend, and the
+        // second would fail validation for no visible reason.
+        carried.defaultValue = value;
+      };
+      emailInput.addEventListener('input', carry);
+      carry();
+
+      const coldButton = coldResend.querySelector('[type="submit"]');
+      if (coldButton) {
+        // On the button's click rather than the form's submit: auth.js
+        // registered its submit handler first and would otherwise send an
+        // empty address before this ran. Cancelling the click cancels the
+        // submit that would have followed it.
+        coldButton.addEventListener('click', (e) => {
+          carry();
+          if (!carried.value) {
+            e.preventDefault();
+            e.stopPropagation();
+            showToast('Enter your email address above first.', 'error');
+            emailInput.focus();
+          }
+        });
+      }
+    }
 
     // --- resend, with the wait shown rather than enforced silently ----------
     const resendForm = document.getElementById('pending-resend-form');
