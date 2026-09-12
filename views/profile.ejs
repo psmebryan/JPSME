@@ -41,7 +41,14 @@
   <div class="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)] items-start">
 
     <!-- ============ identity card ============ -->
-    <aside class="lg:sticky lg:top-6 rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+    <%# top-[104px], not top-6: the navbar is `sticky top-0 z-40` and at least
+        88px tall, so anything sticking nearer the top slides under it — which
+        is exactly what the avatar was doing. 88 for the bar, 16 for a gap.
+
+        max-h + overflow guard the other end: on a short laptop screen a card
+        taller than the space left below the navbar would have its lower rows,
+        Log out included, permanently off screen with no way to reach them. %>
+    <aside class="lg:sticky lg:top-[104px] lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
       <%# The blueprint tile behind the header, the same one the home page hero
           uses — so a member's own page is recognisably part of the same site
           rather than a plain white form. %>
@@ -75,7 +82,7 @@
           does not land underneath the sticky navbar.
         */
       %>
-      <nav class="border-t border-gray-100 px-3 py-2">
+      <nav id="profile-nav" class="border-t border-gray-100 px-3 py-2">
         <a href="#section-membership" class="group flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-indigo-50">
           <svg class="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
             <rect x="2.5" y="5" width="19" height="14" rx="2.5"></rect><path d="M2.5 10h19M6 14.5h4"></path>
@@ -126,7 +133,7 @@
     <div class="space-y-6">
 
       <!-- ---- membership ---- -->
-      <section id="section-membership" class="scroll-mt-24 rounded-2xl border <%= ms.state === 'EXPIRED' ? 'border-amber-300' : 'border-gray-200' %> bg-white shadow-sm">
+      <section id="section-membership" class="scroll-mt-28 rounded-2xl border <%= ms.state === 'EXPIRED' ? 'border-amber-300' : 'border-gray-200' %> bg-white shadow-sm">
         <div class="flex items-center justify-between border-b border-gray-100 px-6 py-4">
           <h2 class="font-semibold text-gray-900">Membership</h2>
           <span class="rounded-full px-3 py-1 text-xs font-semibold <%= membershipPill.cls %>"><%= membershipPill.text %></span>
@@ -142,16 +149,15 @@
                 </p>
               <% } else if (ms.state === 'EXPIRED') { %>
                 <p class="text-sm font-medium text-gray-900">Expired on <%= msExpiry %></p>
-                <p class="mt-0.5 text-xs text-gray-500">
-                  Renew to start another year, and to download your Certificate of Membership again.
-                  Your account and details stay as they are either way.
-                </p>
+                <p class="mt-0.5 text-xs text-gray-500">Renew for another year to get your certificate back.</p>
               <% } else { %>
+                <%# One line, not four. The long version explained that paying
+                    is optional, that events and invitations work without it,
+                    and what membership adds — all true, all already obvious
+                    from a card that is not nagging and a button that says Pay.
+                    The pill above it already says "Not a member". %>
                 <p class="text-sm font-medium text-gray-900">No paid membership</p>
-                <p class="mt-0.5 text-xs text-gray-500">
-                  Paying is optional &mdash; you can use your account, register for events and receive
-                  invitations without it. Membership adds your Certificate of Membership.
-                </p>
+                <p class="mt-0.5 text-xs text-gray-500">Optional &mdash; it adds your Certificate of Membership.</p>
               <% } %>
             </div>
 
@@ -173,67 +179,96 @@
               twice. The route refuses it either way, so this is about not
               dangling a button that cannot work. %>
           <% if (ms.state === 'ACTIVE') { %>
-            <a href="/api/certificates/membership/download" target="_blank"
-               class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-indigo-950 px-5 py-3 font-semibold text-white hover:bg-indigo-900 sm:w-auto">
-              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14"></path>
-              </svg>
-              Download Certificate of Membership
-            </a>
+            <%# Shaped like a file with a button next to it, rather than a wide
+                coloured bar. A bar that width reads as a banner — decoration
+                to scroll past — and this is the document the membership exists
+                to produce. The icon says "document", the caption says what
+                comes out and where, and the button says the verb. %>
+            <div class="mt-5 flex flex-wrap items-center gap-4 rounded-xl border border-indigo-200 bg-indigo-50 p-4">
+              <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-indigo-950 text-white">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M14 3v5h5M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5z"></path>
+                </svg>
+              </span>
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-semibold text-indigo-950">Certificate of Membership</p>
+                <p class="text-xs text-gray-500">PDF &middot; opens in a new tab</p>
+              </div>
+              <a href="/api/certificates/membership/download" target="_blank" rel="noopener"
+                 class="inline-flex shrink-0 items-center gap-2 rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14"></path>
+                </svg>
+                Download
+              </a>
+            </div>
           <% } %>
         </div>
       </section>
 
       <!-- ---- details at a glance ---- -->
-      <section id="section-details" class="scroll-mt-24 rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <section id="section-details" class="scroll-mt-28 rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div class="border-b border-gray-100 px-6 py-4">
           <h2 class="font-semibold text-gray-900">My details</h2>
         </div>
 
+        <%
+          /*
+            Only the rows that say something.
+
+            A card reading "Phone — Not provided" is a row of furniture: it
+            costs a line, tells you nothing you did not know, and makes the
+            three rows that do carry information harder to pick out. What is
+            missing is worth one quiet line at the bottom, pointing at the form
+            that fixes it, rather than a card each.
+
+            Student Unit and Account Status are always shown even when empty —
+            an unassigned unit is a real gap somebody should act on, not an
+            absence to tidy away, and the status is the answer to the question
+            this page most often gets opened for.
+          */
+          const yearLabels = { FIRST: '1st Year', SECOND: '2nd Year', THIRD: '3rd Year', FOURTH: '4th Year' };
+          const details = [
+            {
+              label: 'Student Unit',
+              value: (profileData.organization && profileData.organization.name) || 'Not assigned yet',
+              hint: locals.organizationPath || null,
+              always: true,
+            },
+            { label: 'Account Status', value: profileData.status || 'PENDING', always: true },
+            { label: 'Phone', value: profileData.phone || null },
+            { label: 'Year Level', value: yearLabels[profileData.yearLevel] || null },
+          ];
+          const shown = details.filter((d) => d.always || d.value);
+          const missing = details.filter((d) => !d.always && !d.value).map((d) => d.label);
+        %>
         <div class="grid gap-px bg-gray-100 sm:grid-cols-2">
           <!-- The separate School card that used to sit here said the same
-               thing as this one: a member's student unit IS their school. It
-               was a free-text field nobody could keep consistent, sitting next
-               to the organization it duplicated. The full path is shown
-               underneath now, which is what the old card was really read for. -->
-          <div class="bg-white p-5">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Student Unit</p>
-            <p class="mt-2 text-sm font-medium text-gray-900">
-              <% if (profileData.organization && profileData.organization.name) { %>
-                <%= profileData.organization.name %>
-              <% } else { %>
-                Not assigned yet
+               thing as the Student Unit one: a member's student unit IS their
+               school. It was a free-text field nobody could keep consistent,
+               sitting next to the organization it duplicated. The full path is
+               shown underneath now, which is what it was really read for. -->
+          <% shown.forEach((d) => { %>
+            <div class="bg-white p-5">
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-500"><%= d.label %></p>
+              <p class="mt-2 text-sm font-medium text-gray-900"><%= d.value %></p>
+              <% if (d.hint) { %>
+                <p class="mt-1 text-xs text-gray-500"><%= d.hint %></p>
               <% } %>
-            </p>
-            <% if (locals.organizationPath) { %>
-              <p class="mt-1 text-xs text-gray-500"><%= organizationPath %></p>
-            <% } %>
-          </div>
-
-          <div class="bg-white p-5">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Phone</p>
-            <p class="mt-2 text-sm font-medium text-gray-900"><%= profileData.phone || 'Not provided' %></p>
-          </div>
-
-          <div class="bg-white p-5">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Account Status</p>
-            <p class="mt-2 text-sm font-medium text-gray-900"><%= profileData.status || 'PENDING' %></p>
-          </div>
-
-          <div class="bg-white p-5">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Year Level</p>
-            <p class="mt-2 text-sm font-medium text-gray-900">
-              <%
-                const yearLabels = { FIRST: '1st Year', SECOND: '2nd Year', THIRD: '3rd Year', FOURTH: '4th Year' };
-              %>
-              <%= yearLabels[profileData.yearLevel] || 'Not applicable' %>
-            </p>
-          </div>
+            </div>
+          <% }) %>
         </div>
+
+        <% if (missing.length) { %>
+          <p class="border-t border-gray-100 px-6 py-3 text-xs text-gray-500">
+            Not added yet: <%= missing.join(', ') %>.
+            <a href="#section-settings" class="text-indigo-600 hover:underline">Add in Settings</a>
+          </p>
+        <% } %>
       </section>
 
       <!-- ---- events ---- -->
-      <section id="section-events" class="scroll-mt-24 rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <section id="section-events" class="scroll-mt-28 rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div class="flex items-center justify-between border-b border-gray-100 px-6 py-4">
           <h2 class="font-semibold text-gray-900">My event registrations</h2>
           <a href="/events" class="text-sm text-indigo-600 hover:underline">Browse events</a>
@@ -276,7 +311,13 @@
 
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
                   <% if (locals.certifiedEventIds && certifiedEventIds.includes(reg.eventId)) { %>
-                    <a href="/api/certificates/events/<%= reg.eventId %>/download" target="_blank" class="text-sm text-indigo-600 hover:underline px-2 py-2 -mx-2">Download certificate</a>
+                    <a href="/api/certificates/events/<%= reg.eventId %>/download" target="_blank" rel="noopener"
+                       class="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">
+                      <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14"></path>
+                      </svg>
+                      Certificate
+                    </a>
                   <% } %>
                   <% if (reg.status === 'PENDING_PAYMENT') { %>
                     <button data-pay-event="<%= reg.eventId %>" class="text-sm text-amber-600 hover:underline font-medium px-2 py-2 -mx-2">Pay Now</button>
@@ -298,7 +339,7 @@
       </section>
 
       <!-- ---- settings / edit ---- -->
-      <section id="section-settings" class="scroll-mt-24 rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <section id="section-settings" class="scroll-mt-28 rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div class="border-b border-gray-100 px-6 py-4">
           <h2 class="font-semibold text-gray-900">Settings</h2>
           <p class="mt-0.5 text-xs text-gray-500">Update your details and your profile picture.</p>
@@ -410,6 +451,57 @@
 <script src="/js/events.js"></script>
 <script nonce="<%= cspNonce %>">
   document.addEventListener('DOMContentLoaded', () => {
+    // --- the jump list ------------------------------------------------------
+    //
+    // Everything on this page is already rendered, so a row is only ever a
+    // scroll. A bare anchor teleports, which on a long page is disorienting —
+    // you arrive somewhere with no sense of having moved, and on a page whose
+    // left column does not move it is genuinely hard to tell anything
+    // happened. Scrolling there keeps the connection between the row pressed
+    // and the section that arrives.
+    const nav = document.getElementById('profile-nav');
+    const sections = Array.prototype.slice.call(document.querySelectorAll('section[id^="section-"]'));
+    const links = nav ? Array.prototype.slice.call(nav.querySelectorAll('a[href^="#section-"]')) : [];
+
+    if (links.length) {
+      // Honoured rather than assumed: somebody who has asked their system for
+      // less motion has usually asked for a reason.
+      const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      document.addEventListener('click', (e) => {
+        const link = e.target.closest ? e.target.closest('a[href^="#section-"]') : null;
+        if (!link) return;
+        const target = document.getElementById(link.getAttribute('href').slice(1));
+        if (!target) return;
+
+        e.preventDefault();
+        target.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
+        // Pushed rather than left as-is, so the address bar matches where the
+        // page now is and Back returns to where they were reading.
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState(null, '', link.getAttribute('href'));
+        }
+      });
+
+      // Marks the row for whatever is on screen. Without it the list is four
+      // identical rows whichever section you are looking at.
+      if (window.IntersectionObserver && sections.length) {
+        const ACTIVE = ['bg-indigo-50', 'font-semibold'];
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            const link = links.find((l) => l.getAttribute('href') === `#${entry.target.id}`);
+            if (!link) return;
+            ACTIVE.forEach((cls) => link.classList.toggle(cls, entry.isIntersecting));
+          });
+        }, {
+          // The band the sticky navbar is not covering. Without the top inset
+          // a section counts as visible while it is hidden behind the bar.
+          rootMargin: '-120px 0px -55% 0px',
+        });
+        sections.forEach((section) => observer.observe(section));
+      }
+    }
+
     const profileForm = document.getElementById('profile-form');
     if (profileForm) {
       profileForm.addEventListener('submit', async (event) => {
