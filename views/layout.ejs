@@ -103,6 +103,23 @@
     .public-main input, .public-main select, .public-main textarea { background:#060b1d !important; border-color:#263b70 !important; color:#fff !important; }
     .public-main input::placeholder, .public-main textarea::placeholder { color:#71809d !important; }
 
+    /* Hover surfaces.
+       These escape every rule above: Tailwind emits `hover:bg-gray-50` as
+       `.hover\:bg-gray-50:hover`, and a `.bg-gray-50` selector never matches
+       that class name. So each one kept its real light value and flashed a
+       near-white panel on a dark card the moment a pointer crossed it — on
+       nine public views, including this page's own nav rows and every
+       pagination control.
+
+       One step lighter than the card rather than one step darker: a surface
+       that recedes under the pointer reads as disabled. */
+    .public-main .hover\:bg-white:hover,
+    .public-main .hover\:bg-gray-50:hover, .public-main .hover\:bg-slate-50:hover,
+    .public-main .hover\:bg-gray-100:hover, .public-main .hover\:bg-slate-100:hover,
+    .public-main .hover\:bg-indigo-50:hover, .public-main .hover\:bg-indigo-100:hover,
+    .public-main .hover\:bg-amber-50:hover, .public-main .hover\:bg-green-50:hover,
+    .public-main .hover\:bg-red-50:hover { background-color:#1a2750 !important; }
+
     /* Shadows read as smudges on a dark ground */
     .public-main .shadow-sm, .public-main .shadow-lg, .public-main .shadow-md { box-shadow:none !important; }
   </style>

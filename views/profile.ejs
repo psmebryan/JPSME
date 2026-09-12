@@ -56,7 +56,15 @@
         <div class="absolute inset-0 bg-gradient-to-b from-indigo-950/40 to-indigo-950/80"></div>
       </div>
 
-      <div class="px-6 pb-6 -mt-14 text-center">
+      <%# relative z-10, or the header above eats the top of this.
+
+          The header is positioned (it needs `relative` for its gradient
+          overlay), and a positioned element paints after every non-positioned
+          one in the same stacking context no matter what order they appear in
+          the markup. The avatar sits later in the document and still lost.
+          Positioning this block too puts them in the same painting step, where
+          document order decides and the avatar wins. %>
+      <div class="relative z-10 px-6 pb-6 -mt-14 text-center">
         <img
           id="profile-image-preview"
           src="<%= profileData.profileImage || '/img/default-avatar.svg' %>"
@@ -487,11 +495,24 @@
       // identical rows whichever section you are looking at.
       if (window.IntersectionObserver && sections.length) {
         const ACTIVE = ['bg-indigo-50', 'font-semibold'];
+        // Which sections are currently in the band, as a set rather than a
+        // per-entry toggle: more than one is on screen most of the time, and
+        // toggling each in turn lit two and three rows at once — which says
+        // less than lighting none.
+        const visible = new Set();
+
         const observer = new IntersectionObserver((entries) => {
           entries.forEach((entry) => {
-            const link = links.find((l) => l.getAttribute('href') === `#${entry.target.id}`);
-            if (!link) return;
-            ACTIVE.forEach((cls) => link.classList.toggle(cls, entry.isIntersecting));
+            if (entry.isIntersecting) visible.add(entry.target.id);
+            else visible.delete(entry.target.id);
+          });
+
+          // The highest one still in view, in document order — the section you
+          // have most recently scrolled to the top of.
+          const current = sections.map((s) => s.id).find((id) => visible.has(id));
+          links.forEach((link) => {
+            const on = link.getAttribute('href') === `#${current}`;
+            ACTIVE.forEach((cls) => link.classList.toggle(cls, on));
           });
         }, {
           // The band the sticky navbar is not covering. Without the top inset
