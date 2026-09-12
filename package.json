@@ -43,7 +43,8 @@
     "test:site-images": "node tests/siteImages.test.js",
     "test:upload-errors": "node tests/uploadErrors.test.js",
     "test:verify-flow": "node tests/verifyFlow.test.js",
-    "test:storage-chunks": "node tests/storageChunks.test.js"
+    "test:storage-chunks": "node tests/storageChunks.test.js",
+    "test:captcha-load": "node tests/captchaLoad.test.js"
   },
   "license": "UNLICENSED",
   "dependencies": {

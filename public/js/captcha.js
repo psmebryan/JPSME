@@ -28,23 +28,65 @@ document.addEventListener('DOMContentLoaded', () => {
         // be an image whose answer the server has already thrown away.
         cache: 'no-store',
       });
-      const payload = await res.json();
+      const payload = await res.json().catch(() => null);
+
+      // A refused request used to fall straight through the `if (!svg) return`
+      // below, which left the box reading "Loading…" for ever: the form could
+      // not be submitted and nothing on the page said why, because this only
+      // ever caught a network failure and an HTTP error is not one.
+      //
+      // The 429 is the one that actually happens. The whole API shares an abuse
+      // budget per address, and a registration page spends several requests a
+      // visit — the challenge, the organization list, one per search — so a
+      // busy signup session, or a lab of students behind one address, can run
+      // it out. Worth naming, because "wait a minute" is a thing somebody can
+      // act on and a blank grey box is not.
+      if (!res.ok) {
+        return fail(res.status === 429
+          ? 'Too many attempts from this network. Wait a minute, then press New image.'
+          : `Could not load (error ${res.status}). Press New image to try again.`);
+      }
+
       const svg = payload && payload.data && payload.data.svg;
-      if (!svg) return;
+      if (!svg) {
+        // Null means the server believes Turnstile is handling this, while the
+        // page has drawn the built-in box — the two disagree about which check
+        // is running, which is a deployment with half its keys set.
+        return fail('The security check is misconfigured. Please tell an administrator.');
+      }
 
       slots.forEach((slot) => {
         const box = slot.querySelector('[data-challenge-image]');
+        if (!box) return;
+        // Undo whatever a previous failure left behind, so a retry that works
+        // does not show the image wearing the styling of an error message.
+        box.classList.remove(...MESSAGE_CLASSES);
         // The SVG is built by challenge.service from a fixed alphabet and
         // random numbers — nothing a visitor supplied reaches it — so this is
         // markup the server authored, not user content being trusted.
-        if (box) box.innerHTML = svg;
+        box.innerHTML = svg;
       });
+      return undefined;
     } catch (err) {
-      slots.forEach((slot) => {
-        const box = slot.querySelector('[data-challenge-image]');
-        if (box) box.textContent = 'Could not load';
-      });
+      return fail('Could not reach the server. Check your connection, then press New image.');
     }
+  }
+
+  // Said in the box where the image would have been, so it is read by somebody
+  // looking for the characters rather than announced somewhere else. The box is
+  // 180x60 and sized for a picture, so the message needs its own type size to
+  // fit inside it rather than spilling out.
+  const MESSAGE_CLASSES = ['text-xs', 'text-slate-500', 'text-center', 'px-2'];
+
+  function fail(message) {
+    slots.forEach((slot) => {
+      const box = slot.querySelector('[data-challenge-image]');
+      if (!box) return;
+      box.innerHTML = '';
+      box.textContent = message;
+      box.classList.add(...MESSAGE_CLASSES);
+    });
+    return undefined;
   }
 
   slots.forEach((slot) => {

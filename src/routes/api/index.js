@@ -18,9 +18,21 @@ const router = Router();
 // General abuse backstop for the whole API surface. Individual routes (login,
 // certificate generation, event registration) layer stricter limiters on top
 // of this where the endpoint is more expensive or more attractive to abuse.
+//
+// 900, not 300. The limit counts per address, and one address is not one
+// person: a university lab or a chapter on campus wifi arrives as a single IP,
+// and this app is at its busiest exactly when a room full of students is
+// signing up at once. The registration page alone spends a handful of requests
+// a visit — the challenge image, the organization list, one per search
+// keystroke — so twenty a minute shared across a room ran out mid-signup, and
+// what it broke first was the captcha, which simply stopped loading.
+//
+// Still a backstop worth having: the endpoints that are actually worth abusing
+// (login, registration, resend, verify, certificates) each carry their own
+// much tighter limiter on top of this, and those are unchanged.
 const baselineApiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  max: 900,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many requests. Please try again later.' },

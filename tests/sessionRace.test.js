@@ -51,7 +51,9 @@ function submitFormAndSeeIfItFetches({ formHasChallenge, pageHasChallengeSlot = 
 
   const slot = {
     querySelector: (sel) => {
-      if (sel === '[data-challenge-image]') return { textContent: '', innerHTML: '' };
+      if (sel === '[data-challenge-image]') {
+        return { textContent: '', innerHTML: '', classList: { add() {}, remove() {} } };
+      }
       if (sel === '[data-challenge-refresh]') return { addEventListener() {} };
       if (sel === '[name="challengeAnswer"]') return { value: '' };
       return null;
@@ -70,7 +72,13 @@ function submitFormAndSeeIfItFetches({ formHasChallenge, pageHasChallengeSlot = 
         if (type === 'submit') submitHandler = fn;
       },
     },
-    fetch: async (url) => { fetched.push(url); return { json: async () => ({ data: { svg: null } }) }; },
+    // Shaped like a real Response: captcha.js reads ok and status to tell a
+    // refusal from a success, and a stub without them is a stub that cannot
+    // reach the success path at all.
+    fetch: async (url) => {
+      fetched.push(url);
+      return { ok: true, status: 200, json: async () => ({ data: { svg: '<svg></svg>' } }) };
+    },
     setTimeout: (fn) => { timers.push(fn); return 1; },
   };
 
