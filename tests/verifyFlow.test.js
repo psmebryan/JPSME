@@ -42,7 +42,6 @@ stub('../src/services/mail.service', {
 
 const bcrypt = require('bcryptjs');
 const prisma = require('../src/config/prisma');
-const authService = require('../src/services/auth.service');
 const verification = require('../src/services/emailVerification.service');
 const authApi = require('../src/controllers/api/auth.api');
 
@@ -228,7 +227,7 @@ function runVerifyPage({
   const form = makeEl({
     requestSubmit() { form.fire('submit', { preventDefault() {} }); },
   });
-  const resendButton = makeEl({ textContent: 'Send it again', dataset: { waitMs: String(resendWaitMs) } });
+  const resendButton = makeEl({ textContent: 'Resend', dataset: { waitMs: String(resendWaitMs) } });
   const resendForm = makeEl({});
   const panel = makeEl({});
   const successPanel = makeEl({});
@@ -237,8 +236,13 @@ function runVerifyPage({
   // Only on the cold page: the hidden field the typed address is carried into,
   // and the form that sends it.
   const carried = cold ? makeEl({ type: 'hidden', value: '', defaultValue: '' }) : null;
-  const coldButton = cold ? makeEl({ textContent: 'Send a new code to this address' }) : null;
+  const carriedChallenge = cold ? makeEl({ type: 'hidden', value: '', defaultValue: '' }) : null;
+  const carriedToken = cold ? makeEl({ type: 'hidden', value: '', defaultValue: '' }) : null;
+  const coldButton = cold ? makeEl({ textContent: 'Resend' }) : null;
   const coldResend = cold ? makeEl({ querySelector: () => coldButton }) : null;
+  // The one captcha box on the page, which both the verify form and the cold
+  // resend draw their answer from.
+  const challengeInput = makeEl({ value: '', name: 'challengeAnswer' });
   const note = makeEl({ textContent: '' });
   const resendPrompt = makeEl({ textContent: '' });
   // Rendered only when the server knows how long is left, so the stub mirrors
@@ -262,6 +266,9 @@ function runVerifyPage({
     'verify-submit': submitButton,
     'resend-verification-form': coldResend,
     'carried-email': carried,
+    'carried-challenge': carriedChallenge,
+    'carried-token': carriedToken,
+    'cold-resend-button': coldButton,
   };
 
   const toasts = [];
@@ -269,15 +276,19 @@ function runVerifyPage({
   const ready = [];
   const requests = [];
   const intervals = new Map();
+  const documentListeners = {};
   let timerId = 0;
   let clockNow = 1000000;
 
   const sandbox = {
     document: {
+      addEventListener: (type, fn) => {
+        if (type === 'DOMContentLoaded') { ready.push(fn); return; }
+        (documentListeners[type] = documentListeners[type] || []).push(fn);
+      },
       getElementById: (id) => byId[id] || null,
       querySelectorAll: (sel) => (sel === '.code-digit' ? boxes : []),
-      querySelector: () => null,
-      addEventListener: (type, fn) => { if (type === 'DOMContentLoaded') ready.push(fn); },
+      querySelector: (sel) => (sel === '[name="challengeAnswer"]' ? challengeInput : null),
     },
     window: { location: { get href() { return nav.href; }, set href(v) { nav.href = v; } } },
     showToast: (m) => toasts.push(String(m)),
@@ -307,6 +318,12 @@ function runVerifyPage({
     boxes[index].value = text;
     boxes[index].fire('input');
   }
+
+  // The page listens on the document for the challenge box changing, so the
+  // stub has to deliver events the same way a browser would.
+  challengeInput.addEventListener('input', () => {
+    (documentListeners.input || []).forEach((fn) => fn({ target: challengeInput }));
+  });
 
   function paste(index, text) {
     boxes[index].fire('paste', {
@@ -348,11 +365,16 @@ function runVerifyPage({
     return prevented;
   }
 
+  function typeChallenge(value) {
+    challengeInput.value = value;
+    challengeInput.fire('input');
+  }
+
   return {
     boxes, hidden, form, resendButton, resendForm, panel, successPanel, ring, label, note,
-    resendPrompt, submitButton, emailInput, carried, coldButton, coldResend,
-    toasts, nav, submits, requests, type, paste, key,
-    advance, ringFraction, typeEmail, clickResend,
+    resendPrompt, submitButton, emailInput, carried, carriedChallenge, coldButton, coldResend,
+    challengeInput, toasts, nav, submits, requests, type, paste, key,
+    advance, ringFraction, typeEmail, typeChallenge, clickResend,
   };
 }
 
@@ -548,60 +570,14 @@ async function main() {
     assertEqual(sent.length, 0, 'no email');
   });
 
-  // --- signing in on the strength of the code ------------------------------
+  // --- what confirming an address now does ---------------------------------
 
-  await test('a verified member is signed in without retyping their password', async () => {
-    const user = await makeUser({ verified: true, status: 'APPROVED' });
-    const signedIn = await authService.completeVerifiedLogin(user.id);
 
-    assert(signedIn, 'signed in');
-    assertEqual(signedIn.email, user.email, 'as themselves');
-    assertEqual(signedIn.password, undefined, 'and the hash never leaves the service');
-  });
 
-  await test('a first-ever login is still reported as one', async () => {
-    // This is what sends a brand-new member to their profile once. Arriving
-    // via verification rather than the login form must not skip it.
-    const user = await makeUser({ verified: true, lastLoginAt: null });
-    const signedIn = await authService.completeVerifiedLogin(user.id);
-    assertEqual(signedIn.isFirstLogin, true, 'their first');
 
-    const again = await authService.completeVerifiedLogin(user.id);
-    assertEqual(again.isFirstLogin, false, 'and not their second');
-  });
 
-  await test('a PENDING member is signed in too', async () => {
-    // They need a session to pay. app.js's own gate decides where that session
-    // may go; refusing it here would just strand them.
-    const user = await makeUser({ verified: true, status: 'PENDING' });
-    assert(await authService.completeVerifiedLogin(user.id), 'signed in');
-  });
 
-  await test('an unverified account is never signed in this way', async () => {
-    const user = await makeUser({ verified: false });
-    assertEqual(await authService.completeVerifiedLogin(user.id), null, 'refused');
-  });
 
-  await test('a rejected applicant is not signed in', async () => {
-    const user = await makeUser({ verified: true, status: 'REJECTED' });
-    assertEqual(await authService.completeVerifiedLogin(user.id), null, 'refused');
-  });
-
-  await test('staff still sign in on their own page', async () => {
-    // The two login forms are deliberately mutually exclusive. Verification
-    // must not become a third way in for an admin account.
-    for (const role of ['ADMIN', 'CHAPTER_ADMIN']) {
-      const user = await makeUser({ verified: true, role });
-      assertEqual(await authService.completeVerifiedLogin(user.id), null, `${role} refused`);
-    }
-  });
-
-  await test('a refusal is null, never a throw', async () => {
-    // The verification itself is already committed by the time this is called.
-    // A throw here would report a completed verification as a failure and send
-    // them round the loop again.
-    assertEqual(await authService.completeVerifiedLogin(999999999), null, 'a missing account is just null');
-  });
 
   // --- the handoff between two requests ------------------------------------
 
@@ -619,7 +595,7 @@ async function main() {
     assertEqual(sent.length, 1, 'and the code went out without anybody asking for it');
     assert(session.pendingVerification, 'the next page knows who this is');
     assertEqual(session.pendingVerification.email, user.email, 'so it need not be retyped');
-    assert(session.pendingVerification.passwordProvenAt > 0, 'and that the password was right');
+    assert(session.pendingVerification.expiresAt > Date.now(), 'and when the code it just sent dies');
   });
 
   await test('a wrong password leaves nothing behind', async () => {
@@ -640,9 +616,7 @@ async function main() {
     assertEqual(sent.length, 0, 'and no email to an address the sender may not own');
   });
 
-  await test('verifying after that login signs them straight in', async () => {
-    // The step this removes: going back to the login form and typing the same
-    // password a second time, two minutes after the first.
+  await test('verifying hands them to the login page with the address filled in', async () => {
     const user = await makeUser({ verified: false });
     const session = makeSession();
     sent.length = 0;
@@ -653,15 +627,33 @@ async function main() {
     const { res } = await run(authApi.verifyEmailCode, { body: { email: user.email, code }, session });
 
     assertEqual(res.body.success, true, 'verified');
-    assertEqual(res.body.data.loggedIn, true, 'and signed in');
-    assertEqual(session.user.email, user.email, 'the session is theirs');
-    assertEqual(session.pendingVerification, undefined, 'and the proof is spent, not left lying about');
-    assertEqual(res.body.data.redirectTo, '/profile', 'a first login lands on the profile');
+    assert(res.body.data.redirectTo.startsWith('/login?verified=1&email='), `to the login page, got: ${res.body.data.redirectTo}`);
+    assert(res.body.data.redirectTo.includes(encodeURIComponent(user.email)), 'carrying the address');
+    assertEqual(session.user, undefined, 'no session handed out');
+    assertEqual(session.pendingVerification, undefined, 'and nothing left waiting');
   });
 
-  await test('verifying with no such session still verifies, it just does not sign in', async () => {
-    // Somebody who verified from a different browser than the one they logged
-    // in on. The verification is the thing they came for and must not fail.
+  await test('an address with characters a URL cares about survives the trip', async () => {
+    // A + in an address is legal and common (ana+jpsme@…), and is a space once
+    // it reaches a query string unencoded — so the login box would prefill with
+    // an address that is not theirs and fail on submit.
+    const user = await makeUser({ verified: false });
+    await prisma.user.update({ where: { id: user.id }, data: { email: `${TAG}plus+tag@example.test` } });
+    const session = makeSession();
+    sent.length = 0;
+
+    await run(authApi.login, { body: { email: `${TAG}plus+tag@example.test`, password: PASSWORD }, session });
+    const { res } = await run(authApi.verifyEmailCode, {
+      body: { email: `${TAG}plus+tag@example.test`, code: sent[0].code }, session,
+    });
+
+    const back = new URLSearchParams(res.body.data.redirectTo.split('?')[1]).get('email');
+    assertEqual(back, `${TAG}plus+tag@example.test`, 'decodes to exactly what was verified');
+  });
+
+  await test('verifying from a session that knows nothing still verifies', async () => {
+    // Somebody who verified in a different browser from the one they signed in
+    // on. The verification is the thing they came for and must not fail.
     const user = await makeUser({ verified: false });
     sent.length = 0;
     await verification.ensureVerificationCode(user);
@@ -672,47 +664,11 @@ async function main() {
     });
 
     assertEqual(res.body.success, true, 'verified');
-    assertEqual(res.body.data.loggedIn, false, 'but not signed in');
-
     const after = await prisma.user.findUnique({ where: { id: user.id } });
     assert(after.emailVerifiedAt, 'and it stuck');
   });
 
-  await test('a password proven too long ago no longer counts', async () => {
-    const user = await makeUser({ verified: false });
-    const session = makeSession();
-    sent.length = 0;
 
-    await run(authApi.login, { body: { email: user.email, password: PASSWORD }, session });
-    // Older than the code it was paired with.
-    session.pendingVerification.passwordProvenAt = Date.now() - 31 * 60 * 1000;
-
-    const { res } = await run(authApi.verifyEmailCode, {
-      body: { email: user.email, code: sent[0].code }, session,
-    });
-
-    assertEqual(res.body.data.loggedIn, false, 'verified, but they type their password again');
-  });
-
-  await test('one session cannot be used to sign in as another account', async () => {
-    // The check that makes the shortcut safe: the proof is for one account,
-    // and it is the account being verified that has to match it.
-    const mine = await makeUser({ verified: false });
-    const theirs = await makeUser({ verified: false });
-    const session = makeSession();
-    sent.length = 0;
-
-    await run(authApi.login, { body: { email: mine.email, password: PASSWORD }, session });
-    sent.length = 0;
-    await verification.ensureVerificationCode(theirs);
-
-    const { res } = await run(authApi.verifyEmailCode, {
-      body: { email: theirs.email, code: sent[0].code }, session,
-    });
-
-    assertEqual(res.body.data.loggedIn, false, 'no session handed out');
-    assertEqual(session.user, undefined, 'and none attached');
-  });
 
   // --- the resend button ----------------------------------------------------
 
@@ -767,7 +723,7 @@ async function main() {
     assert(bad.err, 'the old one is dead');
 
     const good = await run(authApi.verifyEmailCode, { body: { email: user.email, code: fresh }, session });
-    assertEqual(good.res.body.data.loggedIn, true, 'and the new one signs them in');
+    assertEqual(good.res.body.success, true, 'and the new one is accepted');
   });
 
 
@@ -777,6 +733,7 @@ async function main() {
     // The last click this flow still had. Six digits is the whole form; there
     // is nothing to confirm afterwards.
     const page = runVerifyPage();
+    page.typeChallenge('ABCDE');
     '482913'.split('').forEach((d, i) => page.type(i, d));
 
     assertEqual(page.hidden.value, '482913', 'the code is assembled');
@@ -789,6 +746,7 @@ async function main() {
     // People paste out of the email far more often than they retype, and what
     // comes with it is whatever the selection picked up.
     const page = runVerifyPage();
+    page.typeChallenge('ABCDE');
     page.paste(0, ' 482 913 ');
 
     assertEqual(page.boxes.map((b) => b.value).join(''), '482913', 'six digits');
@@ -799,6 +757,7 @@ async function main() {
     // iOS and Android offer the code from the notification and drop all six
     // into the field that asked for it — which is box one.
     const page = runVerifyPage();
+    page.typeChallenge('ABCDE');
     page.type(0, '482913');
 
     assertEqual(page.hidden.value, '482913', 'spread across the boxes');
@@ -827,6 +786,7 @@ async function main() {
 
   await test('a rejected code clears the boxes instead of inviting the same guess again', async () => {
     const page = runVerifyPage({ reply: Object.assign(new Error('That code is incorrect or has expired.'), { code: null }) });
+    page.typeChallenge('ABCDE');
     '000000'.split('').forEach((d, i) => page.type(i, d));
     await flush();
 
@@ -834,16 +794,12 @@ async function main() {
     assert(page.toasts.some((t) => /incorrect or has expired/.test(t)), 'and the reason is shown');
   });
 
-  await test('a verified code that signs them in goes somewhere, not to a dead end', async () => {
-    const page = runVerifyPage({ reply: { message: 'Email verified', data: { loggedIn: true, redirectTo: '/profile' } } });
-    '482913'.split('').forEach((d, i) => page.type(i, d));
-    await flush();
-
-    assertEqual(page.nav.href, '/profile', 'straight in');
-  });
-
-  await test('a verified code without a sign-in shows the panel instead', async () => {
-    const page = runVerifyPage({ reply: { message: 'Email verified', data: { loggedIn: false } } });
+  await test('a response with nowhere to go still says it worked', async () => {
+    // Not reachable today — the server always sends a destination — but the
+    // alternative to this branch is a form that has gone quiet with no way to
+    // tell whether the address was confirmed.
+    const page = runVerifyPage({ reply: { message: 'Email verified', data: {} } });
+    page.typeChallenge('ABCDE');
     '482913'.split('').forEach((d, i) => page.type(i, d));
     await flush();
 
@@ -855,13 +811,13 @@ async function main() {
   await test('the resend button starts out counting down the wait already spent', async () => {
     const page = runVerifyPage({ resendWaitMs: 45000 });
     assertEqual(page.resendButton.disabled, true, 'not yet');
-    assert(/45s/.test(page.resendButton.textContent), `and says when, got: ${page.resendButton.textContent}`);
+    assertEqual(page.resendButton.textContent, 'Resend in 45s', 'and says when');
   });
 
   await test('with no wait left the button is ready immediately', async () => {
     const page = runVerifyPage({ resendWaitMs: 0 });
     assertEqual(page.resendButton.disabled, false, 'ready');
-    assertEqual(page.resendButton.textContent, 'Send it again', 'and says so plainly');
+    assertEqual(page.resendButton.textContent, 'Resend', 'and says so plainly');
   });
 
   await test('the resend asks the server for nothing but a new code', async () => {
@@ -932,6 +888,7 @@ async function main() {
     // It would only come back rejected, and "incorrect or expired" after the
     // page already said expired reads as a second, different problem.
     const page = runVerifyPage({ expiresInMs: 30000 });
+    page.typeChallenge('ABCDE');
     page.advance(30001);
     page.boxes.forEach((b) => { b.disabled = false; }); // as if the disable had been bypassed
     '482913'.split('').forEach((d, i) => page.type(i, d));
@@ -974,6 +931,42 @@ async function main() {
     assertEqual(page.submitButton.disabled, false, 'and nothing disabled by a clock that never started');
   });
 
+  // --- the check in front of the code ---------------------------------------
+
+  await test('the sixth digit hands over to the captcha instead of submitting', async () => {
+    // It used to send on the sixth digit. It cannot now: there is a check in
+    // front of the code, and submitting with it blank would fail every time
+    // and spend a code doing it.
+    const page = runVerifyPage({ expiresInMs: 180000 });
+    '482913'.split('').forEach((d, i) => page.type(i, d));
+    await flush();
+
+    assertEqual(page.submits.length, 0, 'nothing sent yet');
+    assertEqual(page.challengeInput.focused, true, 'the caret moved to what is still unanswered');
+  });
+
+  await test('with the captcha answered, the sixth digit still sends it', async () => {
+    const page = runVerifyPage({ expiresInMs: 180000 });
+    page.typeChallenge('ABCDE');
+    '482913'.split('').forEach((d, i) => page.type(i, d));
+    await flush();
+
+    assertEqual(page.submits.length, 1, 'sent without pressing anything');
+    assertEqual(page.submits[0].code, '482913', 'as typed');
+  });
+
+  await test('a verified code goes to wherever the server says', async () => {
+    const page = runVerifyPage({
+      expiresInMs: 180000,
+      reply: { message: 'Verified', data: { redirectTo: '/login?verified=1&email=ana%40example.com' } },
+    });
+    page.typeChallenge('ABCDE');
+    '482913'.split('').forEach((d, i) => page.type(i, d));
+    await flush();
+
+    assertEqual(page.nav.href, '/login?verified=1&email=ana%40example.com', 'the login page, address in hand');
+  });
+
   // --- typing the address once ----------------------------------------------
 
   await test('the address typed for the code is the one the resend uses', async () => {
@@ -1005,10 +998,42 @@ async function main() {
   await test('a resend with an address typed is allowed through', async () => {
     const page = runVerifyPage({ cold: true });
     page.typeEmail('ana@example.com');
+    page.typeChallenge('ABCDE');
     const prevented = page.clickResend();
 
     assertEqual(prevented, false, 'nothing in the way');
     assertEqual(page.carried.value, 'ana@example.com', 'and the address goes with it');
+  });
+
+  await test('the captcha answer is carried too, not typed twice', async () => {
+    const page = runVerifyPage({ cold: true });
+    page.typeEmail('ana@example.com');
+    page.typeChallenge('ABCDE');
+
+    assertEqual(page.carriedChallenge.value, 'ABCDE', 'carried into the resend');
+    assertEqual(page.carriedChallenge.defaultValue, 'ABCDE', 'and survives the reset');
+  });
+
+  await test('a resend with the captcha blank is stopped, and says which box', async () => {
+    const page = runVerifyPage({ cold: true });
+    page.typeEmail('ana@example.com');
+    const prevented = page.clickResend();
+
+    assertEqual(prevented, true, 'stopped');
+    assert(page.toasts.some((t) => /characters shown/i.test(t)), `names the box, got: ${page.toasts.join(' | ')}`);
+  });
+
+  await test('the cold resend waits a minute too, and counts it down', async () => {
+    const page = runVerifyPage({ cold: true });
+    page.typeEmail('ana@example.com');
+    page.typeChallenge('ABCDE');
+    page.clickResend();
+
+    assertEqual(page.coldButton.disabled, true, 'not straight away');
+    assertEqual(page.coldButton.textContent, 'Resend in 60s', 'and it says how long');
+
+    page.advance(0); // one tick of the interval
+    assertEqual(page.coldButton.textContent, 'Resend in 59s', '59, 58 …');
   });
 
   await test('a known page carries nothing, because nothing is typed', async () => {
@@ -1020,6 +1045,27 @@ async function main() {
   // --- the pages ------------------------------------------------------------
 
   const base = { cspNonce: 'n', currentUser: null, logoUrl: '/img/default-logo.svg' };
+
+  await test('the login page arrives filled in when it comes from verification', async () => {
+    const html = renderView('login.ejs', Object.assign({}, base, {
+      email: 'ana@example.com', justVerified: true,
+    }));
+
+    assert(/value="ana@example\.com"/.test(html), 'the address is already there');
+    assert(/Email verified/.test(html), 'and it says the verification worked');
+  });
+
+  await test('a plain visit to the login page says nothing it should not', async () => {
+    const html = renderView('login.ejs', Object.assign({}, base, {}));
+    assert(!/Email verified/.test(html), 'no banner nobody earned');
+  });
+
+  await test('an address in the link cannot carry markup into the page', async () => {
+    const html = renderView('login.ejs', Object.assign({}, base, {
+      email: '"><script>alert(1)</script>', justVerified: true,
+    }));
+    assert(!html.includes('<script>alert(1)</script>'), 'escaped on the way out');
+  });
 
   await test('the login page no longer hides a resend behind a disclosure triangle', async () => {
     const html = renderView('login.ejs', base);
@@ -1037,7 +1083,6 @@ async function main() {
     assertEqual((html.match(/class="code-digit/g) || []).length, 6, 'six boxes for six digits');
     assert(/type="hidden" name="email"/.test(html), 'the address is not a field they can get wrong');
     assert(html.includes('>ana@example.com<'), 'it is shown, so they know where to look');
-    assert(!html.includes('challenge-answer'), 'no captcha between them and a second code');
     // Matched on the id attribute, not the bare name: the shared inline script
     // mentions both ids, and a test that cannot tell markup from the script
     // that looks for it is a test that passes when the form is still there.
@@ -1074,18 +1119,60 @@ async function main() {
     assert(!html.includes('Need a new code?'), 'and the second card is gone');
   });
 
-  await test('the cold page offers the road with no captcha on it first', async () => {
-    // Signing in sends a code by itself. Somebody who knows their password
-    // should not be reading wobbly letters to get where they are allowed.
+  await test('the cold page offers the shorter road before the longer one', async () => {
+    // Signing in sends a code by itself and needs no address typed. The
+    // captcha is no longer the thing it saves you — that now stands in front
+    // of the code for everybody — so the claim is only about the address.
     const html = renderView('verify-email.ejs', Object.assign({}, base, {
       email: '', pendingEmail: '', resendWaitMs: 0, paymentRequired: false,
     }));
 
     const prompt = html.indexOf("Didn't get the code?");
     const signIn = html.indexOf('sends one automatically');
-    const captcha = html.indexOf('challenge-answer');
+    const resend = html.indexOf('id="cold-resend-button"');
     assert(prompt > -1 && signIn > prompt, 'the easier way is offered under the prompt');
-    assert(signIn < captcha, 'and before the captcha, not after it');
+    assert(signIn < resend, 'and before the form it is an alternative to');
+    assert(!/nothing to fill in/.test(html), 'and does not promise a captcha-free trip it cannot give');
+  });
+
+  await test('one human check per page, in front of the code', async () => {
+    // One, because a session holds one challenge: a second box would show the
+    // same image and spend the same answer. In front, because a check behind
+    // the code guards nothing that has not already been checked.
+    const markup = (locals) => {
+      const html = renderView('verify-email.ejs', Object.assign({}, base, locals));
+      return html.slice(0, html.lastIndexOf('<script nonce'));
+    };
+
+    for (const [name, locals] of [
+      ['signed in', { email: 'a@b.com', pendingEmail: 'a@b.com', resendWaitMs: 0, paymentRequired: false }],
+      ['cold', { email: '', pendingEmail: '', resendWaitMs: 0, paymentRequired: false }],
+    ]) {
+      const html = markup(locals);
+      assertEqual((html.match(/id="challenge-answer"/g) || []).length, 1, `${name}: exactly one box`);
+      assert(html.indexOf('id="challenge-answer"') < html.indexOf('id="verify-submit"'), `${name}: before the button`);
+    }
+  });
+
+  await test('the cold resend carries the answer rather than asking twice', async () => {
+    const html = renderView('verify-email.ejs', Object.assign({}, base, {
+      email: '', pendingEmail: '', resendWaitMs: 0, paymentRequired: false,
+    }));
+    const markup = html.slice(0, html.lastIndexOf('<script nonce'));
+
+    assert(/id="carried-challenge"[^>]*>/.test(markup), 'a hidden field for the answer');
+    assert(/id="carried-token"[^>]*>/.test(markup), 'and one for a Turnstile token');
+  });
+
+  await test('the verify route actually runs the human check', async () => {
+    // Wiring with no other cheap observable: the check lives in the route
+    // definition, and a page carrying a captcha the server never looks at is
+    // worse than no captcha, because it looks like protection.
+    const routes = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'api', 'auth.routes.js'), 'utf8');
+    const block = routes.slice(routes.indexOf("'/verify-code'"));
+    const end = block.indexOf('authApi.verifyEmailCode');
+    assert(end > -1, 'found the route');
+    assert(block.slice(0, end).includes('requireHuman()'), 'requireHuman stands in front of the handler');
   });
 
   await test('only the first box asks the phone for the code', async () => {

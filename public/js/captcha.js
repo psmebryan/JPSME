@@ -10,6 +10,14 @@ document.addEventListener('DOMContentLoaded', () => {
     slots.forEach((slot) => {
       const box = slot.querySelector('[data-challenge-image]');
       if (box) box.textContent = 'Loading…';
+      // Cleared here rather than only on the refresh button: every path that
+      // loads a new image invalidates whatever was typed against the old one,
+      // and an answer left under a fresh image is one the server is guaranteed
+      // to reject. That matters more now the verify form carries a challenge —
+      // a wrong code spends it too, and the retry would otherwise resubmit a
+      // stale answer alongside the corrected digits.
+      const answer = slot.querySelector('[name="challengeAnswer"]');
+      if (answer) answer.value = '';
     });
 
     try {
@@ -42,11 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
   slots.forEach((slot) => {
     const refresh = slot.querySelector('[data-challenge-refresh]');
     if (refresh) {
-      refresh.addEventListener('click', () => {
-        const input = slot.querySelector('[name="challengeAnswer"]');
-        if (input) input.value = '';
-        load();
-      });
+      refresh.addEventListener('click', () => load());
     }
   });
 

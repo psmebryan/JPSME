@@ -7,28 +7,20 @@ const emailVerificationService = require('../../services/emailVerification.servi
 const storageService = require('../../services/storage.service');
 const logger = require('../../utils/logger');
 
-// How long a correct password stays good as one half of the proof needed to
-// finish verification and be signed in.
-//
-// Deliberately much longer than a code's own three minutes, because it has to
-// survive several of them: a code that expires is replaced by pressing Send it
-// again, and that must not also mean signing in from the top. Thirty minutes
-// covers roughly ten of those cycles, which is far past the point where the
-// problem is the email rather than the person.
-const PASSWORD_PROOF_TTL_MS = 30 * 60 * 1000;
-
 // Long enough that a double-click doesn't send two emails, short enough that
 // somebody whose code genuinely didn't arrive isn't left staring at a counter.
 const RESEND_COOLDOWN_MS = 60 * 1000;
 
-// Where a freshly signed-in member lands. Deliberately the same order the
-// login page uses (see public/js/auth.js) — a member who verified and one who
-// logged in normally have not done anything different.
-function landingFor(user) {
-  const next = user.postApprovalRedirectUrl;
-  // Same-site only, the same guard as everywhere else this value is honored.
-  if (typeof next === 'string' && next.startsWith('/') && !next.startsWith('//')) return next;
-  return user.isFirstLogin ? '/profile' : '/';
+// Where somebody goes once their address is confirmed.
+//
+// The login page, with the address filled in. Verifying used to sign them in
+// on the strength of the password proven minutes earlier in the same session;
+// that is gone by choice. What is kept is the half of it that costs nothing —
+// they do not retype an address they have already typed twice today, and the
+// page tells them the verification worked rather than leaving them to guess
+// from the fact that it stopped complaining.
+function verifiedLandingFor(email) {
+  return `/login?verified=1&email=${encodeURIComponent(String(email || '').trim())}`;
 }
 
 function checkValidation(req, res) {
@@ -79,9 +71,6 @@ const login = asyncHandler(async (req, res) => {
             // assumed, so the clock on screen and the one the server checks
             // against are the same clock.
             expiresAt: pending.expiresAt,
-            // The password was right. Remembering that — briefly, and only in
-            // this session — is what lets the code alone finish the job.
-            passwordProvenAt: Date.now(),
           };
         }
       } catch (sendErr) {
@@ -209,46 +198,14 @@ const verifyEmailCode = asyncHandler(async (req, res) => {
 
   const verified = await emailVerificationService.verifyEmailCode(req.body.email, req.body.code);
 
-  // Two answers in the other order. Logging in proved the password and then
-  // asked for the code; this proved the code and the password is already
-  // proven, in this same session, minutes ago. Asking them to go back to the
-  // login form and type it a second time adds a step and no security.
-  const pending = req.session.pendingVerification;
-  const proven = pending
-    && pending.userId === verified.id
-    && Date.now() - (pending.passwordProvenAt || 0) < PASSWORD_PROOF_TTL_MS;
+  // Nothing is left waiting on a code for this session.
   delete req.session.pendingVerification;
 
-  // Wrapped because the verification is already committed by this point. A
-  // failure here is a failure of the shortcut, and reporting it as a failed
-  // verification would send somebody round a loop they have already finished —
-  // where the code they hold no longer works, because it was consumed.
-  let signedIn = null;
-  if (proven) {
-    try {
-      signedIn = await authService.completeVerifiedLogin(verified.id);
-    } catch (loginErr) {
-      logger.error('verify-code: verified, but could not sign them in', { err: loginErr.message });
-    }
-  }
-
-  if (!signedIn) {
-    return success(res, { loggedIn: false }, 'Your email is verified. You can log in now.');
-  }
-
-  // Same fixation guard as the login route — this is a privilege change.
-  return req.session.regenerate((err) => {
-    if (err) {
-      // The verification itself stands; only the shortcut failed.
-      return success(res, { loggedIn: false }, 'Your email is verified. You can log in now.');
-    }
-    req.session.user = signedIn;
-    return success(
-      res,
-      { loggedIn: true, user: signedIn, redirectTo: landingFor(signedIn) },
-      'Email verified — signing you in.'
-    );
-  });
+  return success(
+    res,
+    { redirectTo: verifiedLandingFor(verified.email) },
+    'Your email is verified. Sign in to continue.'
+  );
 });
 
 module.exports = {

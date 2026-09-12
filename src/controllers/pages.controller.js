@@ -32,7 +32,18 @@ const home = asyncHandler(async (req, res) => {
   res.render('index', { title: 'Home', events, stats, sponsors });
 });
 
-const loginPage = (req, res) => res.render('login', { title: 'Login' });
+// ?email= and ?verified= are set by the verification page on its way here.
+//
+// Neither is trusted for anything: the address only prefills a field the person
+// can edit, and the banner says a verification happened without claiming whose.
+// Both are escaped by EJS on the way out and capped here, so the worst a
+// crafted link can do is put somebody else's address in a login box — which is
+// exactly what typing it would do.
+const loginPage = (req, res) => res.render('login', {
+  title: 'Login',
+  email: typeof req.query.email === 'string' ? req.query.email.slice(0, 200) : '',
+  justVerified: req.query.verified === '1',
+});
 
 const aboutPage = (req, res) => res.render('about', { title: 'About' });
 

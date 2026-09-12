@@ -151,6 +151,18 @@ router.post(
   '/verify-code',
   verifyCsrfToken,
   verifyCodeLimiter,
+  // In front of the code, not behind it. Six digits is a million guesses, and
+  // the rate limiter caps how fast one IP can try — a human check is what
+  // stops the attempt being made by something that can try from many. It runs
+  // before the validators for the same reason it does on register: a
+  // submission that is not from a person should be turned away before the
+  // server spends anything parsing what it claimed to be.
+  //
+  // Note the cost, which is real: the challenge is single-use, so a wrong code
+  // spends it too and the next attempt needs a fresh one. public/js/captcha.js
+  // reloads the image and clears the box after every submit for exactly this
+  // reason.
+  requireHuman(),
   [
     body('email').isEmail().withMessage('Enter the email address you registered with').normalizeEmail(),
     // Digits only, exact length, whitespace stripped first — people paste codes

@@ -130,6 +130,24 @@
           </p>
         </div>
 
+        <%
+          /*
+            The human check, in front of the code rather than behind it.
+
+            Six digits is a million guesses. The rate limiter caps how fast one
+            address can work through them; this is what stops the attempt being
+            made at all by something that can come from many. Rendered once per
+            page — a session holds one challenge, so a second box would show the
+            same image and spend the same answer.
+
+            It costs something real: the challenge is single-use, so a wrong
+            code spends it too. captcha.js reloads the image and clears the box
+            after every submit, which is what makes the retry "read the new one"
+            rather than "wonder why the right code was refused".
+          */
+        %>
+        <%- include('partials/human-check') %>
+
         <button type="submit" id="verify-submit"
                 class="w-full bg-indigo-600 text-white px-5 py-3 rounded-md hover:bg-indigo-700 font-medium disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed">
           Verify my email
@@ -146,12 +164,12 @@
           */
         %>
         <div class="mt-6 pt-5 border-t border-gray-200 text-center">
-          <p id="resend-prompt" class="text-sm text-gray-600">Didn't get it? Check your spam folder.</p>
+          <p id="resend-prompt" class="text-sm text-gray-600">Didn't get the code? Check your spam folder.</p>
           <form id="pending-resend-form" class="mt-2">
             <button type="submit" id="pending-resend-button"
                     data-wait-ms="<%= locals.resendWaitMs || 0 %>"
-                    class="text-sm font-medium text-indigo-600 hover:underline disabled:text-gray-400 disabled:no-underline disabled:cursor-not-allowed">
-              Send it again
+                    class="text-sm font-semibold text-indigo-600 hover:underline disabled:text-gray-400 disabled:no-underline disabled:cursor-not-allowed">
+              Resend
             </button>
           </form>
           <p class="mt-4 text-xs text-gray-500">
@@ -185,16 +203,20 @@
               image of wobbly letters to get where they are already allowed. %>
           <p class="mt-1 text-xs text-gray-500">
             If you know your password, <a href="/login" class="text-indigo-600 hover:underline">signing in</a>
-            sends one automatically &mdash; nothing to fill in. Otherwise:
+            sends one automatically &mdash; no address to type. Otherwise:
           </p>
 
           <form id="resend-verification-form" class="mt-3">
-            <%# Filled from the field above rather than typed again. %>
+            <%# All three filled from the fields above rather than typed twice.
+                The page holds one challenge, so the answer typed to verify is
+                the same answer this needs; whichever action goes first spends
+                it, and captcha.js issues a fresh one. %>
             <input type="hidden" name="email" id="carried-email" value="<%= locals.email || '' %>">
-            <%- include('partials/human-check') %>
-            <button type="submit"
-                    class="w-full rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
-              Send a new code to this address
+            <input type="hidden" name="challengeAnswer" id="carried-challenge" value="">
+            <input type="hidden" name="captchaToken" id="carried-token" value="">
+            <button type="submit" id="cold-resend-button"
+                    class="w-full rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed">
+              Resend
             </button>
           </form>
         </div>
@@ -239,6 +261,33 @@
       return boxes.map((b) => b.value).join('');
     }
 
+    // A button that counts itself back to life: 60, 59, 58 … then clickable
+    // again. Used by both resend buttons, because a wait that is enforced but
+    // not shown is indistinguishable from a button that does nothing.
+    function startableCooldown(button, label) {
+      let remaining = 0;
+      let ticker = null;
+
+      function render() {
+        button.disabled = remaining > 0;
+        button.textContent = remaining > 0 ? `${label} in ${remaining}s` : label;
+      }
+
+      function start(ms) {
+        remaining = Math.ceil((ms || 0) / 1000);
+        clearInterval(ticker);
+        render();
+        if (remaining <= 0) return;
+        ticker = setInterval(() => {
+          remaining -= 1;
+          render();
+          if (remaining <= 0) clearInterval(ticker);
+        }, 1000);
+      }
+
+      return { start };
+    }
+
     function sync() {
       hidden.value = currentCode();
     }
@@ -256,7 +305,19 @@
       const caret = Math.min(i, boxes.length - 1);
       boxes[caret].focus();
       boxes[caret].select();
-      if (hidden.value.length === boxes.length) submit();
+
+      if (hidden.value.length !== boxes.length) return;
+
+      // Six digits used to mean "send it". It cannot now: there is a check in
+      // front of the code, and submitting with it blank would fail every time
+      // and spend a code doing it. So the last digit hands over to whatever is
+      // still unanswered instead of guessing that nothing is.
+      const challenge = document.querySelector('[name="challengeAnswer"]');
+      if (challenge && !challenge.value.trim()) {
+        challenge.focus();
+        return;
+      }
+      submit();
     }
 
     boxes.forEach((box, index) => {
@@ -431,13 +492,16 @@
           showToast(res.message);
           clearInterval(ticker);
 
-          // Verified and signed in, because the password was proven minutes
-          // ago in this same session. No second trip through the login form.
-          if (res.data && res.data.loggedIn) {
-            window.location.href = res.data.redirectTo || '/';
+          // Straight on to wherever the server says, which is the login page
+          // with the address already filled in.
+          if (res.data && res.data.redirectTo) {
+            window.location.href = res.data.redirectTo;
             return;
           }
 
+          // Only reachable if a response ever arrives without somewhere to go.
+          // The verification still happened, so say so rather than stranding
+          // them on a form that now does nothing.
           document.getElementById('verify-panel').classList.add('hidden');
           document.getElementById('verify-success').classList.remove('hidden');
         } catch (err) {
@@ -458,32 +522,61 @@
     const carried = document.getElementById('carried-email');
 
     if (coldResend && carried && emailInput) {
+      const carriedChallenge = document.getElementById('carried-challenge');
+      const carriedToken = document.getElementById('carried-token');
+
+      // Copies a live field's value into the hidden one the resend submits.
+      // Both value and defaultValue: auth.js calls form.reset() after a
+      // successful send and reset restores defaultValue, so setting only the
+      // value would empty everything after the first resend and fail the
+      // second with nothing on screen to explain it.
+      const copy = (from, into) => {
+        if (!into) return;
+        const value = from ? String(from.value || '').trim() : '';
+        into.value = value;
+        into.defaultValue = value;
+      };
+
       const carry = () => {
-        const value = emailInput.value.trim();
-        carried.value = value;
-        // defaultValue as well as value: auth.js calls form.reset() after a
-        // successful send, and reset restores defaultValue — without this the
-        // address would silently empty itself after the first resend, and the
-        // second would fail validation for no visible reason.
-        carried.defaultValue = value;
+        copy(emailInput, carried);
+        copy(document.querySelector('[name="challengeAnswer"]'), carriedChallenge);
+        copy(document.querySelector('[name="captchaToken"]'), carriedToken);
       };
       emailInput.addEventListener('input', carry);
+      document.addEventListener('input', (e) => {
+        if (e.target && e.target.name === 'challengeAnswer') carry();
+      });
       carry();
 
-      const coldButton = coldResend.querySelector('[type="submit"]');
+      const coldButton = document.getElementById('cold-resend-button');
       if (coldButton) {
+        const coldCooldown = startableCooldown(coldButton, 'Resend');
+
         // On the button's click rather than the form's submit: auth.js
         // registered its submit handler first and would otherwise send an
         // empty address before this ran. Cancelling the click cancels the
         // submit that would have followed it.
         coldButton.addEventListener('click', (e) => {
           carry();
-          if (!carried.value) {
+          const stop = (message, focus) => {
             e.preventDefault();
             e.stopPropagation();
-            showToast('Enter your email address above first.', 'error');
-            emailInput.focus();
+            showToast(message, 'error');
+            if (focus) focus.focus();
+          };
+
+          if (!carried.value) return stop('Enter your email address above first.', emailInput);
+
+          const challenge = document.querySelector('[name="challengeAnswer"]');
+          if (challenge && !challenge.value.trim()) {
+            return stop('Type the characters shown first.', challenge);
           }
+
+          // The same minute the signed-in resend waits. Enforced here because
+          // this endpoint answers everybody identically to avoid confirming an
+          // address exists, so it cannot tell the page how long to wait.
+          coldCooldown.start(60000);
+          return undefined;
         });
       }
     }
@@ -493,31 +586,8 @@
     const resendButton = document.getElementById('pending-resend-button');
 
     if (resendForm && resendButton) {
-      const LABEL = resendButton.textContent.trim();
-      let remaining = 0;
-      let cooldownTicker = null;
-
-      function render() {
-        if (remaining > 0) {
-          resendButton.disabled = true;
-          resendButton.textContent = `Send it again in ${remaining}s`;
-        } else {
-          resendButton.disabled = false;
-          resendButton.textContent = LABEL;
-        }
-      }
-
-      function startCooldown(ms) {
-        remaining = Math.ceil(ms / 1000);
-        render();
-        clearInterval(cooldownTicker);
-        if (remaining <= 0) return;
-        cooldownTicker = setInterval(() => {
-          remaining -= 1;
-          render();
-          if (remaining <= 0) clearInterval(cooldownTicker);
-        }, 1000);
-      }
+      const cooldown = startableCooldown(resendButton, resendButton.textContent.trim());
+      const startCooldown = (ms) => cooldown.start(ms);
 
       // The server sent the code while the login request was still in flight,
       // so some of the wait is already spent by the time this page paints.

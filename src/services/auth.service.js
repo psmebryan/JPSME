@@ -134,11 +134,10 @@ async function login(email, password, { context = "user" } = {}) {
 
 // Everything a login does once the password and the address are both settled.
 //
-// Split out because there are now two ways to arrive here. The usual one is
-// the login form above. The other is finishing verification: somebody who
-// typed the right password a minute ago and has just proved they own the
-// inbox has given the same two answers in the other order, and making them go
-// back and type the password again is friction with nothing behind it.
+// Still split out, though only login() calls it now. It briefly had a second
+// caller — verification signed people in on the strength of a password proven
+// minutes earlier in the same session — which is gone by choice: confirming an
+// address now hands them to the login page rather than to a session.
 async function finalizeLogin(user, { context = "user" } = {}) {
   // REJECTED applicants never get a session. PENDING (verified, awaiting admin
   // review) DOES get a session — they need one to complete their membership
@@ -177,26 +176,6 @@ async function finalizeLogin(user, { context = "user" } = {}) {
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
   return { ...toPublicUser(user), postApprovalRedirectUrl, isFirstLogin };
-}
-
-// The second entrance to finalizeLogin: verification just succeeded, and the
-// same session proved the password moments earlier. The caller owns the
-// freshness check on that proof; this owns who is allowed through.
-//
-// Returns null rather than throwing for every refusal. A failure to sign
-// somebody in must never read as a failure to verify — the verification is
-// already committed and is the thing they actually came to do.
-async function completeVerifiedLogin(userId) {
-  const user = await prisma.user.findUnique({ where: { id: Number(userId) }, include: userInclude });
-  if (!user || !user.emailVerifiedAt) return null;
-
-  // Staff sign in on their own page, and that separation is deliberate (see
-  // the context checks in finalizeLogin). A verified admin is told to go there
-  // rather than being handed a session from a public form.
-  if (user.role === "ADMIN" || user.role === "CHAPTER_ADMIN") return null;
-  if (user.status === "REJECTED") return null;
-
-  return finalizeLogin(user, { context: "user" });
 }
 
 async function getById(id) {
@@ -253,5 +232,4 @@ async function updateProfileImage(userId, profileImage) {
   return toPublicUser(user);
 }
 
-module.exports = { registerUser, login,
-  completeVerifiedLogin, getById, updateProfile, updateProfileImage, toPublicUser };
+module.exports = { registerUser, login, getById, updateProfile, updateProfileImage, toPublicUser };
