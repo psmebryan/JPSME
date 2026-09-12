@@ -35,7 +35,7 @@ stub('../src/services/sheetsSync.service', {
   syncMembership: () => {}, syncInvitations: () => {}, syncEventRegistrations: () => {},
 });
 stub('../src/services/mail.service', {
-  sendVerificationEmail: async (user, code) => { sent.push({ to: user.email, code }); return true; },
+  sendVerificationEmail: async (user, code, ttlMs) => { sent.push({ to: user.email, code, ttlMs }); return true; },
   sendMemberApprovedEmail: async () => true,
   sendAccountApprovedEmail: async () => true,
 });
@@ -164,12 +164,20 @@ function renderView(file, locals) {
 
 function makeEl(props) {
   const listeners = {};
+  const attrs = {};
   const el = Object.assign({
     value: '',
     disabled: false,
     textContent: '',
+    className: '',
     type: 'text',
     dataset: {},
+    // The ring is painted with SVG presentation attributes rather than inline
+    // style, because styleSrc carries a nonce and no 'unsafe-inline'. Testing
+    // through the same surface is the point: an assertion against el.style
+    // would pass on code the browser silently ignores.
+    setAttribute(name, value) { attrs[name] = String(value); },
+    getAttribute(name) { return Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null; },
     addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
     fire(type, event) { (listeners[type] || []).forEach((fn) => fn(event || {})); },
     has(type) { return Boolean((listeners[type] || []).length); },
@@ -191,10 +199,14 @@ function makeEl(props) {
 // that checks a result can read it in the same tick.
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
-function runVerifyPage({ pendingEmail = 'ana@example.com', resendWaitMs = 0, reply = null } = {}) {
+function runVerifyPage({
+  pendingEmail = 'ana@example.com', resendWaitMs = 0, reply = null,
+  expiresInMs = null, codeLifetimeMs = 3 * 60 * 1000,
+} = {}) {
   const html = renderView('verify-email.ejs', {
     cspNonce: 'n', currentUser: null, logoUrl: '/img/default-logo.svg',
     email: pendingEmail, pendingEmail, resendWaitMs, paymentRequired: false,
+    expiresInMs, codeLifetimeMs,
   });
 
   const open = html.lastIndexOf('<script nonce="n">');
@@ -214,6 +226,15 @@ function runVerifyPage({ pendingEmail = 'ana@example.com', resendWaitMs = 0, rep
   const resendForm = makeEl({});
   const panel = makeEl({});
   const successPanel = makeEl({});
+  const ring = makeEl({});
+  const submitButton = makeEl({ textContent: 'Verify my email' });
+  const note = makeEl({ textContent: '' });
+  const resendPrompt = makeEl({ textContent: '' });
+  // Rendered only when the server knows how long is left, so the stub mirrors
+  // that: no countdown element at all on a cold arrival.
+  const label = expiresInMs === null ? null : makeEl({
+    dataset: { expiresIn: String(expiresInMs), lifetime: String(codeLifetimeMs) },
+  });
 
   const byId = {
     'verify-code-form': form,
@@ -223,12 +244,20 @@ function runVerifyPage({ pendingEmail = 'ana@example.com', resendWaitMs = 0, rep
     'pending-resend-button': resendButton,
     'verify-panel': panel,
     'verify-success': successPanel,
+    'expiry-ring': ring,
+    'expiry-label': label,
+    'expiry-note': note,
+    'resend-prompt': resendPrompt,
+    'verify-submit': submitButton,
   };
 
   const toasts = [];
   const nav = { href: null };
   const ready = [];
   const requests = [];
+  const intervals = new Map();
+  let timerId = 0;
+  let clockNow = 1000000;
 
   const sandbox = {
     document: {
@@ -246,8 +275,12 @@ function runVerifyPage({ pendingEmail = 'ana@example.com', resendWaitMs = 0, rep
       if (reply instanceof Error) throw reply;
       return reply || { message: 'ok', data: { loggedIn: false } };
     },
-    setInterval: () => 1,
-    clearInterval: () => {},
+    // A clock the test moves by hand. Waiting three real minutes for a code to
+    // expire is not a test anybody would run, and a countdown that is only
+    // ever observed at full is not a countdown anybody has checked.
+    Date: { now: () => clockNow },
+    setInterval: (fn) => { const id = (timerId += 1); intervals.set(id, fn); return id; },
+    clearInterval: (id) => { intervals.delete(id); },
     setTimeout: (fn) => { fn(); return 1; },
   };
 
@@ -273,7 +306,25 @@ function runVerifyPage({ pendingEmail = 'ana@example.com', resendWaitMs = 0, rep
     boxes[index].fire('keydown', { key: name, preventDefault() {} });
   }
 
-  return { boxes, hidden, form, resendButton, resendForm, panel, successPanel, toasts, nav, submits, requests, type, paste, key };
+  // Moves the clock and runs whatever was due, the way a browser would. The
+  // list is snapshotted first because a tick can clear its own interval.
+  function advance(ms) {
+    clockNow += ms;
+    Array.from(intervals.values()).forEach((fn) => fn());
+  }
+
+  const CIRCUMFERENCE = 2 * Math.PI * 52;
+  // How much of the ring is still drawn, 1 at full and 0 when it has run out.
+  function ringFraction() {
+    const offset = Number(ring.getAttribute('stroke-dashoffset') || 0);
+    return 1 - (offset / CIRCUMFERENCE);
+  }
+
+  return {
+    boxes, hidden, form, resendButton, resendForm, panel, successPanel, ring, label, note,
+    resendPrompt, submitButton, toasts, nav, submits, requests, type, paste, key,
+    advance, ringFraction,
+  };
 }
 
 const TTL = verification.CODE_TTL_MS;
@@ -292,6 +343,17 @@ async function main() {
     assertEqual(outcome.sent, true, 'it sent');
     assertEqual(outcome.reason, 'sent', 'and says so');
     assertEqual(sent.length, 1, 'exactly one email');
+  });
+
+  await test('the email is told the lifetime rather than repeating it', async () => {
+    // The template used to have "30 minutes" written into it. Two places
+    // stating a number that only one of them owns is how an email ends up
+    // confidently telling somebody the wrong thing.
+    const user = await makeUser();
+    sent.length = 0;
+    await verification.ensureVerificationCode(user);
+
+    assertEqual(sent[0].ttlMs, TTL, 'the same lifetime the code was given');
   });
 
   await test('an outstanding code is reused rather than replaced', async () => {
@@ -316,32 +378,80 @@ async function main() {
   await test('the reported send time is when it actually went out', async () => {
     // The page counts a resend cooldown down from this. Reporting "now" for a
     // reused code would restart a wait that was already nearly over.
+    //
+    // Expressed as a fraction of the lifetime rather than a fixed number of
+    // minutes: this test hardcoded "20 minutes ago" and broke the moment the
+    // lifetime dropped to three, which is a test measuring the constant rather
+    // than the behaviour.
+    const elapsed = Math.round(TTL / 3);
     const user = await makeUser();
     await verification.ensureVerificationCode(user);
     await prisma.emailVerificationToken.update({
       where: { userId: user.id },
-      data: { expiresAt: new Date(Date.now() + TTL - 20 * 60 * 1000) },
+      data: { expiresAt: new Date(Date.now() + TTL - elapsed) },
     });
 
     const outcome = await verification.ensureVerificationCode(user);
-    const agoMs = Date.now() - outcome.sentAt;
     assertEqual(outcome.reason, 'still-valid', 'reused');
-    assert(agoMs > 19 * 60 * 1000 && agoMs < 21 * 60 * 1000, `about 20 minutes ago, got ${Math.round(agoMs / 60000)}m`);
+    const agoMs = Date.now() - outcome.sentAt;
+    assert(Math.abs(agoMs - elapsed) < 5000, `about ${Math.round(elapsed / 1000)}s ago, got ${Math.round(agoMs / 1000)}s`);
   });
 
   await test('a code about to expire is replaced instead of reused', async () => {
-    // Ninety seconds is no use to somebody who still has to open their inbox.
+    // Five seconds is no use to somebody who still has to open their inbox.
     const user = await makeUser();
     await verification.ensureVerificationCode(user);
     await prisma.emailVerificationToken.update({
       where: { userId: user.id },
-      data: { expiresAt: new Date(Date.now() + 90 * 1000) },
+      data: { expiresAt: new Date(Date.now() + 5 * 1000) },
     });
 
     sent.length = 0;
     const outcome = await verification.ensureVerificationCode(user);
     assertEqual(outcome.sent, true, 'a new one was sent');
     assertEqual(sent.length, 1, 'one email');
+  });
+
+  await test('a code lives the two to three minutes it is meant to', async () => {
+    const minutes = TTL / 60000;
+    assert(minutes >= 2 && minutes <= 3, `between two and three minutes, got ${minutes}`);
+  });
+
+  await test('a code issued a moment ago is still reusable', async () => {
+    // The invariant that nearly shipped broken: the floor below which a code
+    // is not worth reusing was five minutes, which is longer than the whole
+    // three-minute lifetime. Nothing would ever have been reusable, and every
+    // sign-in would have mailed another code — with no test failing, because
+    // reuse was only ever checked against a thirty-minute life.
+    const user = await makeUser();
+    await verification.ensureVerificationCode(user);
+
+    sent.length = 0;
+    const outcome = await verification.ensureVerificationCode(user);
+    assertEqual(outcome.reason, 'still-valid', 'reused');
+    assertEqual(sent.length, 0, 'no second email a second later');
+  });
+
+  await test('the deadline the page counts down to is the row\'s own', async () => {
+    // The countdown is only worth showing if it agrees with the check the
+    // server will actually make. Computed as now + TTL it would drift by
+    // however long the mail provider took to answer.
+    const user = await makeUser();
+    const outcome = await verification.ensureVerificationCode(user);
+    const row = await prisma.emailVerificationToken.findUnique({ where: { userId: user.id } });
+
+    assertEqual(outcome.expiresAt, row.expiresAt.getTime(), 'exactly the stored deadline');
+  });
+
+  await test('a resend reports the new deadline, not the old one', async () => {
+    const user = await makeUser();
+    await verification.ensureVerificationCode(user);
+    const before = await prisma.emailVerificationToken.findUnique({ where: { userId: user.id } });
+
+    const outcome = await verification.resendForPending(user.id);
+    assert(outcome.expiresAt >= before.expiresAt.getTime(), 'the clock restarted');
+    const left = outcome.expiresAt - Date.now();
+    assert(left > TTL - 5000 && left <= TTL, `a full lifetime, got ${Math.round(left / 1000)}s`);
   });
 
   await test('a code whose guesses are used up is replaced', async () => {
@@ -735,6 +845,104 @@ async function main() {
     const call = page.requests[page.requests.length - 1];
     assertEqual(call.url, '/api/auth/verification/resend', 'the session-scoped endpoint');
     assertEqual(call.options.body, undefined, 'and nothing to say');
+  });
+
+  // --- watching the code run out --------------------------------------------
+
+  await test('the time left is shown from the moment the page opens', async () => {
+    const page = runVerifyPage({ expiresInMs: 180000 });
+    assertEqual(page.label.textContent, 'Expires in 3:00', 'as minutes and seconds');
+    assert(page.ringFraction() > 0.99, 'with a full ring');
+  });
+
+  await test('the ring drains as the code ages', async () => {
+    const page = runVerifyPage({ expiresInMs: 180000 });
+    page.advance(90000);
+
+    assertEqual(page.label.textContent, 'Expires in 1:30', 'half gone');
+    const half = page.ringFraction();
+    assert(half > 0.45 && half < 0.55, `the ring is about half drawn, got ${half.toFixed(2)}`);
+  });
+
+  await test('the colour changes before the number has to be read', async () => {
+    // Somebody glancing at the page should know they are running out without
+    // parsing a clock.
+    const page = runVerifyPage({ expiresInMs: 180000 });
+    assertEqual(page.ring.getAttribute('stroke'), '#4f46e5', 'indigo with plenty of time');
+
+    page.advance(130000); // 50s left
+    assertEqual(page.ring.getAttribute('stroke'), '#d97706', 'amber under a minute');
+
+    page.advance(35000); // 15s left
+    assertEqual(page.ring.getAttribute('stroke'), '#dc2626', 'red under twenty seconds');
+  });
+
+  await test('the page says the code expired rather than letting it fail silently', async () => {
+    // The failure this replaces: typing a code that stopped working while it
+    // was being typed, and being told only that it was "incorrect or expired"
+    // — with no way to tell which, or that any time limit existed.
+    const page = runVerifyPage({ expiresInMs: 180000 });
+    page.advance(180001);
+
+    assertEqual(page.label.textContent, 'Code expired', 'said plainly');
+    assertEqual(page.ringFraction(), 0, 'the ring is empty');
+    assert(page.boxes.every((b) => b.disabled), 'and there is nothing left to type into');
+    assertEqual(page.submitButton.disabled, true, 'the button will not send it');
+    assertEqual(page.submitButton.textContent, 'Code expired', 'and says why');
+  });
+
+  await test('an expired page points at the one thing left to do', async () => {
+    const page = runVerifyPage({ expiresInMs: 60000 });
+    page.advance(60001);
+
+    assert(/new one/i.test(page.note.textContent), `the note offers a resend, got: ${page.note.textContent}`);
+    assert(/expired/i.test(page.resendPrompt.textContent), `so does the prompt, got: ${page.resendPrompt.textContent}`);
+  });
+
+  await test('a code typed after it expired is not sent to the server', async () => {
+    // It would only come back rejected, and "incorrect or expired" after the
+    // page already said expired reads as a second, different problem.
+    const page = runVerifyPage({ expiresInMs: 30000 });
+    page.advance(30001);
+    page.boxes.forEach((b) => { b.disabled = false; }); // as if the disable had been bypassed
+    '482913'.split('').forEach((d, i) => page.type(i, d));
+    await flush();
+
+    assertEqual(page.submits.length, 0, 'nothing went');
+    assert(page.toasts.some((t) => /expired/i.test(t)), 'and it says so');
+  });
+
+  await test('the digits are cleared when the code dies, not left to be resubmitted', async () => {
+    const page = runVerifyPage({ expiresInMs: 30000 });
+    '4829'.split('').forEach((d, i) => page.type(i, d));
+    page.advance(30001);
+
+    assertEqual(page.hidden.value, '', 'the half-typed code is gone');
+  });
+
+  await test('a resend restarts the clock and the page works again', async () => {
+    const page = runVerifyPage({
+      expiresInMs: 20000,
+      reply: { message: 'sent', data: { cooldownMs: 60000, expiresInMs: 180000 } },
+    });
+    page.advance(20001);
+    assertEqual(page.submitButton.disabled, true, 'expired first');
+
+    page.resendForm.fire('submit', { preventDefault() {} });
+    await flush();
+
+    assertEqual(page.label.textContent, 'Expires in 3:00', 'a full lifetime again');
+    assert(page.ringFraction() > 0.99, 'and a full ring');
+    assert(page.boxes.every((b) => !b.disabled), 'the boxes are usable again');
+    assertEqual(page.submitButton.disabled, false, 'and so is the button');
+  });
+
+  await test('a cold arrival has no countdown to be wrong about', async () => {
+    // Nothing is known about them, so there is no deadline to show — and a
+    // timer counting down from a guess would be worse than none.
+    const page = runVerifyPage({ expiresInMs: null });
+    assertEqual(page.label, null, 'no countdown element');
+    assertEqual(page.submitButton.disabled, false, 'and nothing disabled by a clock that never started');
   });
 
   // --- the pages ------------------------------------------------------------

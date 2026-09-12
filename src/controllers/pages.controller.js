@@ -91,6 +91,14 @@ const verifyEmailPage = asyncHandler(async (req, res) => {
   // paints, part of the wait is already spent.
   const sinceSent = pending && pending.sentAt ? Date.now() - pending.sentAt : null;
 
+  // Time left on the code itself, which is what the ring on the page counts
+  // down. Sent as a duration rather than a timestamp on purpose: a clock on a
+  // phone can be minutes out, and a countdown computed against the visitor's
+  // own wrong clock is worse than no countdown at all.
+  const expiresInMs = pending && pending.expiresAt
+    ? Math.max(0, pending.expiresAt - Date.now())
+    : null;
+
   res.render('verify-email', {
     title: 'Verify your email',
     email: pending ? pending.email : (typeof req.query.email === 'string' ? req.query.email.slice(0, 200) : ''),
@@ -98,6 +106,8 @@ const verifyEmailPage = asyncHandler(async (req, res) => {
     // editable field — there is nothing here for them to get wrong.
     pendingEmail: pending ? pending.email : '',
     resendWaitMs: sinceSent === null ? 0 : Math.max(0, 60 * 1000 - sinceSent),
+    expiresInMs,
+    codeLifetimeMs: emailVerificationService.CODE_TTL_MS,
     paymentRequired,
   });
 });

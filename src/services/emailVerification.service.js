@@ -15,11 +15,18 @@ const membershipService = require('./membership.service');
 //
 // What it costs is entropy. Six digits is a million possibilities, not 2^256,
 // so unlike the old token this credential has to be actively defended:
-//   - it lives 30 minutes, not 24 hours
+//   - it lives three minutes, not 24 hours
 //   - five wrong guesses destroy it
 //   - it is bound to one account, so guessing must be aimed, not sprayed
 //   - the route on top of this is rate limited as well
-const CODE_TTL_MS = 30 * 60 * 1000;
+//
+// Three minutes rather than thirty. A code is typed within a minute of
+// arriving or not at all — the long window was never being used for anything
+// except leaving a working credential sitting in an inbox. Short enough to
+// matter, long enough to switch to a mail app, wait for delivery and switch
+// back, which is the whole journey it has to survive. The page now shows the
+// time left, so nobody has to guess whether what they are holding still works.
+const CODE_TTL_MS = 3 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
 
 // randomInt, not Math.random: this is a credential, and it is short enough that
@@ -56,13 +63,20 @@ async function issueVerificationCode(user) {
   // swallows its own failure — correct, since the code is already stored and
   // the person can ask for another — but a caller that reports "a new code was
   // sent" has to be able to tell, or it says so when nothing left the building.
-  return sendVerificationEmail(user, code);
+  //
+  // The lifetime is passed rather than repeated in the template: the email says
+  // how long the code lasts, and the two saying different numbers is exactly
+  // the kind of thing nobody notices until somebody trusts the wrong one.
+  return sendVerificationEmail(user, code, CODE_TTL_MS);
 }
 
-// How much life a code needs left to be worth reusing. A code with ninety
-// seconds on it is no use to somebody who still has to go and open their
-// inbox, so below this floor a fresh one is issued instead.
-const REUSE_FLOOR_MS = 5 * 60 * 1000;
+// How much life a code needs left to be worth reusing. Below this floor a
+// fresh one is issued instead, because a code that dies while somebody is
+// still walking to their inbox is worse than a second email.
+//
+// Necessarily well under CODE_TTL_MS: a floor at or above the lifetime means
+// no code is ever reusable, and every sign-in mails another one.
+const REUSE_FLOOR_MS = 45 * 1000;
 
 // Issues a code only when there isn't a usable one already.
 //
@@ -85,11 +99,30 @@ async function ensureVerificationCode(user) {
       // Derived rather than stored: the row records when the code dies, and it
       // was born exactly one TTL before that.
       sentAt: existing.expiresAt.getTime() - CODE_TTL_MS,
+      expiresAt: existing.expiresAt.getTime(),
     };
   }
 
   const delivered = await issueVerificationCode(user);
-  return { sent: delivered, reason: delivered ? 'sent' : 'send-failed', sentAt: Date.now() };
+  return {
+    sent: delivered,
+    reason: delivered ? 'sent' : 'send-failed',
+    sentAt: Date.now(),
+    expiresAt: await expiryFor(user.id),
+  };
+}
+
+// Read back rather than recomputed as Date.now() + CODE_TTL_MS. The send in
+// between is an HTTP call to the mail provider and can take seconds, and the
+// page counts down to this number — a countdown that disagrees with the
+// database is a countdown that reaches zero while the code still works, or
+// worse, the other way round.
+async function expiryFor(userId) {
+  const row = await prisma.emailVerificationToken.findUnique({
+    where: { userId },
+    select: { expiresAt: true },
+  });
+  return row ? row.expiresAt.getTime() : Date.now() + CODE_TTL_MS;
 }
 
 // Called at the one moment a correct password meets an unverified address.
@@ -127,7 +160,7 @@ async function prepareVerification(email) {
 async function resendForPending(userId) {
   const user = await prisma.user.findUnique({ where: { id: Number(userId) } });
   if (!user || user.emailVerifiedAt) {
-    return { sent: false, reason: 'nothing-to-send', sentAt: Date.now() };
+    return { sent: false, reason: 'nothing-to-send', sentAt: Date.now(), expiresAt: null };
   }
 
   // Always a new code, never the outstanding one: they pressed the button
@@ -136,7 +169,12 @@ async function resendForPending(userId) {
   if (!delivered) {
     logger.error('resend-pending: code generated but the email provider did not accept it', { userId: user.id });
   }
-  return { sent: delivered, reason: delivered ? 'sent' : 'send-failed', sentAt: Date.now() };
+  return {
+    sent: delivered,
+    reason: delivered ? 'sent' : 'send-failed',
+    sentAt: Date.now(),
+    expiresAt: await expiryFor(user.id),
+  };
 }
 
 // One deliberately vague message for every failure below.

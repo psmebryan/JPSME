@@ -1,257 +1,405 @@
 <% const profileData = userProfile || locals.currentUser || {}; %>
+<%
+  // NONE is not a problem state — membership payment is optional, so an
+  // account that has simply never paid says so neutrally. Only EXPIRED gets
+  // the amber treatment and the Renew action.
+  const ms = locals.membership || { state: 'NONE' };
+  const msExpiry = ms.expiresAt ? new Date(ms.expiresAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : null;
+
+  const fullName = [profileData.firstName, profileData.middleInitial ? profileData.middleInitial + '.' : '', profileData.lastName]
+    .filter(Boolean).join(' ');
+
+  // The account's own id, padded. Real and stable, unlike a decorative number —
+  // it is what an officer would be read back over the phone when somebody asks
+  // which record is theirs.
+  const memberId = profileData.id ? String(profileData.id).padStart(6, '0') : null;
+
+  const membershipPill = ms.state === 'ACTIVE'
+    ? { text: 'Active member', cls: 'bg-green-100 text-green-700' }
+    : (ms.state === 'EXPIRED'
+      ? { text: 'Expired', cls: 'bg-amber-100 text-amber-700' }
+      : { text: 'Not a member', cls: 'bg-gray-100 text-gray-600' });
+%>
 
 <div class="space-y-8">
   <section class="-mx-4 -mt-12 border-b border-[#26365f] bg-[radial-gradient(circle_at_14%_25%,#1c1442_0,transparent_35%),#080f29] px-4 py-14 sm:-mx-6 sm:px-6">
     <div class="mx-auto max-w-6xl"><h1 class="text-4xl font-extrabold">My Profile</h1><p class="mt-3 text-slate-400">Welcome back, <%= profileData.firstName || 'Member' %>! Manage your JPSME credentials and regional event registers.</p></div>
   </section>
-  <section class="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-    <div class="bg-indigo-950 px-6 py-5 text-white">
-      <h1 class="text-2xl font-bold">Member Information</h1>
-      <p class="text-indigo-100 mt-1">Welcome back, <%= profileData.firstName || 'Member' %>.</p>
-    </div>
 
-    <div class="p-6 md:p-8">
-      <%
-        // NONE is not a problem state — membership payment is optional, so an
-        // account that has simply never paid says so neutrally. Only EXPIRED
-        // gets the amber treatment and the Renew action.
-        const ms = locals.membership || { state: 'NONE' };
-        const msExpiry = ms.expiresAt ? new Date(ms.expiresAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : null;
-      %>
-      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-        <div class="flex items-center gap-4">
-          <img
-            id="profile-image-preview"
-            src="<%= profileData.profileImage || '/img/default-avatar.svg' %>"
-            alt="<%= profileData.firstName || 'User' %> profile image"
-            class="h-20 w-20 rounded-full object-cover border-4 border-indigo-100 bg-gray-100"
-          >
-          <div>
-            <h2 class="text-2xl font-bold text-gray-900">
-              <%= profileData.firstName %> <%= profileData.middleInitial ? profileData.middleInitial + '.' : '' %> <%= profileData.lastName %>
-            </h2>
-            <p class="text-sm text-gray-500"><%= profileData.email %></p>
-          </div>
-        </div>
+  <%
+    /*
+      Two columns: who you are on the left, what you can do on the right.
 
-        <%# The certificate is the document that says somebody IS a member of
-            JPSME, so it is offered to members and nobody else. Being approved
-            only means the account was accepted.
+      The page used to be one long stack — identity, membership, details, a
+      long edit form, then registrations — so the thing people come here for
+      most often (their QR ticket, or their certificate) was the furthest
+      down. The left card is fixed while the right scrolls, so your name, your
+      member ID and your membership standing stay on screen wherever you are
+      in it, and the list is a way to jump rather than a second navigation.
+    */
+  %>
+  <div class="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)] items-start">
 
-            Nothing is shown in its place for a non-member: the Membership card
-            immediately below already explains where they stand and carries the
-            Pay/Renew button, and a second explanation up here would just be the
-            same sentence twice. The route refuses it either way, so this is
-            about not dangling a button that cannot work. %>
-        <% if (ms.state === 'ACTIVE') { %>
-          <a href="/api/certificates/membership/download" target="_blank"
-             class="inline-flex items-center justify-center rounded-md bg-amber-400 px-5 py-2.5 font-semibold text-indigo-950 hover:bg-amber-300">
-            Download Certificate of Membership
-          </a>
-        <% } %>
+    <!-- ============ identity card ============ -->
+    <aside class="lg:sticky lg:top-6 rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+      <%# The blueprint tile behind the header, the same one the home page hero
+          uses — so a member's own page is recognisably part of the same site
+          rather than a plain white form. %>
+      <div class="relative h-28 bg-indigo-950 bg-[url('/img/blueprint.svg')] bg-[length:180px_180px] bg-repeat">
+        <div class="absolute inset-0 bg-gradient-to-b from-indigo-950/40 to-indigo-950/80"></div>
       </div>
 
-      <div class="mt-8 rounded-xl border <%= ms.state === 'EXPIRED' ? 'border-amber-300' : 'border-gray-200' %> bg-gray-50 p-4">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Membership</p>
-            <% if (ms.state === 'ACTIVE') { %>
-              <p class="mt-2 text-sm font-medium text-gray-900">
-                Active &mdash; valid until <%= msExpiry %>
-              </p>
-              <p class="text-xs text-gray-500 mt-0.5">
-                <%= ms.daysRemaining %> day<%= ms.daysRemaining === 1 ? '' : 's' %> remaining.
-              </p>
-            <% } else if (ms.state === 'EXPIRED') { %>
-              <p class="mt-2 text-sm font-medium text-gray-900">Expired on <%= msExpiry %></p>
-              <p class="text-xs text-gray-500 mt-0.5">
-                Renew to start another year, and to download your Certificate of Membership again.
-                Your account and details stay as they are either way.
-              </p>
-            <% } else { %>
-              <p class="mt-2 text-sm font-medium text-gray-900">No paid membership</p>
-              <p class="text-xs text-gray-500 mt-0.5">
-                Paying is optional &mdash; you can use your account, register for events and receive
-                invitations without it. Membership adds your Certificate of Membership.
-              </p>
+      <div class="px-6 pb-6 -mt-14 text-center">
+        <img
+          id="profile-image-preview"
+          src="<%= profileData.profileImage || '/img/default-avatar.svg' %>"
+          alt="<%= profileData.firstName || 'User' %> profile image"
+          class="mx-auto h-28 w-28 rounded-full object-cover border-4 border-white bg-gray-100 shadow-md"
+        >
+        <h2 class="mt-3 text-lg font-bold text-gray-900 break-words"><%= fullName || 'Member' %></h2>
+        <% if (memberId) { %>
+          <p class="text-xs tracking-wide text-gray-400">MEMBER ID <%= memberId %></p>
+        <% } %>
+        <p class="mt-1 text-xs text-gray-500 break-all"><%= profileData.email %></p>
+
+        <span class="mt-3 inline-block rounded-full px-3 py-1 text-xs font-semibold <%= membershipPill.cls %>">
+          <%= membershipPill.text %>
+        </span>
+      </div>
+
+      <%
+        /*
+          A jump list, not a menu of pages. Every destination is a section of
+          this same page — which is why each row is an anchor and not a link
+          somewhere else, and why the sections carry scroll-mt so a heading
+          does not land underneath the sticky navbar.
+        */
+      %>
+      <nav class="border-t border-gray-100 px-3 py-2">
+        <a href="#section-membership" class="group flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-indigo-50">
+          <svg class="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <rect x="2.5" y="5" width="19" height="14" rx="2.5"></rect><path d="M2.5 10h19M6 14.5h4"></path>
+          </svg>
+          <span class="flex-1 text-sm text-gray-700 group-hover:text-indigo-900">Membership</span>
+          <svg class="h-4 w-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>
+        </a>
+
+        <a href="#section-details" class="group flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-indigo-50">
+          <svg class="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <circle cx="12" cy="8" r="3.5"></circle><path d="M4.5 20a7.5 7.5 0 0 1 15 0"></path>
+          </svg>
+          <span class="flex-1 text-sm text-gray-700 group-hover:text-indigo-900">My details</span>
+          <svg class="h-4 w-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>
+        </a>
+
+        <a href="#section-events" class="group flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-indigo-50">
+          <svg class="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <rect x="3.5" y="5" width="17" height="15" rx="2.5"></rect><path d="M3.5 10h17M8 3.5v3M16 3.5v3"></path>
+          </svg>
+          <span class="flex-1 text-sm text-gray-700 group-hover:text-indigo-900">My events</span>
+          <%# The count is the useful part: it answers "do I have a ticket for
+              anything?" without scrolling to find out. %>
+          <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-600"><%= registrations.length %></span>
+        </a>
+
+        <a href="#section-settings" class="group flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-indigo-50">
+          <svg class="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7.9 19l-.1.1A2 2 0 1 1 5 16.3l.1-.1a1.6 1.6 0 0 0-1.1-2.7H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 5 7.9L4.9 7.8A2 2 0 1 1 7.7 5l.1.1a1.6 1.6 0 0 0 2.7-1.1V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1A2 2 0 1 1 20.1 7l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1.2z"></path>
+          </svg>
+          <span class="flex-1 text-sm text-gray-700 group-hover:text-indigo-900">Settings</span>
+          <svg class="h-4 w-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>
+        </a>
+
+        <%# Set apart, because it is the one row here that ends the session
+            rather than moving you around inside it. %>
+        <a href="/logout" class="mt-2 flex items-center gap-3 rounded-lg border-t border-gray-100 px-3 py-3 pt-4 hover:bg-red-50">
+          <svg class="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <path d="M15 17l5-5-5-5M20 12H9M12 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h6"></path>
+          </svg>
+          <span class="flex-1 text-sm font-medium text-red-600">Log out</span>
+        </a>
+      </nav>
+    </aside>
+
+    <!-- ============ the right-hand column ============ -->
+    <div class="space-y-6">
+
+      <!-- ---- membership ---- -->
+      <section id="section-membership" class="scroll-mt-24 rounded-2xl border <%= ms.state === 'EXPIRED' ? 'border-amber-300' : 'border-gray-200' %> bg-white shadow-sm">
+        <div class="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <h2 class="font-semibold text-gray-900">Membership</h2>
+          <span class="rounded-full px-3 py-1 text-xs font-semibold <%= membershipPill.cls %>"><%= membershipPill.text %></span>
+        </div>
+
+        <div class="p-6">
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div class="min-w-0">
+              <% if (ms.state === 'ACTIVE') { %>
+                <p class="text-sm font-medium text-gray-900">Valid until <%= msExpiry %></p>
+                <p class="mt-0.5 text-xs text-gray-500">
+                  <%= ms.daysRemaining %> day<%= ms.daysRemaining === 1 ? '' : 's' %> remaining.
+                </p>
+              <% } else if (ms.state === 'EXPIRED') { %>
+                <p class="text-sm font-medium text-gray-900">Expired on <%= msExpiry %></p>
+                <p class="mt-0.5 text-xs text-gray-500">
+                  Renew to start another year, and to download your Certificate of Membership again.
+                  Your account and details stay as they are either way.
+                </p>
+              <% } else { %>
+                <p class="text-sm font-medium text-gray-900">No paid membership</p>
+                <p class="mt-0.5 text-xs text-gray-500">
+                  Paying is optional &mdash; you can use your account, register for events and receive
+                  invitations without it. Membership adds your Certificate of Membership.
+                </p>
+              <% } %>
+            </div>
+
+            <% if (ms.state !== 'ACTIVE') { %>
+              <a href="/membership-payment"
+                 class="inline-flex items-center justify-center rounded-md bg-amber-400 px-5 py-2.5 font-semibold text-indigo-950 hover:bg-amber-300">
+                <%= ms.state === 'EXPIRED' ? 'Renew Membership' : 'Pay Membership Fee' %>
+              </a>
             <% } %>
           </div>
-          <% if (ms.state !== 'ACTIVE') { %>
-            <a href="/membership-payment"
-               class="inline-flex items-center justify-center rounded-md bg-amber-400 px-5 py-2.5 font-semibold text-indigo-950 hover:bg-amber-300">
-              <%= ms.state === 'EXPIRED' ? 'Renew Membership' : 'Pay Membership Fee' %>
+
+          <%# The certificate is the document that says somebody IS a member of
+              JPSME, so it is offered to members and nobody else. Being approved
+              only means the account was accepted.
+
+              Nothing is shown in its place for a non-member: the card above
+              already explains where they stand and carries the Pay/Renew
+              button, and a second explanation would be the same sentence
+              twice. The route refuses it either way, so this is about not
+              dangling a button that cannot work. %>
+          <% if (ms.state === 'ACTIVE') { %>
+            <a href="/api/certificates/membership/download" target="_blank"
+               class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-indigo-950 px-5 py-3 font-semibold text-white hover:bg-indigo-900 sm:w-auto">
+              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14"></path>
+              </svg>
+              Download Certificate of Membership
             </a>
           <% } %>
         </div>
-      </div>
+      </section>
 
-      <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <!-- The separate School card that used to sit here said the same thing
-             as this one: a member's student unit IS their school. It was a
-             free-text field nobody could keep consistent, sitting next to the
-             organization it duplicated. The full path is shown underneath now,
-             which is what the old card was really being read for. -->
-        <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
-          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Student Unit</p>
-          <p class="mt-2 text-sm font-medium text-gray-900">
-            <% if (profileData.organization && profileData.organization.name) { %>
-              <%= profileData.organization.name %>
-            <% } else { %>
-              Not assigned yet
-            <% } %>
-          </p>
-          <% if (locals.organizationPath) { %>
-            <p class="mt-1 text-xs text-gray-500"><%= organizationPath %></p>
-          <% } %>
+      <!-- ---- details at a glance ---- -->
+      <section id="section-details" class="scroll-mt-24 rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div class="border-b border-gray-100 px-6 py-4">
+          <h2 class="font-semibold text-gray-900">My details</h2>
         </div>
 
-        <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
-          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Phone</p>
-          <p class="mt-2 text-sm font-medium text-gray-900"><%= profileData.phone || 'Not provided' %></p>
-        </div>
-
-        <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
-          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Member Status</p>
-          <p class="mt-2 text-sm font-medium text-gray-900"><%= profileData.status || 'PENDING' %></p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="rounded-2xl border border-gray-200 bg-white shadow-sm p-6">
-    <h2 class="text-xl font-semibold mb-4">Update Your Profile</h2>
-
-    <div class="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
-      <form id="profile-form" class="space-y-4">
-        <div class="grid gap-4 md:grid-cols-2">
-          <div class="md:col-span-2 grid gap-4 sm:grid-cols-[1fr_6rem_1fr]">
-            <div>
-              <label for="firstName" class="block text-sm font-medium mb-1">First Name</label>
-              <input id="firstName" name="firstName" value="<%= profileData.firstName || '' %>" required maxlength="80" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-            </div>
-
-            <div>
-              <label for="middleInitial" class="block text-sm font-medium mb-1">M.I.</label>
-              <input id="middleInitial" name="middleInitial" value="<%= profileData.middleInitial || '' %>" maxlength="2" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-            </div>
-
-            <div>
-              <label for="lastName" class="block text-sm font-medium mb-1">Last Name</label>
-              <input id="lastName" name="lastName" value="<%= profileData.lastName || '' %>" required maxlength="80" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-            </div>
-          </div>
-
-          <!-- Organization. The same guided picker the registration page uses,
-               driven by public/js/auth.js: region, then province, then student
-               unit, each step built from the real children of the one above.
-               data-selected-id makes it open on the member's current branch
-               with every step already chosen, so changing one level does not
-               mean re-picking the whole chain. It replaced a single flat list
-               of every organization, which gave no indication of where an
-               entry sat in the hierarchy. -->
-          <div class="md:col-span-2">
-            <div class="relative mb-3">
-              <label class="block text-sm font-medium mb-1" for="organization-search">
-                Search for your organization
-              </label>
-              <input id="organization-search" type="text" autocomplete="off"
-                placeholder="Type your school, unit, chapter or cluster&hellip;"
-                class="w-full border border-gray-300 rounded-md px-3 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-              <div id="organization-results"
-                   class="hidden absolute z-20 mt-1 w-full max-h-64 overflow-y-auto rounded-md border border-gray-300 bg-white shadow-lg"></div>
-              <p class="text-xs text-gray-500 mt-1">Or choose it step by step below.</p>
-            </div>
-
-            <div id="organization-cascade" class="space-y-3" data-selected-id="<%= profileData.organizationId || '' %>"></div>
-
-            <input type="hidden" id="organizationId" name="organizationId" value="<%= profileData.organizationId || '' %>">
-
-            <div id="organization-selected" class="hidden mt-3 rounded-md border border-indigo-200 bg-indigo-50 p-3">
-              <p class="text-[11px] font-semibold uppercase tracking-wider text-indigo-700 mb-1">Your organization</p>
-              <p class="text-sm font-semibold text-indigo-950" id="organization-selected-name"></p>
-              <p class="text-xs text-gray-500 mt-0.5" id="organization-selected-path"></p>
-            </div>
-
-            <p class="text-xs text-gray-500 mt-2">
-              Choose as far down as your own organization goes. If your branch has no
-              cluster or chapter, that step simply won't appear &mdash; stop at whichever
-              organization you actually belong to.
+        <div class="grid gap-px bg-gray-100 sm:grid-cols-2">
+          <!-- The separate School card that used to sit here said the same
+               thing as this one: a member's student unit IS their school. It
+               was a free-text field nobody could keep consistent, sitting next
+               to the organization it duplicated. The full path is shown
+               underneath now, which is what the old card was really read for. -->
+          <div class="bg-white p-5">
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Student Unit</p>
+            <p class="mt-2 text-sm font-medium text-gray-900">
+              <% if (profileData.organization && profileData.organization.name) { %>
+                <%= profileData.organization.name %>
+              <% } else { %>
+                Not assigned yet
+              <% } %>
             </p>
-            <p id="chapter-error" class="hidden text-xs text-red-600 mt-1">Please select your organization.</p>
+            <% if (locals.organizationPath) { %>
+              <p class="mt-1 text-xs text-gray-500"><%= organizationPath %></p>
+            <% } %>
           </div>
 
-          <div>
-          <label class="block text-sm font-medium mb-1">Year level</label>
-          <select name="yearLevel" id="yearLevel" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            <option value="">Not applicable</option>
-            <option value="FIRST" <%= (profileData.yearLevel || '') === 'FIRST' ? 'selected' : '' %>>1st Year</option>
-            <option value="SECOND" <%= (profileData.yearLevel || '') === 'SECOND' ? 'selected' : '' %>>2nd Year</option>
-            <option value="THIRD" <%= (profileData.yearLevel || '') === 'THIRD' ? 'selected' : '' %>>3rd Year</option>
-            <option value="FOURTH" <%= (profileData.yearLevel || '') === 'FOURTH' ? 'selected' : '' %>>4th Year</option>
-          </select>
+          <div class="bg-white p-5">
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Phone</p>
+            <p class="mt-2 text-sm font-medium text-gray-900"><%= profileData.phone || 'Not provided' %></p>
           </div>
 
-          <div class="md:col-span-2">
-            <label for="phone" class="block text-sm font-medium mb-1">Phone Number</label>
-            <input id="phone" name="phone" value="<%= profileData.phone || '' %>" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <div class="bg-white p-5">
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Account Status</p>
+            <p class="mt-2 text-sm font-medium text-gray-900"><%= profileData.status || 'PENDING' %></p>
+          </div>
+
+          <div class="bg-white p-5">
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Year Level</p>
+            <p class="mt-2 text-sm font-medium text-gray-900">
+              <%
+                const yearLabels = { FIRST: '1st Year', SECOND: '2nd Year', THIRD: '3rd Year', FOURTH: '4th Year' };
+              %>
+              <%= yearLabels[profileData.yearLevel] || 'Not applicable' %>
+            </p>
           </div>
         </div>
+      </section>
 
-        <button type="submit" class="bg-indigo-600 text-white px-5 py-2.5 rounded-md hover:bg-indigo-500 font-semibold">Save Changes</button>
-      </form>
-
-      <form id="profile-image-form" class="space-y-4">
-        <div>
-          <label for="profileImage" class="block text-sm font-medium mb-1">Profile Image</label>
-          <input id="profileImage" name="profileImage" type="file" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+      <!-- ---- events ---- -->
+      <section id="section-events" class="scroll-mt-24 rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div class="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <h2 class="font-semibold text-gray-900">My event registrations</h2>
+          <a href="/events" class="text-sm text-indigo-600 hover:underline">Browse events</a>
         </div>
-        <button type="submit" class="bg-amber-400 text-indigo-950 px-5 py-2.5 rounded-md hover:bg-amber-300 font-semibold">Upload Image</button>
-      </form>
+
+        <% if (registrations.length === 0) { %>
+          <p class="px-6 py-8 text-center text-sm text-gray-500">
+            You haven't registered for any events yet.
+            <a href="/events" class="text-indigo-600 hover:underline">Browse events</a>.
+          </p>
+        <% } else { %>
+          <div class="divide-y divide-gray-100">
+            <% registrations.forEach(reg => { %>
+              <%
+                // A dot and a pill, so the state of a row is legible before any
+                // of its text is read — the same job the colour does on the
+                // verification page's countdown.
+                const pill = reg.status === 'REGISTERED'
+                  ? { dot: 'bg-green-500', cls: 'bg-green-100 text-green-700', text: 'REGISTERED' }
+                  : (reg.status === 'PENDING_PAYMENT'
+                    ? { dot: 'bg-amber-500', cls: 'bg-amber-100 text-amber-700', text: 'AWAITING PAYMENT' }
+                    : { dot: 'bg-gray-400', cls: 'bg-gray-100 text-gray-500', text: reg.status });
+              %>
+              <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
+                <div class="min-w-0 flex items-start gap-3">
+                  <span class="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full <%= pill.dot %>"></span>
+                  <div class="min-w-0">
+                    <p class="font-medium break-words">
+                      <a href="/events/<%= reg.event.id %>" class="hover:text-indigo-600"><%= reg.event.title %></a>
+                    </p>
+                    <p class="text-sm text-gray-500"><%= new Date(reg.event.startDate).toLocaleString() %></p>
+                    <% if (reg.registrationNumber) { %>
+                      <p class="text-xs text-gray-500 font-mono mt-0.5"><%= reg.registrationNumber %></p>
+                    <% } %>
+                    <p class="mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-semibold <%= pill.cls %>">
+                      <%= pill.text %>
+                    </p>
+                  </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <% if (locals.certifiedEventIds && certifiedEventIds.includes(reg.eventId)) { %>
+                    <a href="/api/certificates/events/<%= reg.eventId %>/download" target="_blank" class="text-sm text-indigo-600 hover:underline px-2 py-2 -mx-2">Download certificate</a>
+                  <% } %>
+                  <% if (reg.status === 'PENDING_PAYMENT') { %>
+                    <button data-pay-event="<%= reg.eventId %>" class="text-sm text-amber-600 hover:underline font-medium px-2 py-2 -mx-2">Pay Now</button>
+                  <% } %>
+                  <% if (reg.status === 'REGISTERED' && reg.qrToken) { %>
+                    <a href="/api/events/<%= reg.eventId %>/ticket.pdf" target="_blank" rel="noopener"
+                       class="text-sm text-indigo-600 hover:underline px-2 py-2 -mx-2">Download PDF</a>
+                    <a href="/events/<%= reg.eventId %>/ticket"
+                       class="text-sm font-semibold bg-amber-400 text-indigo-950 px-3 py-1.5 rounded-md hover:bg-amber-300">Show QR</a>
+                  <% } %>
+                  <% if (reg.status === 'REGISTERED' || reg.status === 'PENDING_PAYMENT') { %>
+                    <button data-cancel-registration="<%= reg.eventId %>" class="text-sm text-red-600 hover:underline px-2 py-2 -mx-2">Cancel</button>
+                  <% } %>
+                </div>
+              </div>
+            <% }) %>
+          </div>
+        <% } %>
+      </section>
+
+      <!-- ---- settings / edit ---- -->
+      <section id="section-settings" class="scroll-mt-24 rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div class="border-b border-gray-100 px-6 py-4">
+          <h2 class="font-semibold text-gray-900">Settings</h2>
+          <p class="mt-0.5 text-xs text-gray-500">Update your details and your profile picture.</p>
+        </div>
+
+        <div class="p-6">
+          <div class="grid gap-8 xl:grid-cols-[1.4fr_0.6fr]">
+            <form id="profile-form" class="space-y-4">
+              <div class="grid gap-4 md:grid-cols-2">
+                <div class="md:col-span-2 grid gap-4 sm:grid-cols-[1fr_6rem_1fr]">
+                  <div>
+                    <label for="firstName" class="block text-sm font-medium mb-1">First Name</label>
+                    <input id="firstName" name="firstName" value="<%= profileData.firstName || '' %>" required maxlength="80" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+
+                  <div>
+                    <label for="middleInitial" class="block text-sm font-medium mb-1">M.I.</label>
+                    <input id="middleInitial" name="middleInitial" value="<%= profileData.middleInitial || '' %>" maxlength="2" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+
+                  <div>
+                    <label for="lastName" class="block text-sm font-medium mb-1">Last Name</label>
+                    <input id="lastName" name="lastName" value="<%= profileData.lastName || '' %>" required maxlength="80" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+                </div>
+
+                <!-- Organization. The same guided picker the registration page uses,
+                     driven by public/js/auth.js: region, then province, then student
+                     unit, each step built from the real children of the one above.
+                     data-selected-id makes it open on the member's current branch
+                     with every step already chosen, so changing one level does not
+                     mean re-picking the whole chain. It replaced a single flat list
+                     of every organization, which gave no indication of where an
+                     entry sat in the hierarchy. -->
+                <div class="md:col-span-2">
+                  <div class="relative mb-3">
+                    <label class="block text-sm font-medium mb-1" for="organization-search">
+                      Search for your organization
+                    </label>
+                    <input id="organization-search" type="text" autocomplete="off"
+                      placeholder="Type your school, unit, chapter or cluster&hellip;"
+                      class="w-full border border-gray-300 rounded-md px-3 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <div id="organization-results"
+                         class="hidden absolute z-20 mt-1 w-full max-h-64 overflow-y-auto rounded-md border border-gray-300 bg-white shadow-lg"></div>
+                    <p class="text-xs text-gray-500 mt-1">Or choose it step by step below.</p>
+                  </div>
+
+                  <div id="organization-cascade" class="space-y-3" data-selected-id="<%= profileData.organizationId || '' %>"></div>
+
+                  <input type="hidden" id="organizationId" name="organizationId" value="<%= profileData.organizationId || '' %>">
+
+                  <div id="organization-selected" class="hidden mt-3 rounded-md border border-indigo-200 bg-indigo-50 p-3">
+                    <p class="text-[11px] font-semibold uppercase tracking-wider text-indigo-700 mb-1">Your organization</p>
+                    <p class="text-sm font-semibold text-indigo-950" id="organization-selected-name"></p>
+                    <p class="text-xs text-gray-500 mt-0.5" id="organization-selected-path"></p>
+                  </div>
+
+                  <p class="text-xs text-gray-500 mt-2">
+                    Choose as far down as your own organization goes. If your branch has no
+                    cluster or chapter, that step simply won't appear &mdash; stop at whichever
+                    organization you actually belong to.
+                  </p>
+                  <p id="chapter-error" class="hidden text-xs text-red-600 mt-1">Please select your organization.</p>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium mb-1" for="yearLevel">Year level</label>
+                  <select name="yearLevel" id="yearLevel" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="">Not applicable</option>
+                    <option value="FIRST" <%= (profileData.yearLevel || '') === 'FIRST' ? 'selected' : '' %>>1st Year</option>
+                    <option value="SECOND" <%= (profileData.yearLevel || '') === 'SECOND' ? 'selected' : '' %>>2nd Year</option>
+                    <option value="THIRD" <%= (profileData.yearLevel || '') === 'THIRD' ? 'selected' : '' %>>3rd Year</option>
+                    <option value="FOURTH" <%= (profileData.yearLevel || '') === 'FOURTH' ? 'selected' : '' %>>4th Year</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label for="phone" class="block text-sm font-medium mb-1">Phone Number</label>
+                  <input id="phone" name="phone" value="<%= profileData.phone || '' %>" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+              </div>
+
+              <button type="submit" class="bg-indigo-600 text-white px-5 py-2.5 rounded-md hover:bg-indigo-500 font-semibold">Save Changes</button>
+            </form>
+
+            <form id="profile-image-form" class="space-y-4 rounded-xl border border-gray-200 bg-gray-50 p-5 self-start">
+              <p class="text-sm font-semibold text-gray-900">Profile picture</p>
+              <img src="<%= profileData.profileImage || '/img/default-avatar.svg' %>" alt=""
+                   class="mx-auto h-24 w-24 rounded-full object-cover border-4 border-white bg-gray-100 shadow-sm">
+              <div>
+                <label for="profileImage" class="block text-sm font-medium mb-1">Choose a new one</label>
+                <input id="profileImage" name="profileImage" type="file" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+                <p class="mt-1 text-xs text-gray-500">PNG, JPEG or WEBP, up to 5&nbsp;MB.</p>
+              </div>
+              <button type="submit" class="w-full bg-amber-400 text-indigo-950 px-5 py-2.5 rounded-md hover:bg-amber-300 font-semibold">Upload Image</button>
+            </form>
+          </div>
+        </div>
+      </section>
     </div>
-  </section>
-
-  <section>
-    <h2 class="text-xl font-semibold mb-3">My Event Registrations</h2>
-    <% if (registrations.length === 0) { %>
-      <p class="text-gray-500">You haven't registered for any events yet. <a href="/events" class="text-indigo-600 hover:underline">Browse events</a>.</p>
-    <% } else { %>
-      <div class="space-y-3">
-        <% registrations.forEach(reg => { %>
-          <div class="border border-gray-200 rounded-lg p-4 flex flex-wrap items-center justify-between gap-3 bg-white shadow-sm">
-            <div class="min-w-0">
-              <p class="font-medium break-words">
-                <a href="/events/<%= reg.event.id %>" class="hover:text-indigo-600"><%= reg.event.title %></a>
-              </p>
-              <p class="text-sm text-gray-500"><%= new Date(reg.event.startDate).toLocaleString() %></p>
-              <% if (reg.registrationNumber) { %>
-                <p class="text-xs text-gray-500 font-mono mt-0.5"><%= reg.registrationNumber %></p>
-              <% } %>
-              <p class="text-xs mt-1 inline-block px-2 py-0.5 rounded-full <%= reg.status === 'REGISTERED' ? 'bg-green-100 text-green-700' : (reg.status === 'PENDING_PAYMENT' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500') %>">
-                <%= reg.status === 'PENDING_PAYMENT' ? 'AWAITING PAYMENT' : reg.status %>
-              </p>
-            </div>
-            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <% if (locals.certifiedEventIds && certifiedEventIds.includes(reg.eventId)) { %>
-                <a href="/api/certificates/events/<%= reg.eventId %>/download" target="_blank" class="text-sm text-indigo-600 hover:underline px-2 py-2 -mx-2">Download certificate</a>
-              <% } %>
-              <% if (reg.status === 'PENDING_PAYMENT') { %>
-                <button data-pay-event="<%= reg.eventId %>" class="text-sm text-amber-600 hover:underline font-medium px-2 py-2 -mx-2">Pay Now</button>
-              <% } %>
-              <% if (reg.status === 'REGISTERED' && reg.qrToken) { %>
-                <a href="/api/events/<%= reg.eventId %>/ticket.pdf" target="_blank" rel="noopener"
-                   class="text-sm text-indigo-600 hover:underline px-2 py-2 -mx-2">Download PDF</a>
-                <a href="/events/<%= reg.eventId %>/ticket"
-                   class="text-sm font-semibold bg-amber-400 text-indigo-950 px-3 py-1.5 rounded-md hover:bg-amber-300">Show QR</a>
-              <% } %>
-              <% if (reg.status === 'REGISTERED' || reg.status === 'PENDING_PAYMENT') { %>
-                <button data-cancel-registration="<%= reg.eventId %>" class="text-sm text-red-600 hover:underline px-2 py-2 -mx-2">Cancel</button>
-              <% } %>
-            </div>
-          </div>
-        <% }) %>
-      </div>
-    <% } %>
-  </section>
+  </div>
 </div>
 
 <!-- auth.js owns the organization picker (search + cascade). It is
@@ -301,6 +449,16 @@
           return;
         }
 
+        // Refused here as well as on the server, so an oversized picture on a
+        // slow connection is turned away when it is chosen rather than after
+        // it has finished uploading. The server is still the one that decides.
+        const file = fileInput.files[0];
+        if (file.size > 5 * 1024 * 1024) {
+          const mb = (file.size / (1024 * 1024)).toFixed(1);
+          showToast(`That image is ${mb} MB, which is over the 5 MB limit. Try a smaller export, or save it as JPEG.`, 'error');
+          return;
+        }
+
         try {
           const formData = new FormData(profileImageForm);
           const res = await apiFetch('/api/auth/me/profile/image', {
@@ -308,10 +466,10 @@
             body: formData,
           });
           showToast(res.message || 'Profile image updated');
-          const preview = document.getElementById('profile-image-preview');
-          if (preview) {
-            preview.src = `${res.data.profileImage}?t=${Date.now()}`;
-          }
+          // Both copies: the one in the sidebar and the one beside this form.
+          document.querySelectorAll('#profile-image-preview, #profile-image-form img').forEach((img) => {
+            img.src = `${res.data.profileImage}?t=${Date.now()}`;
+          });
           profileImageForm.reset();
         } catch (err) {
           showToast(err.message, 'error');

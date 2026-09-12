@@ -8,9 +8,13 @@ const storageService = require('../../services/storage.service');
 const logger = require('../../utils/logger');
 
 // How long a correct password stays good as one half of the proof needed to
-// finish verification and be signed in. Matched to the code's own lifetime:
-// the pair is only ever used together, so there is nothing to gain from
-// letting one of them outlive the other.
+// finish verification and be signed in.
+//
+// Deliberately much longer than a code's own three minutes, because it has to
+// survive several of them: a code that expires is replaced by pressing Send it
+// again, and that must not also mean signing in from the top. Thirty minutes
+// covers roughly ten of those cycles, which is far past the point where the
+// problem is the email rather than the person.
 const PASSWORD_PROOF_TTL_MS = 30 * 60 * 1000;
 
 // Long enough that a double-click doesn't send two emails, short enough that
@@ -71,6 +75,10 @@ const login = asyncHandler(async (req, res) => {
             userId: pending.userId,
             email: pending.email,
             sentAt: pending.sentAt,
+            // What the page counts down to. Read back from the row rather than
+            // assumed, so the clock on screen and the one the server checks
+            // against are the same clock.
+            expiresAt: pending.expiresAt,
             // The password was right. Remembering that — briefly, and only in
             // this session — is what lets the code alone finish the job.
             passwordProvenAt: Date.now(),
@@ -176,8 +184,18 @@ const resendPendingVerification = asyncHandler(async (req, res) => {
     return error(res, 'We could not send the email just now. Please try again in a moment.', 502);
   }
 
-  req.session.pendingVerification = { ...pending, sentAt: outcome.sentAt };
-  return success(res, { sentAt: outcome.sentAt, cooldownMs: RESEND_COOLDOWN_MS }, 'A new code is on its way.');
+  req.session.pendingVerification = { ...pending, sentAt: outcome.sentAt, expiresAt: outcome.expiresAt };
+  return success(
+    res,
+    {
+      // A duration, not a timestamp — the same reason the page is rendered
+      // with one. A phone whose clock is ten minutes out would otherwise
+      // count down to a moment that has already passed, or never arrives.
+      expiresInMs: Math.max(0, outcome.expiresAt - Date.now()),
+      cooldownMs: RESEND_COOLDOWN_MS,
+    },
+    'A new code is on its way.'
+  );
 });
 
 // Confirms an address from the six-digit code that was emailed. Takes the

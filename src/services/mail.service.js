@@ -68,8 +68,13 @@ function textToHtml(text) {
 // The code is still shown in the subject line as well, because most mail
 // clients preview it there — which spares the reader opening the message at
 // all on a phone.
-async function sendVerificationEmail(user, code) {
+async function sendVerificationEmail(user, code, ttlMs) {
   const url = `${getAppUrl()}/verify-email`;
+  // Taken from the caller, which owns the lifetime, rather than written into
+  // the copy here where it would quietly go stale the moment that changes.
+  // Defaulted so a caller that does not pass one still says something true.
+  const minutes = Math.max(1, Math.round((Number(ttlMs) || 3 * 60 * 1000) / 60000));
+  const lifetime = `The code expires in ${minutes} minute${minutes === 1 ? '' : 's'} and can be entered five times.`;
 
   try {
     await transporter.sendMail({
@@ -79,14 +84,14 @@ async function sendVerificationEmail(user, code) {
       text: `Hi ${user.firstName},\n\n`
         + `Your JPSME verification code is: ${code}\n\n`
         + `Enter it on the verification page to confirm your email address.\n`
-        + `The code expires in 30 minutes and can be entered five times.\n\n`
+        + `${lifetime}\n\n`
         + `If you did not create a JPSME account, you can ignore this email.`,
       html: `
         <p>Hi ${user.firstName},</p>
         <p>Thanks for registering with JPSME. Your verification code is:</p>
         <p style="font-size:32px;font-weight:bold;letter-spacing:8px;font-family:monospace;margin:24px 0;">${code}</p>
         <p>Enter it on the <a href="${url}">verification page</a> to confirm your email address.</p>
-        <p style="color:#666;font-size:13px;">The code expires in 30 minutes and can be entered five times.<br>
+        <p style="color:#666;font-size:13px;">${lifetime}<br>
         If you did not create a JPSME account, you can ignore this email.</p>
       `,
     });
