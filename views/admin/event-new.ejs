@@ -95,19 +95,30 @@
     toggleZoomLinkField();
 
     form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const formData = new FormData(form);
-    // Ensure checkboxes are explicit booleans (FormData omits unchecked boxes)
-    formData.set('featured', form.featured.checked ? 'true' : 'false');
-    formData.set('isPublished', form.isPublished.checked ? 'true' : 'false');
+      e.preventDefault();
+      const formData = new FormData(form);
+      // Ensure checkboxes are explicit booleans (FormData omits unchecked boxes)
+      formData.set('featured', form.featured.checked ? 'true' : 'false');
+      formData.set('isPublished', form.isPublished.checked ? 'true' : 'false');
 
-    try {
-      await apiFetch('/api/events', { method: 'POST', body: formData });
-      showToast('Event created');
-      window.location.href = '/admin/events';
-    } catch (err) {
-      showToast(err.errors?.[0]?.msg || err.message, 'error');
-    }
+      // withPending disables the button for the length of the request. This
+      // form posts an image, so on a slow connection the wait is long enough
+      // that pressing again feels reasonable — and without this, pressing again
+      // creates a second event.
+      //
+      // It only covers the impatient click. A request that arrives and whose
+      // response is lost looks like a failure from here no matter what, so the
+      // retry after that is caught on the server instead — see
+      // CREATE_RETRY_WINDOW_MS in event.service.
+      await withPending(form, 'Creating...', async () => {
+        try {
+          const res = await apiFetch('/api/events', { method: 'POST', body: formData });
+          showToast(res.message || 'Event created');
+          window.location.href = '/admin/events';
+        } catch (err) {
+          showToast(err.errors?.[0]?.msg || err.message, 'error');
+        }
+      });
     });
   });
 </script>

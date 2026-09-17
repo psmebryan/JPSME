@@ -50,8 +50,13 @@ const createEvent = asyncHandler(async (req, res) => {
       extension: path.extname(req.file.originalname).toLowerCase(),
     });
   }
-  const event = await eventService.createEvent(payload);
-  return success(res, { event }, 'Event created', 201);
+  const { event, reused } = await eventService.createEvent(payload);
+  // 200 rather than 201 when nothing was created, and said plainly. A retry
+  // that quietly reported "Event created" would leave the admin unsure whether
+  // to go and look for a duplicate.
+  return reused
+    ? success(res, { event, reused: true }, 'That event was already created a moment ago.')
+    : success(res, { event }, 'Event created', 201);
 });
 
 const updateEvent = asyncHandler(async (req, res) => {

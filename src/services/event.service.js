@@ -34,10 +34,44 @@ async function getEventById(id) {
   return event;
 }
 
+// How long after creating an event an identical one counts as a retry rather
+// than a second event.
+//
+// The failure this exists for: the request reaches the server and the event is
+// created, but the response never gets back — a dropped connection, a phone
+// that changed network, a slow image upload the browser gave up on. The admin
+// sees "failed to fetch", presses the button again, and ends up with two.
+// Nothing on the client can fix that, because from the client the two cases
+// look identical: it does not know whether its request arrived.
+//
+// Five minutes is far longer than any retry and far shorter than any real
+// interval between deliberately creating two events with the same name AND the
+// same start time, down to the minute.
+const CREATE_RETRY_WINDOW_MS = 5 * 60 * 1000;
+
+// Returns { event, reused }. `reused` means this call matched a just-created
+// event and made nothing new — the caller says so rather than reporting a
+// creation that did not happen.
 async function createEvent(data) {
+  const title = String(data.title || '').trim();
+  const startDate = new Date(data.startDate);
+
+  // Matched on title and start time together. Title alone would refuse a
+  // genuine annual event; start time alone would refuse two talks in two halls.
+  // Both the same, within minutes, is a retry.
+  const recent = await prisma.event.findFirst({
+    where: {
+      title,
+      startDate,
+      createdAt: { gte: new Date(Date.now() - CREATE_RETRY_WINDOW_MS) },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (recent) return { event: recent, reused: true };
+
   const event = await prisma.event.create({
     data: {
-      title: data.title,
+      title,
       description: data.description || null,
       location: data.location || null,
       modality: data.modality || 'FACE_TO_FACE',
@@ -58,7 +92,7 @@ async function createEvent(data) {
   // Seeds the event's tab immediately (0 registrations, 0% filled) rather
   // than waiting for the first registrant to trigger it.
   sheetsSyncService.syncEventRegistrations(event.id);
-  return event;
+  return { event, reused: false };
 }
 
 async function updateEvent(id, data) {
