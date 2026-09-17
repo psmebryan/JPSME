@@ -4,6 +4,7 @@ const AppError = require('../utils/AppError');
 const logger = require('../utils/logger');
 const { sendVerificationEmail, sendMemberApprovedEmail, sendAccountApprovedEmail } = require('./mail.service');
 const membershipService = require('./membership.service');
+const jobService = require('./job.service');
 
 // A typed six-digit code rather than a clicked link.
 //
@@ -68,6 +69,24 @@ async function issueVerificationCode(user) {
   // how long the code lasts, and the two saying different numbers is exactly
   // the kind of thing nobody notices until somebody trusts the wrong one.
   return sendVerificationEmail(user, code, CODE_TTL_MS);
+}
+
+// Sign-up's version: hand the whole thing — minting the code and sending it —
+// to the job queue, so the response does not wait on the mail provider.
+//
+// Why sign-up and nowhere else: nobody here is waiting to be told whether the
+// mail left the building. They are being sent to the code entry page either
+// way, and the page's own Resend button is a synchronous path that does report
+// honestly. A resend, by contrast, exists precisely to answer "did it send",
+// so it keeps waiting.
+//
+// Not awaited. enqueue can fail — the database is the queue — and a failure to
+// schedule an email must not undo a registration that has already committed.
+function queueVerificationCode(user) {
+  jobService.enqueue('SEND_VERIFICATION_EMAIL', { userId: user.id })
+    .catch((err) => logger.error('could not queue the verification email', {
+      userId: user.id, reason: err && err.message,
+    }));
 }
 
 // How much life a code needs left to be worth reusing. Below this floor a
@@ -321,6 +340,7 @@ async function resendVerification(email) {
 
 module.exports = {
   issueVerificationCode,
+  queueVerificationCode,
   ensureVerificationCode,
   prepareVerification,
   resendForPending,

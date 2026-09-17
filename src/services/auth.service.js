@@ -1,7 +1,7 @@
 const bcrypt = require("bcryptjs");
 const prisma = require("../config/prisma");
 const AppError = require("../utils/AppError");
-const { issueVerificationCode } = require("./emailVerification.service");
+const { queueVerificationCode } = require("./emailVerification.service");
 const sheetsSyncService = require("./sheetsSync.service");
 
 const SALT_ROUNDS = 12;
@@ -86,7 +86,10 @@ async function registerUser({
     include: userInclude,
   });
 
-  await issueVerificationCode(user);
+  // Queued, not awaited. This used to block the response on Brevo's API — so
+  // "Creating your account…" stayed on screen long after the code had landed in
+  // the person's inbox, which reads as a hung form.
+  queueVerificationCode(user);
 
   // Fire-and-forget, same as the email sends elsewhere in this app — must
   // never block or fail registration if the sheet sync has trouble.
