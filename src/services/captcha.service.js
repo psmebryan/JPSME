@@ -114,6 +114,11 @@ function requireHuman({ challenge = true } = {}) {
         success: false,
         message: 'We could not verify that you are human. Please reload the page and try again.',
         errors: null,
+        // Tagged so a page can tell "you failed the human check" from "your
+        // code was wrong" and respond to each properly — without this the only
+        // signal is the wording of a sentence. The same tag for every layer:
+        // telling a script which one caught it is telling it what to change.
+        code: 'HUMAN_CHECK_FAILED',
       });
     }
 
@@ -127,6 +132,7 @@ function requireHuman({ challenge = true } = {}) {
           success: false,
           message: 'The characters did not match. Please try the new image.',
           errors: null,
+          code: 'HUMAN_CHECK_FAILED',
         });
       }
       return next();
@@ -145,6 +151,7 @@ function requireHuman({ challenge = true } = {}) {
       success: false,
       message: 'We could not verify that you are human. Please reload the page and try again.',
       errors: null,
+      code: 'HUMAN_CHECK_FAILED',
     });
   };
 }

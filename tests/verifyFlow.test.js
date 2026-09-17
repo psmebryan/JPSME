@@ -217,6 +217,10 @@ function runVerifyPage({
   const boxes = [];
   for (let i = 0; i < 6; i += 1) boxes.push(makeEl({}));
 
+  // The one captcha box on the page. Declared before the form, which reads its
+  // human-check fields out of itself.
+  const challengeInput = makeEl({ value: '', name: 'challengeAnswer' });
+
   const hidden = makeEl({ type: 'hidden' });
   // A cold page renders a real, empty field; a known one renders a hidden
   // input the server already filled.
@@ -224,8 +228,14 @@ function runVerifyPage({
     ? makeEl({ type: 'email', value: '' })
     : makeEl({ type: 'hidden', value: pendingEmail });
   const submits = [];
+  const honeypotInput = makeEl({ value: '', name: 'website' });
   const form = makeEl({
     requestSubmit() { form.fire('submit', { preventDefault() {} }); },
+    querySelector: (sel) => {
+      if (sel === '[name="challengeAnswer"]') return challengeInput;
+      if (sel === '[name="website"]') return honeypotInput;
+      return null;
+    },
   });
   const resendButton = makeEl({ textContent: 'Resend', dataset: { waitMs: String(resendWaitMs) } });
   const resendForm = makeEl({});
@@ -240,9 +250,7 @@ function runVerifyPage({
   const carriedToken = cold ? makeEl({ type: 'hidden', value: '', defaultValue: '' }) : null;
   const coldButton = cold ? makeEl({ textContent: 'Resend' }) : null;
   const coldResend = cold ? makeEl({ querySelector: () => coldButton }) : null;
-  // The one captcha box on the page, which both the verify form and the cold
-  // resend draw their answer from.
-  const challengeInput = makeEl({ value: '', name: 'challengeAnswer' });
+
   const note = makeEl({ textContent: '' });
   const resendPrompt = makeEl({ textContent: '' });
   // Rendered only when the server knows how long is left, so the stub mirrors
@@ -953,6 +961,37 @@ async function main() {
 
     assertEqual(page.submits.length, 1, 'sent without pressing anything');
     assertEqual(page.submits[0].code, '482913', 'as typed');
+  });
+
+  await test('the captcha answer is actually sent with the code', async () => {
+    // The bug this exists for: the page built its JSON body by hand from email
+    // and code alone, so the answer the person typed never left the browser.
+    // The route requires it, so every submission came back "the characters did
+    // not match" — however carefully the image was read, and no matter how many
+    // new images were fetched.
+    //
+    // Checking the server accepts a correct answer proves nothing about this;
+    // only the payload the PAGE sends does.
+    const page = runVerifyPage({ expiresInMs: 180000 });
+    page.typeChallenge('ABCDE');
+    '482913'.split('').forEach((d, i) => page.type(i, d));
+    await flush();
+
+    assertEqual(page.submits.length, 1, 'sent');
+    assertEqual(page.submits[0].challengeAnswer, 'ABCDE', 'with the answer that was typed');
+    assertEqual(page.submits[0].code, '482913', 'and the code');
+    assertEqual(page.submits[0].email, 'ana@example.com', 'and the address');
+  });
+
+  await test('the honeypot travels too, so the hidden check still catches a bot', async () => {
+    // Absent from the body, failedHoneypot sees undefined and waves everything
+    // through — the layer that costs nobody anything stops doing anything.
+    const page = runVerifyPage({ expiresInMs: 180000 });
+    page.typeChallenge('ABCDE');
+    '482913'.split('').forEach((d, i) => page.type(i, d));
+    await flush();
+
+    assertEqual(page.submits[0].website, '', 'sent, and empty as a real person leaves it');
   });
 
   await test('a verified code goes to wherever the server says', async () => {

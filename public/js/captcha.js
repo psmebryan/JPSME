@@ -6,19 +6,31 @@ document.addEventListener('DOMContentLoaded', () => {
   const slots = document.querySelectorAll('[data-challenge]');
   if (!slots.length) return;
 
+  // Only the newest load may paint. Two loads can overlap — a submit schedules
+  // one 400ms later, and a person who submits twice gets two — and each one
+  // issues a NEW challenge, replacing the session's. If the slower response
+  // rendered last, the image on screen would belong to a challenge the server
+  // had already thrown away, and every answer to it would be refused.
+  let loadToken = 0;
+
   async function load() {
+    const token = (loadToken += 1);
+
     slots.forEach((slot) => {
       const box = slot.querySelector('[data-challenge-image]');
       if (box) box.textContent = 'Loading…';
-      // Cleared here rather than only on the refresh button: every path that
-      // loads a new image invalidates whatever was typed against the old one,
-      // and an answer left under a fresh image is one the server is guaranteed
-      // to reject. That matters more now the verify form carries a challenge —
-      // a wrong code spends it too, and the retry would otherwise resubmit a
-      // stale answer alongside the corrected digits.
-      const answer = slot.querySelector('[name="challengeAnswer"]');
-      if (answer) answer.value = '';
     });
+
+    // The answer is NOT cleared here.
+    //
+    // This runs 400ms after a submit, by which time somebody told "that did not
+    // match" has already started retyping — and clearing at this point wipes
+    // what they are in the middle of typing, leaving a half-word that is
+    // refused again. They retype, it happens again. That was a real report.
+    //
+    // It is cleared when the new image actually appears instead: anything typed
+    // before that belonged to the old image and is worthless, anything typed
+    // after belongs to the new one and must be kept.
 
     try {
       const res = await fetch('/api/captcha', {
@@ -41,6 +53,8 @@ document.addEventListener('DOMContentLoaded', () => {
       // busy signup session, or a lab of students behind one address, can run
       // it out. Worth naming, because "wait a minute" is a thing somebody can
       // act on and a blank grey box is not.
+      if (token !== loadToken) return undefined;
+
       if (!res.ok) {
         return fail(res.status === 429
           ? 'Too many attempts from this network. Wait a minute, then press New image.'
@@ -55,6 +69,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return fail('The security check is misconfigured. Please tell an administrator.');
       }
 
+      // A response from an older load has nothing useful left to say: a newer
+      // one has already replaced the challenge it belongs to.
+      if (token !== loadToken) return undefined;
+
       slots.forEach((slot) => {
         const box = slot.querySelector('[data-challenge-image]');
         if (!box) return;
@@ -65,6 +83,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // random numbers — nothing a visitor supplied reaches it — so this is
         // markup the server authored, not user content being trusted.
         box.innerHTML = svg;
+
+        // Cleared at the moment the picture changes, not before it. Whatever
+        // was typed was an answer to the image that has just been replaced.
+        const answer = slot.querySelector('[name="challengeAnswer"]');
+        if (answer) answer.value = '';
       });
       return undefined;
     } catch (err) {

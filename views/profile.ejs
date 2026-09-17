@@ -311,6 +311,19 @@
                     <% if (reg.registrationNumber) { %>
                       <p class="text-xs text-gray-500 font-mono mt-0.5"><%= reg.registrationNumber %></p>
                     <% } %>
+                    <%
+                      // The seat, where this event has assigned seating and one
+                      // has been given. Until this it existed only on the
+                      // organiser's screen — somebody handed A03 at the desk had
+                      // no way to look it up again.
+                      const seat = locals.seatsByRegistration && seatsByRegistration.get(reg.id);
+                    %>
+                    <% if (seat) { %>
+                      <p class="mt-1 inline-flex items-center gap-1.5 text-xs">
+                        <span class="rounded bg-indigo-100 px-2 py-0.5 font-mono font-semibold text-indigo-800">Seat <%= seat.label %></span>
+                        <span class="text-gray-500"><%= [seat.section, seat.room].filter(Boolean).join(' · ') %></span>
+                      </p>
+                    <% } %>
                     <p class="mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-semibold <%= pill.cls %>">
                       <%= pill.text %>
                     </p>

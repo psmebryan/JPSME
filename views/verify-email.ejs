@@ -311,7 +311,7 @@
       // front of the code, and submitting with it blank would fail every time
       // and spend a code doing it. So the last digit hands over to whatever is
       // still unanswered instead of guessing that nothing is.
-      const challenge = document.querySelector('[name="challengeAnswer"]');
+      const challenge = form.querySelector('[name="challengeAnswer"]');
       if (challenge && !challenge.value.trim()) {
         challenge.focus();
         return;
@@ -354,6 +354,25 @@
       // maxlength.
       box.addEventListener('focus', () => box.select());
     });
+
+    // Whatever the human check on this form consists of.
+    //
+    // This body is built by hand rather than from FormData, so anything the
+    // markup adds is invisible to it unless it is named here — and the route
+    // requires the check, so leaving it out meant every single submission came
+    // back "the characters did not match", however carefully they were read.
+    //
+    // Read from the form rather than the document, and by presence rather than
+    // by assuming which check is in force: the built-in challenge and Turnstile
+    // render different fields, and only one of them exists at a time.
+    function humanCheckFields() {
+      const fields = {};
+      ['challengeAnswer', 'captchaToken', 'website'].forEach((name) => {
+        const input = form.querySelector(`[name="${name}"]`);
+        if (input) fields[name] = String(input.value || '').trim();
+      });
+      return fields;
+    }
 
     function clearBoxes() {
       boxes.forEach((b) => { b.value = ''; });
@@ -486,7 +505,7 @@
         try {
           const res = await apiFetch('/api/auth/verify-code', {
             method: 'POST',
-            body: JSON.stringify({ email, code }),
+            body: JSON.stringify({ email, code, ...humanCheckFields() }),
           });
           showToast(res.message);
           clearInterval(ticker);
@@ -505,7 +524,18 @@
           document.getElementById('verify-success').classList.remove('hidden');
         } catch (err) {
           showToast(err.message, 'error');
-          // Cleared rather than left in place: the next attempt is a fresh
+
+          // Only the code is cleared, and only when the code is what was
+          // wrong. Failing the human check says nothing about the six digits —
+          // wiping them made somebody who misread a wobbly letter retype a
+          // code they had copied correctly from their email, every time.
+          if (err.code === 'HUMAN_CHECK_FAILED') {
+            const challenge = form.querySelector('[name="challengeAnswer"]');
+            if (challenge) challenge.focus();
+            return;
+          }
+
+          // A wrong code, though, is cleared: the next attempt is a fresh
           // reading of the email, and a wrong code sitting in the boxes invites
           // resubmitting the same wrong thing.
           clearBoxes();

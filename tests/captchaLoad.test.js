@@ -145,14 +145,84 @@ async function main() {
     assert(!/Loading/.test(page.image.textContent), 'and it is not "Loading…"');
   });
 
-  await test('a stale answer is cleared whenever a new image is fetched', async () => {
-    // The challenge is single-use, so an answer typed against the old image is
-    // one the server is guaranteed to reject.
+  await test('a stale answer is cleared when the new image arrives — not before', async () => {
+    // Both halves matter, and the second half was a real report.
+    //
+    // A load is scheduled 400ms AFTER a submit. By then somebody told "that did
+    // not match" has already started retyping, and clearing at the start of the
+    // request wipes what they are in the middle of typing — leaving a half-word
+    // that is refused again, and again, however carefully they read the image.
+    //
+    // So the answer survives until the picture actually changes: what was typed
+    // before belonged to the old image and is worthless, what is typed after
+    // belongs to the new one and must be kept.
     const page = runPage({ response: OK });
     await flush();
+
     page.answer.value = 'OLD12';
     page.refresh();
-    assertEqual(page.answer.value, '', 'wiped before the new image arrives');
+    assertEqual(page.answer.value, 'OLD12', 'still there while the request is in flight');
+
+    await flush();
+    assertEqual(page.answer.value, '', 'and cleared once the new image is on screen');
+  });
+
+  await test('a slow response never paints over a newer one', async () => {
+    // Every load issues a NEW challenge, replacing the session's. If a slower
+    // response rendered last, the image on screen would belong to a challenge
+    // the server had already thrown away — and every answer to it refused.
+    //
+    // Both loads must come from the SAME page instance: the guard is a closure
+    // variable, so running the ready handler twice would give each its own copy
+    // and prove nothing. The refresh button is the second entry point.
+    let call = 0;
+    let releaseFirst;
+    const firstHeld = new Promise((resolve) => { releaseFirst = resolve; });
+
+    const image = { textContent: '', innerHTML: '', classList: { add() {}, remove() {} } };
+    const answer = { value: '' };
+    const refreshListeners = [];
+    const slot = {
+      querySelector: (sel) => {
+        if (sel === '[data-challenge-image]') return image;
+        if (sel === '[name="challengeAnswer"]') return answer;
+        if (sel === '[data-challenge-refresh]') return { addEventListener: (t, fn) => refreshListeners.push(fn) };
+        return null;
+      },
+    };
+
+    const ready = [];
+    const sandbox = {
+      document: {
+        querySelectorAll: () => [slot],
+        addEventListener: (t, fn) => { if (t === 'DOMContentLoaded') ready.push(fn); },
+      },
+      fetch: async () => {
+        call += 1;
+        const mine = call;
+        if (mine === 1) await firstHeld;   // the first one hangs
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, data: { svg: `<svg id="call-${mine}"></svg>` } }),
+        };
+      },
+      setTimeout: (fn) => { fn(); return 1; },
+    };
+    const keys = Object.keys(sandbox);
+    // eslint-disable-next-line no-new-func
+    new Function(...keys, SOURCE)(...keys.map((k) => sandbox[k]));
+
+    ready.forEach((fn) => fn());               // load #1 — starts and hangs
+    await flush();
+    refreshListeners.forEach((fn) => fn());    // load #2 — same instance, resolves
+    await flush();
+    assert(image.innerHTML.includes('call-2'), `the newer image is showing, got: ${image.innerHTML}`);
+
+    releaseFirst();                            // the slow one finally answers
+    await flush();
+    await flush();
+    assert(image.innerHTML.includes('call-2'), `and the stale one did not replace it, got: ${image.innerHTML}`);
   });
 
   await test('a page with no challenge on it does nothing at all', async () => {

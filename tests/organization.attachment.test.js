@@ -2,6 +2,7 @@
 // actually persisted on their account, readable back everywhere it matters,
 // and frozen onto an event registration. Run against a live dev server.
 const http = require('http');
+const crypto = require('crypto');
 const prisma = require('../src/config/prisma');
 const organizationService = require('../src/services/organization.service');
 
@@ -46,6 +47,40 @@ async function csrf() {
   return t;
 }
 
+// Registration is behind a human check, so a test that posts nothing is
+// correctly refused with HUMAN_CHECK_FAILED — which is what this file started
+// doing the moment that check was added, long before anybody noticed.
+//
+// Rather than bypass it, this seeds a challenge whose answer is known and then
+// answers it. The endpoint, the middleware and challenge.verify all run exactly
+// as they do for a real visitor; the only thing arranged is which five letters
+// the image would have shown. Only the hash is ever stored on the session (the
+// plaintext is never persisted anywhere), and it is an unsalted SHA-256 of the
+// uppercased text — so a test with database access can write a known one.
+const KNOWN_ANSWER = 'ABCDE';
+
+async function seedChallenge() {
+  // Issue a real one first, so the session row exists and carries whatever
+  // express-session already put there. Then swap the hash for a known one.
+  await req('GET', '/api/captcha');
+
+  // 's:<sid>.<signature>' — express-session signs the cookie; the store is
+  // keyed by the bare sid.
+  const raw = decodeURIComponent(cookies['jpsme.sid'] || '');
+  const sid = raw.startsWith('s:') ? raw.slice(2).split('.')[0] : raw;
+  if (!sid) throw new Error('no session cookie to seed a challenge on');
+
+  const rows = await prisma.$queryRawUnsafe('SELECT data FROM sessions WHERE session_id = ?', sid);
+  if (!rows.length) throw new Error(`no session row for ${sid}`);
+
+  const data = JSON.parse(rows[0].data);
+  data.challenge = {
+    hash: crypto.createHash('sha256').update(KNOWN_ANSWER).digest('hex'),
+    expiresAt: Date.now() + 5 * 60 * 1000,
+  };
+  await prisma.$executeRawUnsafe('UPDATE sessions SET data = ? WHERE session_id = ?', JSON.stringify(data), sid);
+}
+
 const pass = [];
 const fail = [];
 function check(label, ok, detail) {
@@ -78,9 +113,11 @@ function check(label, ok, detail) {
 
   console.log('1. REGISTRATION');
   await csrf();
+  await seedChallenge();
   const reg = await req('POST', '/api/auth/register', {
     firstName: 'Attach', lastName: 'Check', email: EMAIL,
     password: 'TestPass123', organizationId: chosen.id,
+    challengeAnswer: KNOWN_ANSWER,
   });
   const regBody = JSON.parse(reg.body);
   check('registration accepted', reg.status === 201, `http ${reg.status}`);
