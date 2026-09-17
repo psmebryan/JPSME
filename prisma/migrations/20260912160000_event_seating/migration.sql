@@ -14,9 +14,11 @@
 -- at the same instant both get it; seat_assignments is the append-only log of
 -- how the seat ended up where it did.
 --
--- Table names: lower_case_table_names=1 here, and Event/EventRegistration/User
--- carry no @@map — so their tables are `event`, `eventregistration` and `user`,
--- not the pluralised names the mapped models use. Do not tidy the references.
+-- Table names: Event, EventRegistration and User carry no @@map, so their
+-- tables are named exactly as the models are — `Event`, not `event`. Write that
+-- exact case, as every earlier migration here does: a case-insensitive server
+-- folds it and works either way, a case-sensitive one (the Linux host this
+-- deploys to) has no table called `event` at all.
 --
 -- Written by hand rather than generated: "prisma migrate diff" also emits a
 -- DROP TABLE for `sessions` (owned by express-mysql-session, so it reads as
@@ -93,20 +95,20 @@ CREATE TABLE `seat_assignments` (
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 ALTER TABLE `seating_sections` ADD CONSTRAINT `seating_sections_eventId_fkey`
-    FOREIGN KEY (`eventId`) REFERENCES `event`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+    FOREIGN KEY (`eventId`) REFERENCES `Event`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE `seating_sections` ADD CONSTRAINT `seating_sections_roomId_fkey`
     FOREIGN KEY (`roomId`) REFERENCES `event_rooms`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 ALTER TABLE `seats` ADD CONSTRAINT `seats_sectionId_fkey`
     FOREIGN KEY (`sectionId`) REFERENCES `seating_sections`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE `seats` ADD CONSTRAINT `seats_assignedRegistrationId_fkey`
-    FOREIGN KEY (`assignedRegistrationId`) REFERENCES `eventregistration`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+    FOREIGN KEY (`assignedRegistrationId`) REFERENCES `EventRegistration`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE `seats` ADD CONSTRAINT `seats_heldByRegistrationId_fkey`
-    FOREIGN KEY (`heldByRegistrationId`) REFERENCES `eventregistration`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+    FOREIGN KEY (`heldByRegistrationId`) REFERENCES `EventRegistration`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 ALTER TABLE `seat_assignments` ADD CONSTRAINT `seat_assignments_seatId_fkey`
     FOREIGN KEY (`seatId`) REFERENCES `seats`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE `seat_assignments` ADD CONSTRAINT `seat_assignments_registrationId_fkey`
-    FOREIGN KEY (`registrationId`) REFERENCES `eventregistration`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+    FOREIGN KEY (`registrationId`) REFERENCES `EventRegistration`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE `seat_assignments` ADD CONSTRAINT `seat_assignments_actorId_fkey`
-    FOREIGN KEY (`actorId`) REFERENCES `user`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+    FOREIGN KEY (`actorId`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;

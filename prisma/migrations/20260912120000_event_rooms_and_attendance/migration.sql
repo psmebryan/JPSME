@@ -15,10 +15,18 @@
 -- to '' on write and only surfaces as "Value '' not found in enum" on a later
 -- read, a long way from the cause.
 --
--- Table names: this server runs lower_case_table_names=1, and the Event and
--- EventRegistration models carry no @@map — so their tables are `event` and
--- `eventregistration`, not the pluralised names the mapped models use. The
--- foreign keys below reference the real names; do not tidy them.
+-- Table names: the Event, EventRegistration and User models carry no @@map, so
+-- their tables are named exactly as the models are — `Event`, not `event`.
+--
+-- Write them in that exact case, which is what every earlier migration here
+-- does. A case-INSENSITIVE server (Windows, lower_case_table_names=1) folds
+-- `Event` to `event` and works either way; a case-SENSITIVE one (the Linux
+-- host this deploys to, lower_case_table_names=0) has a real table called
+-- `Event` and cannot resolve `event` at all.
+--
+-- This was originally written the other way round, from the local server's
+-- behaviour, and the deploy failed on the first foreign key with
+-- ER_FK_CANNOT_OPEN_PARENT: "Failed to open the referenced table 'event'".
 --
 -- Written by hand rather than generated: "prisma migrate diff" also emits a
 -- DROP TABLE for `sessions` (owned by express-mysql-session, so it reads as
@@ -96,17 +104,17 @@ ALTER TABLE `event_check_ins` ADD COLUMN `roomId` INTEGER NULL;
 CREATE INDEX `event_check_ins_roomId_scannedAt_idx` ON `event_check_ins`(`roomId`, `scannedAt`);
 
 ALTER TABLE `event_rooms` ADD CONSTRAINT `event_rooms_eventId_fkey`
-    FOREIGN KEY (`eventId`) REFERENCES `event`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+    FOREIGN KEY (`eventId`) REFERENCES `Event`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE `event_sessions` ADD CONSTRAINT `event_sessions_eventId_fkey`
-    FOREIGN KEY (`eventId`) REFERENCES `event`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+    FOREIGN KEY (`eventId`) REFERENCES `Event`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE `event_sessions` ADD CONSTRAINT `event_sessions_roomId_fkey`
     FOREIGN KEY (`roomId`) REFERENCES `event_rooms`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 ALTER TABLE `room_attendance` ADD CONSTRAINT `room_attendance_roomId_fkey`
     FOREIGN KEY (`roomId`) REFERENCES `event_rooms`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE `room_attendance` ADD CONSTRAINT `room_attendance_eventRegistrationId_fkey`
-    FOREIGN KEY (`eventRegistrationId`) REFERENCES `eventregistration`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+    FOREIGN KEY (`eventRegistrationId`) REFERENCES `EventRegistration`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE `event_check_ins` ADD CONSTRAINT `event_check_ins_roomId_fkey`
     FOREIGN KEY (`roomId`) REFERENCES `event_rooms`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
