@@ -32,6 +32,23 @@
 -- DROP TABLE for `sessions` (owned by express-mysql-session, so it reads as
 -- drift on every diff), and running that would sign out every logged-in user.
 
+-- Every step below is written to be safe to re-run, which is not how a
+-- migration normally needs to be written. It is how this one needs to be.
+--
+-- MySQL DDL is not transactional, and this runner records a migration as
+-- applied only after the whole file succeeds. So when an earlier version of
+-- this file failed on its first foreign key, everything above that line had
+-- already committed while the migration still counted as never run — and the
+-- next boot stopped on "Table 'event_rooms' already exists", with no way
+-- forward that did not involve someone editing the production database by
+-- hand at the moment the site was down.
+--
+-- CREATE TABLE IF NOT EXISTS covers the tables. MySQL has no such clause for
+-- ADD COLUMN, CREATE INDEX or ADD CONSTRAINT, so those ask information_schema
+-- first and skip themselves if the object is already there. The tables left
+-- behind by the failed run were built by these same statements, so keeping
+-- them is correct; only the foreign keys were missing.
+
 -- New scan verdicts, and the administrative actions around rooms.
 ALTER TABLE `event_check_ins`
     MODIFY `result` ENUM(
@@ -51,7 +68,7 @@ ALTER TABLE `audit_logs`
         'ROOM_ATTENDANCE_OVERRIDDEN'
     ) NOT NULL;
 
-CREATE TABLE `event_rooms` (
+CREATE TABLE IF NOT EXISTS `event_rooms` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `eventId` INTEGER NOT NULL,
     `name` VARCHAR(191) NOT NULL,
@@ -67,7 +84,7 @@ CREATE TABLE `event_rooms` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-CREATE TABLE `event_sessions` (
+CREATE TABLE IF NOT EXISTS `event_sessions` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `eventId` INTEGER NOT NULL,
     `roomId` INTEGER NULL,
@@ -84,7 +101,7 @@ CREATE TABLE `event_sessions` (
 
 -- One row per person per room. The unique key is what makes the conditional
 -- UPDATE in roomScan() a safe decision-and-write in one statement.
-CREATE TABLE `room_attendance` (
+CREATE TABLE IF NOT EXISTS `room_attendance` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `roomId` INTEGER NOT NULL,
     `eventRegistrationId` INTEGER NOT NULL,
@@ -100,23 +117,70 @@ CREATE TABLE `room_attendance` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-ALTER TABLE `event_check_ins` ADD COLUMN `roomId` INTEGER NULL;
-CREATE INDEX `event_check_ins_roomId_scannedAt_idx` ON `event_check_ins`(`roomId`, `scannedAt`);
+SET @sql := IF(
+    (SELECT COUNT(*) FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_check_ins' AND COLUMN_NAME = 'roomId') = 0,
+    'ALTER TABLE `event_check_ins` ADD COLUMN `roomId` INTEGER NULL',
+    'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-ALTER TABLE `event_rooms` ADD CONSTRAINT `event_rooms_eventId_fkey`
-    FOREIGN KEY (`eventId`) REFERENCES `Event`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+SET @sql := IF(
+    (SELECT COUNT(*) FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_check_ins'
+        AND INDEX_NAME = 'event_check_ins_roomId_scannedAt_idx') = 0,
+    'CREATE INDEX `event_check_ins_roomId_scannedAt_idx` ON `event_check_ins`(`roomId`, `scannedAt`)',
+    'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-ALTER TABLE `event_sessions` ADD CONSTRAINT `event_sessions_eventId_fkey`
-    FOREIGN KEY (`eventId`) REFERENCES `Event`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE `event_sessions` ADD CONSTRAINT `event_sessions_roomId_fkey`
-    FOREIGN KEY (`roomId`) REFERENCES `event_rooms`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+SET @sql := IF(
+    (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_rooms'
+        AND CONSTRAINT_NAME = 'event_rooms_eventId_fkey') = 0,
+    'ALTER TABLE `event_rooms` ADD CONSTRAINT `event_rooms_eventId_fkey` FOREIGN KEY (`eventId`) REFERENCES `Event`(`id`) ON DELETE CASCADE ON UPDATE CASCADE',
+    'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-ALTER TABLE `room_attendance` ADD CONSTRAINT `room_attendance_roomId_fkey`
-    FOREIGN KEY (`roomId`) REFERENCES `event_rooms`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE `room_attendance` ADD CONSTRAINT `room_attendance_eventRegistrationId_fkey`
-    FOREIGN KEY (`eventRegistrationId`) REFERENCES `EventRegistration`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+SET @sql := IF(
+    (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_sessions'
+        AND CONSTRAINT_NAME = 'event_sessions_eventId_fkey') = 0,
+    'ALTER TABLE `event_sessions` ADD CONSTRAINT `event_sessions_eventId_fkey` FOREIGN KEY (`eventId`) REFERENCES `Event`(`id`) ON DELETE CASCADE ON UPDATE CASCADE',
+    'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @sql := IF(
+    (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_sessions'
+        AND CONSTRAINT_NAME = 'event_sessions_roomId_fkey') = 0,
+    'ALTER TABLE `event_sessions` ADD CONSTRAINT `event_sessions_roomId_fkey` FOREIGN KEY (`roomId`) REFERENCES `event_rooms`(`id`) ON DELETE SET NULL ON UPDATE CASCADE',
+    'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-ALTER TABLE `event_check_ins` ADD CONSTRAINT `event_check_ins_roomId_fkey`
-    FOREIGN KEY (`roomId`) REFERENCES `event_rooms`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
-ALTER TABLE `event_check_ins` ADD CONSTRAINT `event_check_ins_sessionId_fkey`
-    FOREIGN KEY (`sessionId`) REFERENCES `event_sessions`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+SET @sql := IF(
+    (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'room_attendance'
+        AND CONSTRAINT_NAME = 'room_attendance_roomId_fkey') = 0,
+    'ALTER TABLE `room_attendance` ADD CONSTRAINT `room_attendance_roomId_fkey` FOREIGN KEY (`roomId`) REFERENCES `event_rooms`(`id`) ON DELETE CASCADE ON UPDATE CASCADE',
+    'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @sql := IF(
+    (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'room_attendance'
+        AND CONSTRAINT_NAME = 'room_attendance_eventRegistrationId_fkey') = 0,
+    'ALTER TABLE `room_attendance` ADD CONSTRAINT `room_attendance_eventRegistrationId_fkey` FOREIGN KEY (`eventRegistrationId`) REFERENCES `EventRegistration`(`id`) ON DELETE CASCADE ON UPDATE CASCADE',
+    'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+    (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_check_ins'
+        AND CONSTRAINT_NAME = 'event_check_ins_roomId_fkey') = 0,
+    'ALTER TABLE `event_check_ins` ADD CONSTRAINT `event_check_ins_roomId_fkey` FOREIGN KEY (`roomId`) REFERENCES `event_rooms`(`id`) ON DELETE SET NULL ON UPDATE CASCADE',
+    'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @sql := IF(
+    (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_check_ins'
+        AND CONSTRAINT_NAME = 'event_check_ins_sessionId_fkey') = 0,
+    'ALTER TABLE `event_check_ins` ADD CONSTRAINT `event_check_ins_sessionId_fkey` FOREIGN KEY (`sessionId`) REFERENCES `event_sessions`(`id`) ON DELETE SET NULL ON UPDATE CASCADE',
+    'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

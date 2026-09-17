@@ -40,9 +40,14 @@ ALTER TABLE `audit_logs`
         'ROOM_ATTENDANCE_OVERRIDDEN'
     ) NOT NULL;
 
-ALTER TABLE `event` ADD COLUMN `seatingEnabled` BOOLEAN NOT NULL DEFAULT false;
+SET @sql := IF(
+    (SELECT COUNT(*) FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Event' AND COLUMN_NAME = 'seatingEnabled') = 0,
+    'ALTER TABLE `Event` ADD COLUMN `seatingEnabled` BOOLEAN NOT NULL DEFAULT false',
+    'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-CREATE TABLE `seating_sections` (
+CREATE TABLE IF NOT EXISTS `seating_sections` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `eventId` INTEGER NOT NULL,
     `roomId` INTEGER NULL,
@@ -56,7 +61,7 @@ CREATE TABLE `seating_sections` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-CREATE TABLE `seats` (
+CREATE TABLE IF NOT EXISTS `seats` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `sectionId` INTEGER NOT NULL,
     `label` VARCHAR(191) NOT NULL,
@@ -80,7 +85,7 @@ CREATE TABLE `seats` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-CREATE TABLE `seat_assignments` (
+CREATE TABLE IF NOT EXISTS `seat_assignments` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `seatId` INTEGER NOT NULL,
     `registrationId` INTEGER NULL,
@@ -94,21 +99,61 @@ CREATE TABLE `seat_assignments` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-ALTER TABLE `seating_sections` ADD CONSTRAINT `seating_sections_eventId_fkey`
-    FOREIGN KEY (`eventId`) REFERENCES `Event`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE `seating_sections` ADD CONSTRAINT `seating_sections_roomId_fkey`
-    FOREIGN KEY (`roomId`) REFERENCES `event_rooms`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+SET @sql := IF(
+    (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'seating_sections'
+        AND CONSTRAINT_NAME = 'seating_sections_eventId_fkey') = 0,
+    'ALTER TABLE `seating_sections` ADD CONSTRAINT `seating_sections_eventId_fkey` FOREIGN KEY (`eventId`) REFERENCES `Event`(`id`) ON DELETE CASCADE ON UPDATE CASCADE',
+    'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @sql := IF(
+    (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'seating_sections'
+        AND CONSTRAINT_NAME = 'seating_sections_roomId_fkey') = 0,
+    'ALTER TABLE `seating_sections` ADD CONSTRAINT `seating_sections_roomId_fkey` FOREIGN KEY (`roomId`) REFERENCES `event_rooms`(`id`) ON DELETE SET NULL ON UPDATE CASCADE',
+    'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-ALTER TABLE `seats` ADD CONSTRAINT `seats_sectionId_fkey`
-    FOREIGN KEY (`sectionId`) REFERENCES `seating_sections`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE `seats` ADD CONSTRAINT `seats_assignedRegistrationId_fkey`
-    FOREIGN KEY (`assignedRegistrationId`) REFERENCES `EventRegistration`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
-ALTER TABLE `seats` ADD CONSTRAINT `seats_heldByRegistrationId_fkey`
-    FOREIGN KEY (`heldByRegistrationId`) REFERENCES `EventRegistration`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+SET @sql := IF(
+    (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'seats'
+        AND CONSTRAINT_NAME = 'seats_sectionId_fkey') = 0,
+    'ALTER TABLE `seats` ADD CONSTRAINT `seats_sectionId_fkey` FOREIGN KEY (`sectionId`) REFERENCES `seating_sections`(`id`) ON DELETE CASCADE ON UPDATE CASCADE',
+    'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @sql := IF(
+    (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'seats'
+        AND CONSTRAINT_NAME = 'seats_assignedRegistrationId_fkey') = 0,
+    'ALTER TABLE `seats` ADD CONSTRAINT `seats_assignedRegistrationId_fkey` FOREIGN KEY (`assignedRegistrationId`) REFERENCES `EventRegistration`(`id`) ON DELETE SET NULL ON UPDATE CASCADE',
+    'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @sql := IF(
+    (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'seats'
+        AND CONSTRAINT_NAME = 'seats_heldByRegistrationId_fkey') = 0,
+    'ALTER TABLE `seats` ADD CONSTRAINT `seats_heldByRegistrationId_fkey` FOREIGN KEY (`heldByRegistrationId`) REFERENCES `EventRegistration`(`id`) ON DELETE SET NULL ON UPDATE CASCADE',
+    'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-ALTER TABLE `seat_assignments` ADD CONSTRAINT `seat_assignments_seatId_fkey`
-    FOREIGN KEY (`seatId`) REFERENCES `seats`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE `seat_assignments` ADD CONSTRAINT `seat_assignments_registrationId_fkey`
-    FOREIGN KEY (`registrationId`) REFERENCES `EventRegistration`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
-ALTER TABLE `seat_assignments` ADD CONSTRAINT `seat_assignments_actorId_fkey`
-    FOREIGN KEY (`actorId`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+SET @sql := IF(
+    (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'seat_assignments'
+        AND CONSTRAINT_NAME = 'seat_assignments_seatId_fkey') = 0,
+    'ALTER TABLE `seat_assignments` ADD CONSTRAINT `seat_assignments_seatId_fkey` FOREIGN KEY (`seatId`) REFERENCES `seats`(`id`) ON DELETE CASCADE ON UPDATE CASCADE',
+    'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @sql := IF(
+    (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'seat_assignments'
+        AND CONSTRAINT_NAME = 'seat_assignments_registrationId_fkey') = 0,
+    'ALTER TABLE `seat_assignments` ADD CONSTRAINT `seat_assignments_registrationId_fkey` FOREIGN KEY (`registrationId`) REFERENCES `EventRegistration`(`id`) ON DELETE SET NULL ON UPDATE CASCADE',
+    'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @sql := IF(
+    (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'seat_assignments'
+        AND CONSTRAINT_NAME = 'seat_assignments_actorId_fkey') = 0,
+    'ALTER TABLE `seat_assignments` ADD CONSTRAINT `seat_assignments_actorId_fkey` FOREIGN KEY (`actorId`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE',
+    'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
