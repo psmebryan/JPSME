@@ -40,6 +40,17 @@ const scan = asyncHandler(async (req, res) => {
   return success(res, result, result.message);
 });
 
+// Who is this? No admission, no row in the door log — see lookupByScan.
+const lookup = asyncHandler(async (req, res) => {
+  if (!checkValidation(req, res)) return undefined;
+  const result = await checkinService.lookupByScan({
+    eventId: req.params.id,
+    rawScan: req.body.qrToken,
+    staffUser: req.session.user,
+  });
+  return success(res, result, result.message || 'Found.');
+});
+
 const manualCheckIn = asyncHandler(async (req, res) => {
   if (!checkValidation(req, res)) return undefined;
   const result = await checkinService.checkInManually({
@@ -128,6 +139,8 @@ const revokeStaff = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
-  scan, manualCheckIn, undoCheckIn, searchRegistrations, stats, exportReport,
+  lookup,
+  scan,
+  manualCheckIn, undoCheckIn, searchRegistrations, stats, exportReport,
   listStaff, grantStaff, revokeStaff,
 };

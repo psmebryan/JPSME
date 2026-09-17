@@ -23,8 +23,10 @@ const SCOPES = [
 <div class="max-w-5xl mx-auto">
   <div class="flex flex-wrap items-center justify-between gap-3">
     <div>
-      <h1 class="admin-h1">Event Check-in</h1>
-      <p class="admin-subtitle">Open a scanner station, or read what happened at one.</p>
+      <h1 class="admin-h1">Event Day</h1>
+      <p class="admin-subtitle">
+        Pick an event to open its desk, entrance, halls and seat map &mdash; or read what happened at one.
+      </p>
     </div>
     <% if (currentUser && currentUser.role === 'ADMIN') { %>
       <a href="/admin/check-in/staff" class="btn-secondary">Manage check-in staff</a>
@@ -87,7 +89,11 @@ const SCOPES = [
             </div>
 
             <div class="flex flex-wrap gap-2 shrink-0">
-              <a href="/admin/events/<%= row.event.id %>/check-in" class="btn-primary">Open scanner</a>
+              <%# One way in, not three competing ones. The event's own page
+                  lists the stations with a sentence each saying what they are
+                  for — which is the thing that was missing when this row
+                  offered three unexplained buttons. %>
+              <a href="/admin/events/<%= row.event.id %>/attendance" class="btn-primary">Open event day</a>
               <a href="/admin/events/<%= row.event.id %>/check-in/report" class="btn-secondary">Report</a>
             </div>
           </div>

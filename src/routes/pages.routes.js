@@ -23,6 +23,10 @@ router.get('/events/:id/invite/:token', pages.eventInvitePage);
 router.get('/events/:id/invite/:token/rsvp/:status(attending|not-attending)', pages.submitRsvpFromEmailPage);
 router.get('/events/:id/payment-return', ensureAuth, pages.eventPaymentReturnPage);
 router.get('/events/:id/ticket', ensureAuth, pages.eventTicketPage);
+// Picking a seat, by the person who will sit in it. Beside the ticket rather
+// than under /admin: the desk can assign a seat, but so can the attendee, and
+// this is the half they drive.
+router.get('/events/:id/seat', ensureAuth, pages.eventSeatPickerPage);
 router.get('/articles', pages.articlesPage);
 router.get('/articles/:id', pages.articleDetailPage);
 // URLs kept as /chapters/* so any existing external links still resolve;
@@ -62,8 +66,19 @@ router.get('/admin/events/:id/registrations', ensureAdmin, pages.adminEventRegis
 // to so the module reads as a unit rather than as an appendix to events.
 router.get('/admin/check-in', ensureAdmin, pages.adminCheckInHubPage);
 router.get('/admin/check-in/staff', ensureMainAdminOnly, pages.adminCheckInStaffPage);
-router.get('/admin/events/:id/check-in', ensureAdmin, pages.adminEventCheckInPage);
 router.get('/admin/events/:id/check-in/report', ensureAdmin, pages.adminEventCheckInReportPage);
+// Rooms sit under the event rather than under check-in: they are part of how
+// the event is set up, and the door screen for one is reached from the list.
+// One home for the day, then the stations. They are deliberately separate
+// screens — the desk hands out seats and admits, the entrance only admits, the
+// room door tracks in and out — and this is where an admin starts.
+router.get('/admin/events/:id/attendance', ensureAdmin, pages.adminEventAttendancePage);
+router.get('/admin/events/:id/desk', ensureAdmin, pages.adminEventDeskPage);
+router.get('/admin/events/:id/rooms', ensureAdmin, pages.adminEventRoomsPage);
+router.get('/admin/events/:id/rooms/:roomId/scan', ensureAdmin, pages.adminRoomScanPage);
+// Main admin only: this page shows every attendee's name against a seat and
+// can reassign them, which is more than running a door.
+router.get('/admin/events/:id/seating', ensureMainAdminOnly, pages.adminEventSeatingPage);
 
 // Payments — MAIN_ADMIN only. Chapter admins have no access to payment data.
 router.get('/admin/payments', ensureMainAdminOnly, pages.adminPaymentsPage);

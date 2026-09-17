@@ -1,0 +1,100 @@
+<%
+/*
+  The registration desk — the first of three stations, and the only one where
+  anybody stops to talk.
+
+    Registration desk   arrive, pick a seat, be checked in      (this page)
+    Room door           in and out of a hall, repeatedly        /rooms/:id/scan
+
+  There was a third, a venue entrance, and it was removed: for a single-hall
+  event "in the building" and "in the hall" are the same fact, so it was a scan
+  that answered nothing the hall door had not already answered.
+
+  Keeping these two apart is the point. Somebody can be registered with a seat
+  and never walk into the hall; the seat map shows that as ASSIGNED rather than
+  OCCUPIED, and it only means anything because these are different scans at
+  different places.
+
+  The order here is deliberate: scan, LOOK, choose, then admit. The scan on this
+  page admits nobody by itself — that is what lets a seat be chosen first.
+*/
+%>
+<div class="max-w-5xl mx-auto"
+     data-desk-root
+     data-event-id="<%= event.id %>"
+     data-seating="<%= event.seatingEnabled ? 'on' : 'off' %>">
+
+  <%- include('../partials/event-ops-nav', { event, active: 'desk' }) %>
+
+  <div class="mt-5 flex flex-wrap items-center justify-between gap-3">
+    <div class="min-w-0">
+      <h1 class="admin-h1 truncate">Registration desk</h1>
+      <p class="admin-subtitle">Look them up, give them a seat, check them in.</p>
+    </div>
+    <label class="text-sm">
+      <span class="form-label">Station</span>
+      <input type="text" data-station maxlength="64" placeholder="DESK-01"
+             class="form-input w-44 font-mono uppercase" autocomplete="off">
+    </label>
+  </div>
+
+  <% if (!event.seatingEnabled) { %>
+    <div class="mt-4 rounded-lg border border-slate-300 bg-slate-50 p-4 text-sm text-slate-700">
+      Assigned seating is off for this event, so this desk just admits people.
+      <a href="/admin/events/<%= event.id %>/seating" class="text-indigo-600 hover:underline">Turn it on</a>
+      to hand out seats here.
+    </div>
+  <% } %>
+
+  <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div class="admin-card p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Registered</p>
+      <p class="mt-1 text-2xl font-semibold tabular-nums text-slate-900" data-stat="registered"><%= stats.registered %></p>
+    </div>
+    <div class="admin-card p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Arrived</p>
+      <p class="mt-1 text-2xl font-semibold tabular-nums text-green-700" data-stat="checkedIn"><%= stats.checkedIn %></p>
+    </div>
+    <div class="admin-card p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Seats given</p>
+      <p class="mt-1 text-2xl font-semibold tabular-nums text-indigo-700" data-stat="seated"><%= seated %></p>
+    </div>
+    <%# The number this whole separation exists to produce: people who have a
+        seat and have arrived, but are not in the hall. %>
+    <div class="admin-card p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Seated, not in the room</p>
+      <p class="mt-1 text-2xl font-semibold tabular-nums text-amber-700" data-stat="notInRoom"><%= notInRoom %></p>
+    </div>
+  </div>
+
+  <form data-scan-form class="mt-4 admin-card p-4">
+    <label for="scan-input" class="form-label">Scan a ticket</label>
+    <div class="flex gap-2">
+      <input id="scan-input" data-scan-input type="text" inputmode="text" autocomplete="off"
+             autocapitalize="off" spellcheck="false"
+             placeholder="Waiting for scan…"
+             class="form-input flex-1 font-mono text-lg py-3">
+      <button type="submit" class="btn-primary px-6">Look up</button>
+      <button type="button" data-qr-camera
+              class="btn-secondary shrink-0 px-4">Use camera</button>
+    </div>
+    <p class="mt-2 text-xs text-slate-500">
+      Scanning here does not admit anybody &mdash; it brings them up so a seat can be chosen first.
+    </p>
+  </form>
+
+  <!-- The person, and what to do with them. -->
+  <div data-result class="mt-4 rounded-xl border-2 border-dashed border-slate-200 bg-white p-8 text-center">
+    <p class="text-sm text-slate-400">Scan a ticket to begin.</p>
+  </div>
+
+  <div class="mt-4 admin-card p-4">
+    <h2 class="text-sm font-semibold text-slate-900">Recently admitted</h2>
+    <ul class="mt-2 space-y-1 text-sm text-slate-600" data-recent>
+      <li class="text-slate-400">Nothing yet this session.</li>
+    </ul>
+  </div>
+</div>
+
+<script src="/js/qr-camera.js"></script>
+<script src="/js/desk.js"></script>

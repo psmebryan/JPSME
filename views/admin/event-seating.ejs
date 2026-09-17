@@ -1,0 +1,293 @@
+<%
+/*
+  The seat plan and the live map, on one page.
+
+  Building and watching are the same job here: an organiser adds a section, sees
+  it appear, blocks the broken chair in row C, and then during the event watches
+  the same map fill up. Splitting them into two screens would mean the plan you
+  edit and the plan you watch are different pages showing the same rows.
+
+  The map is server-rendered so two thousand seats are on screen at open rather
+  than after a fetch, then repainted in place as things change.
+*/
+const STATE_CLASS = {
+  AVAILABLE: 'bg-white border-slate-300 text-slate-600 hover:border-indigo-400',
+  HELD:      'bg-amber-100 border-amber-400 text-amber-800',
+  ASSIGNED:  'bg-indigo-100 border-indigo-400 text-indigo-800',
+  OCCUPIED:  'bg-green-600 border-green-700 text-white',
+  // Theirs, but they have walked out of the hall. Its own colour because it is
+  // the one state an organiser can act on — a seat that looks empty from across
+  // the room and is not free.
+  AWAY:      'bg-orange-100 border-orange-400 text-orange-800',
+  BLOCKED:   'bg-slate-300 border-slate-400 text-slate-500 line-through',
+};
+const totals = map.reduce((acc, s) => {
+  Object.keys(s.counts).forEach((k) => { acc[k] = (acc[k] || 0) + s.counts[k]; });
+  return acc;
+}, {});
+%>
+<div class="max-w-6xl mx-auto" data-seating-root data-event-id="<%= event.id %>">
+
+  <%- include('../partials/event-ops-nav', { event, active: 'seating' }) %>
+
+  <div class="mt-5 flex flex-wrap items-start justify-between gap-3">
+    <div class="min-w-0">
+      <h1 class="admin-h1 truncate">Seating</h1>
+      <p class="admin-subtitle">Build the plan, then watch it fill up.</p>
+    </div>
+
+    <%# The switch. Everything below is inert until this is on, and an event
+        that never turns it on carries no seating at all. %>
+    <label class="admin-card flex items-center gap-3 p-4">
+      <input type="checkbox" data-seating-enabled <%= event.seatingEnabled ? 'checked' : '' %>
+             class="h-4 w-4 rounded border-slate-300">
+      <span>
+        <span class="block text-sm font-medium text-slate-900">Assigned seating</span>
+        <span class="block text-xs text-slate-500">Off means general admission.</span>
+      </span>
+    </label>
+  </div>
+
+  <% if (!event.seatingEnabled) { %>
+    <div class="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+      <strong class="font-semibold">Assigned seating is off for this event.</strong>
+      You can still build the plan below; nobody can choose a seat until you switch it on.
+    </div>
+  <% } %>
+
+  <!-- Counts across every section. -->
+  <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6" data-seat-totals>
+    <% [['total','Seats','text-slate-900'],['available','Available','text-slate-900'],['assigned','Assigned','text-indigo-700'],['occupied','In their seat','text-green-700'],['away','Stepped out','text-orange-700'],['blocked','Blocked','text-slate-500']].forEach(([key,label,tone]) => { %>
+      <div class="admin-card p-4">
+        <p class="text-xs font-medium uppercase tracking-wide text-slate-500"><%= label %></p>
+        <p class="mt-1 text-2xl font-semibold tabular-nums <%= tone %>" data-total="<%= key %>"><%= totals[key] || 0 %></p>
+      </div>
+    <% }) %>
+  </div>
+
+  <div class="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] items-start">
+
+    <!-- ============ the map ============ -->
+    <div class="admin-card p-5">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="font-semibold text-slate-900">Seat map</h2>
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+          <% Object.entries({ AVAILABLE: 'Available', HELD: 'Held', ASSIGNED: 'Assigned', OCCUPIED: 'In their seat', AWAY: 'Stepped out', BLOCKED: 'Blocked' }).forEach(([state, label]) => { %>
+            <span class="inline-flex items-center gap-1.5">
+              <span class="inline-block h-3 w-3 rounded border <%= STATE_CLASS[state] %>"></span><%= label %>
+            </span>
+          <% }) %>
+        </div>
+      </div>
+
+      <div class="mt-4 space-y-6" data-map>
+        <% if (!map.length) { %>
+          <p class="text-sm text-slate-500" data-map-empty>
+            No sections yet. Add one on the right, then generate its rows.
+          </p>
+        <% } %>
+
+        <% map.forEach((section) => { %>
+          <section data-section="<%= section.id %>">
+            <div class="flex flex-wrap items-baseline justify-between gap-2">
+              <h3 class="font-semibold text-slate-800">
+                <%= section.name %>
+                <% if (section.room) { %><span class="font-normal text-slate-400">&middot; <%= section.room.name %></span><% } %>
+              </h3>
+              <p class="text-xs text-slate-500 tabular-nums">
+                <%= section.counts.available %> free of <%= section.counts.total %>
+              </p>
+            </div>
+
+            <%# Horizontal scroll on its own container, so a thirty-wide row
+                never makes the whole page scroll sideways. %>
+            <div class="mt-3 overflow-x-auto pb-2">
+              <div class="inline-block min-w-full space-y-1.5">
+                <% section.rows.forEach((row) => { %>
+                  <div class="flex items-center gap-1.5">
+                    <span class="w-8 shrink-0 text-right font-mono text-xs text-slate-400"><%= row.label %></span>
+                    <% row.seats.forEach((seat) => { %>
+                      <button type="button"
+                              data-seat="<%= seat.id %>"
+                              data-state="<%= seat.state %>"
+                              title="<%= seat.label %><%= seat.occupant ? ' — ' + seat.occupant.name : '' %>"
+                              class="h-8 w-9 shrink-0 rounded border text-[10px] font-medium tabular-nums <%= STATE_CLASS[seat.state] %>">
+                        <%= seat.number == null ? seat.label : seat.number %>
+                      </button>
+                    <% }) %>
+                  </div>
+                <% }) %>
+                <% if (!section.rows.length) { %>
+                  <p class="text-xs text-slate-400">No seats yet &mdash; generate rows for this section.</p>
+                <% } %>
+              </div>
+            </div>
+          </section>
+        <% }) %>
+      </div>
+    </div>
+
+    <!-- ============ the side panel ============ -->
+    <div class="space-y-6">
+
+      <!-- Who has walked out, and whose seat can therefore be given away.
+           A list rather than a colour on the plan, because nobody can scan
+           several hundred squares for orange ones at a live event. Longest
+           away first, which is the order they become reassignable in. -->
+      <div class="admin-card p-5" data-away-panel>
+        <div class="flex items-baseline justify-between gap-2">
+          <h2 class="font-semibold text-slate-900">Stepped out</h2>
+          <span class="text-xs tabular-nums text-slate-500" data-away-count>—</span>
+        </div>
+        <p class="mt-1 text-xs text-slate-500">
+          Seats still held by somebody who has left the hall. After
+          <%= Math.round(graceMs / 60000) %> minutes a seat frees itself; until then
+          you can release it here.
+        </p>
+        <ul class="mt-3 divide-y divide-slate-100 border-t border-slate-100" data-away-list>
+          <li class="py-3 text-sm text-slate-400">Loading&hellip;</li>
+        </ul>
+      </div>
+
+      <!-- What a clicked seat is, and what can be done to it. -->
+      <div class="admin-card p-5 hidden" data-seat-panel>
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <p class="font-mono text-lg font-semibold text-slate-900" data-seat-label>—</p>
+            <p class="text-xs uppercase tracking-wide text-slate-500" data-seat-state>—</p>
+          </div>
+          <button type="button" class="text-sm text-slate-400 hover:text-slate-700" data-close-seat>&times;</button>
+        </div>
+
+        <div class="mt-3 text-sm text-slate-700 hidden" data-seat-occupant></div>
+
+        <div class="mt-4 flex flex-wrap gap-2">
+          <button type="button" class="btn-primary px-3 py-1.5 text-sm hidden" data-seat-release>Release</button>
+          <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50" data-seat-block>Block</button>
+          <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 hidden" data-seat-delete>Delete</button>
+        </div>
+
+        <!-- Putting a named person in this seat, for the desk. -->
+        <div class="mt-5 border-t border-slate-100 pt-4" data-assign-box>
+          <label class="form-label" for="seat-search">Assign to</label>
+          <input id="seat-search" type="text" autocomplete="off" placeholder="Name or registration number"
+                 class="form-input w-full" data-seat-search>
+          <div class="mt-1 max-h-48 overflow-y-auto rounded-md border border-slate-200 hidden" data-seat-results></div>
+        </div>
+
+        <div class="mt-5 border-t border-slate-100 pt-4">
+          <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">History</p>
+          <ol class="mt-2 space-y-1 text-xs text-slate-600" data-seat-history></ol>
+        </div>
+      </div>
+
+      <!-- Sections and the generator. -->
+      <div class="admin-card p-5">
+        <h2 class="font-semibold text-slate-900">Sections</h2>
+        <p class="mt-1 text-xs text-slate-500">
+          A block of seats in a room &mdash; &ldquo;Main Floor&rdquo;, &ldquo;VIP&rdquo;, &ldquo;Table 3&rdquo;.
+        </p>
+
+        <form class="mt-4 space-y-3" data-section-form>
+          <div>
+            <label class="form-label" for="section-name">Name</label>
+            <input id="section-name" name="name" type="text" required maxlength="120"
+                   placeholder="Main Floor" class="form-input w-full">
+          </div>
+          <div>
+            <label class="form-label" for="section-room">Room</label>
+            <select id="section-room" name="roomId" class="form-input w-full">
+              <option value="">No room yet</option>
+              <% rooms.forEach((room) => { %>
+                <option value="<%= room.id %>"><%= room.name %></option>
+              <% }) %>
+            </select>
+            <p class="mt-1 text-xs text-slate-500">
+              A section in a room shows who is actually sitting in it, not just who it belongs to.
+            </p>
+          </div>
+          <button type="submit" class="btn-primary px-5 py-2">Add section</button>
+        </form>
+
+        <% if (sections.length) { %>
+          <ul class="mt-5 divide-y divide-slate-100 border-t border-slate-100">
+            <% sections.forEach((section) => { %>
+              <li class="py-3" data-section-row="<%= section.id %>">
+                <div class="flex items-center justify-between gap-2">
+                  <div class="min-w-0">
+                    <p class="text-sm font-medium text-slate-800 truncate"><%= section.name %></p>
+                    <p class="text-xs text-slate-500">
+                      <%= section._count.seats %> seat<%= section._count.seats === 1 ? '' : 's' %>
+                      <% if (section.room) { %> &middot; <%= section.room.name %><% } %>
+                    </p>
+                  </div>
+                  <button type="button" class="shrink-0 text-sm text-red-600 hover:underline" data-delete-section="<%= section.id %>">Remove</button>
+                </div>
+
+                <%# A section with no room can never show anybody as sitting in
+                    their seat: OCCUPIED means "assigned to somebody inside this
+                    section's room", and there is no room to be inside. Said
+                    plainly here, because the symptom otherwise is a map that
+                    simply never turns green and no clue why. %>
+                <% if (!section.room) { %>
+                  <div class="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+                    <strong class="font-semibold">No room.</strong>
+                    Seats here can never show as occupied &mdash; pick the room they are in:
+                    <select class="form-input mt-1.5 w-full text-xs" data-section-room="<%= section.id %>">
+                      <option value="">Choose a room…</option>
+                      <% rooms.forEach((room) => { %>
+                        <option value="<%= room.id %>"><%= room.name %></option>
+                      <% }) %>
+                    </select>
+                    <% if (!rooms.length) { %>
+                      <span class="mt-1 block">
+                        No rooms yet &mdash;
+                        <a href="/admin/events/<%= event.id %>/rooms" class="underline">add one first</a>.
+                      </span>
+                    <% } %>
+                  </div>
+                <% } %>
+
+                <%# The grid generator. Nobody is typing six hundred seats by
+                    hand, so this is the primary way seats come into existence;
+                    uneven rows are made by generating the rectangle and
+                    blocking what is not really there. %>
+                <details class="mt-2">
+                  <summary class="cursor-pointer text-xs font-medium text-indigo-600">Generate rows</summary>
+                  <form class="mt-3 grid grid-cols-2 gap-2" data-generate-form data-section-id="<%= section.id %>">
+                    <label class="text-xs text-slate-600">Rows
+                      <input name="rows" type="number" min="1" max="200" value="10" required class="form-input w-full">
+                    </label>
+                    <label class="text-xs text-slate-600">Seats per row
+                      <input name="seatsPerRow" type="number" min="1" max="200" value="20" required class="form-input w-full">
+                    </label>
+                    <label class="text-xs text-slate-600">First number
+                      <input name="startNumber" type="number" min="0" max="9999" value="1" class="form-input w-full">
+                    </label>
+                    <label class="text-xs text-slate-600">Row labels
+                      <select name="rowLabelStyle" class="form-input w-full">
+                        <option value="LETTERS">A, B, C…</option>
+                        <option value="NUMBERS">1, 2, 3…</option>
+                      </select>
+                    </label>
+                    <label class="col-span-2 text-xs text-slate-600">Seat type
+                      <select name="type" class="form-input w-full">
+                        <option value="REGULAR">Regular</option>
+                        <option value="VIP">VIP</option>
+                        <option value="ACCESSIBLE">Accessible</option>
+                        <option value="TABLE">Table</option>
+                      </select>
+                    </label>
+                    <button type="submit" class="col-span-2 btn-primary px-4 py-2 text-sm">Generate</button>
+                  </form>
+                </details>
+              </li>
+            <% }) %>
+          </ul>
+        <% } %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/seating.js"></script>

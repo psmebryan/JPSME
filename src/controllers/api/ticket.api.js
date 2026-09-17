@@ -3,6 +3,7 @@ const { success } = require('../../utils/apiResponse');
 const prisma = require('../../config/prisma');
 const AppError = require('../../utils/AppError');
 const ticketService = require('../../services/ticket.service');
+const seatingService = require('../../services/seating.service');
 const qrService = require('../../services/qr.service');
 const jobService = require('../../services/job.service');
 
@@ -14,7 +15,8 @@ const jobService = require('../../services/job.service');
 
 const downloadTicketPdf = asyncHandler(async (req, res) => {
   const registration = await ticketService.getTicket(req.session.user.id, req.params.id);
-  const pdf = await ticketService.renderETicketPdf(registration);
+  const seat = await seatingService.getSeatFor(registration.id);
+  const pdf = await ticketService.renderETicketPdf(registration, seat);
 
   res.setHeader('Content-Type', 'application/pdf');
   // inline, so tapping the link on a phone opens the ticket rather than

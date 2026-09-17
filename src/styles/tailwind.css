@@ -135,6 +135,14 @@
     @apply font-mono text-lg font-semibold;
     color: #0f172a;
   }
+  /* The seat, on the white ticket card. Larger than anything but the QR: at a
+     venue it is the one thing somebody is trying to read off their own screen,
+     usually while walking. The colour is fixed rather than themed because the
+     card is white on both themes — see the note at the top of event-ticket. */
+  .ticket-seat {
+    @apply font-mono text-4xl font-bold tracking-wide;
+    color: #1c2f7a;
+  }
   .ticket-muted {
     @apply text-sm;
     color: #64748b;
@@ -149,6 +157,77 @@
     @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold;
     background: #dcfce7;
     color: #15803d;
+  }
+
+  /* The attendee's seat map.
+     Every colour here is stated outright instead of using a bg-* utility, for
+     the same reason .ticket-badge is: the public theme repaints bg-white,
+     bg-slate-100 and friends to near-black inside .public-main, which would
+     leave an AVAILABLE seat darker than a taken one. A plan whose colours
+     invert is worse than no plan, and this is the one screen where the colour
+     IS the information. */
+  .seat-map {
+    @apply flex flex-wrap gap-1.5;
+  }
+  .seat {
+    @apply inline-flex h-9 w-10 shrink-0 items-center justify-center rounded-md border text-[11px] font-mono font-semibold tabular-nums transition;
+  }
+  /* Free, and tappable. The border lifts to gold on hover so the target reads
+     as a control rather than as a label. */
+  .seat-available {
+    background: #1c2a52;
+    border-color: #34477e;
+    color: #c7d2e8;
+    cursor: pointer;
+  }
+  .seat-available:hover {
+    border-color: #fbbf24;
+    color: #fff;
+  }
+  /* Theirs, settled. Gold, because on a plan of several hundred identical
+     squares the one question being asked is "which one is mine". */
+  .seat-mine {
+    background: #fbbf24;
+    border-color: #f59e0b;
+    color: #1a1300;
+  }
+  /* Theirs, for the next few minutes, if they confirm. Deliberately not gold:
+     a hold that looks identical to a confirmed seat is how somebody walks away
+     believing they have one. */
+  .seat-holding {
+    background: #3d3110;
+    border-color: #fbbf24;
+    color: #fbbf24;
+  }
+  /* Somebody else's — held, assigned or sat in. Which of the three is nobody
+     else's business, so they share one appearance. */
+  .seat-taken {
+    background: #16203f;
+    border-color: #24325c;
+    color: #5b6a92;
+    cursor: not-allowed;
+  }
+  .seat-blocked {
+    background: #131a33;
+    border-color: #1e2745;
+    color: #46527a;
+    text-decoration: line-through;
+    cursor: not-allowed;
+  }
+  .seat-row-label {
+    @apply inline-flex h-9 w-7 shrink-0 items-center justify-center text-[11px] font-semibold;
+    color: #7c8ab0;
+  }
+  .seat-legend-dot {
+    @apply inline-block h-3 w-3 shrink-0 rounded border align-middle;
+  }
+  /* The stage, so a row number means something. Without it a map is a grid of
+     labels with no front. */
+  .seat-stage {
+    @apply rounded-md py-2 text-center text-xs font-semibold uppercase tracking-widest;
+    background: #16203f;
+    border: 1px dashed #34477e;
+    color: #7c8ab0;
   }
 
   /* Empty states */

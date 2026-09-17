@@ -50,6 +50,19 @@ const AUDIT_ACTIONS = [
   'QR_REGENERATED',
   'CHECKIN_ACCESS_GRANTED',
   'CHECKIN_ACCESS_REVOKED',
+  // Both of these were in the schema enum and missing here, the same drift the
+  // note on AUTO_APPROVAL_FAILED above describes: written to the table by the
+  // code, and unselectable on the page built to find them.
+  'CHECKIN_UNDONE',
+  'USER_ROLE_CHANGED',
+  // Room configuration, and by-hand corrections to who is inside one.
+  'ROOM_CREATED',
+  'ROOM_UPDATED',
+  'ROOM_DELETED',
+  'ROOM_ATTENDANCE_OVERRIDDEN',
+  // Seat configuration, and by-hand seat changes.
+  'SEATING_UPDATED',
+  'SEAT_OVERRIDDEN',
 ];
 
 const SAFE_USER_SELECT = { id: true, firstName: true, lastName: true, email: true };

@@ -6,6 +6,8 @@ const registrationApi = require('../../controllers/api/registration.api');
 const invitationApi = require('../../controllers/api/invitation.api');
 const ticketApi = require('../../controllers/api/ticket.api');
 const checkinApi = require('../../controllers/api/checkin.api');
+const roomApi = require('../../controllers/api/room.api');
+const seatingApi = require('../../controllers/api/seating.api');
 const { requireHuman } = require('../../services/captcha.service');
 const { apiAuth, apiAdmin } = require('../../middleware/auth.middleware');
 const { verifyCsrfToken } = require('../../middleware/csrf.middleware');
@@ -166,9 +168,168 @@ router.post(
   ],
   checkinApi.undoCheckIn
 );
+// The registration desk reads before it acts: this answers "who is this" and
+// admits nobody, so a seat can be chosen first.
+router.post('/:id/checkin/lookup', apiAuth, verifyCsrfToken, checkinLimiter, scanValidators, checkinApi.lookup);
 router.get('/:id/checkin/search', apiAuth, checkinApi.searchRegistrations);
 router.get('/:id/checkin/stats', apiAuth, checkinApi.stats);
 router.get('/:id/checkin/report.xlsx', apiAuth, checkinApi.exportReport);
+
+// --- rooms and room attendance ---------------------------------------------
+//
+// Reading the room list is what the live occupancy view polls, so it is open to
+// anyone who can work a door. Changing the configuration is an admin action.
+// Scanning sits behind the same gate as the main entrance — checkin.service's
+// assertCanCheckIn, applied inside the service so no route can forget it.
+router.get('/:id/rooms', apiAuth, roomApi.listRooms);
+router.post(
+  '/:id/rooms',
+  apiAdmin, verifyCsrfToken,
+  [
+    body('name').isString().trim().isLength({ min: 1, max: 120 }).withMessage('A room name is required'),
+    // Nullable rather than optional-falsy: an empty capacity means uncapped,
+    // which is a real choice and not a missing value.
+    body('capacity').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1, max: 100000 })
+      .withMessage('Capacity must be a whole number above zero'),
+    body('location').optional({ checkFalsy: true }).trim().isLength({ max: 191 }),
+    body('displayOrder').optional({ checkFalsy: true }).isInt({ min: 0, max: 9999 }),
+  ],
+  roomApi.createRoom
+);
+router.put(
+  '/:id/rooms/:roomId',
+  apiAdmin, verifyCsrfToken,
+  [
+    body('name').optional().isString().trim().isLength({ min: 1, max: 120 }),
+    body('capacity').optional({ nullable: true }).custom((v) => v === '' || v === null || Number.isInteger(Number(v)))
+      .withMessage('Capacity must be a whole number, or empty for no limit'),
+    body('location').optional({ nullable: true }).trim().isLength({ max: 191 }),
+    body('isOpen').optional().isBoolean(),
+    body('displayOrder').optional().isInt({ min: 0, max: 9999 }),
+  ],
+  roomApi.updateRoom
+);
+router.delete('/:id/rooms/:roomId', apiAdmin, verifyCsrfToken, roomApi.deleteRoom);
+
+// The room door. Same limiter as the main entrance and for the same reason: a
+// hall of a thousand people empties into a corridor at once, and a limit tuned
+// like the rest of the API would throttle a real queue.
+router.post(
+  '/:id/rooms/:roomId/scan',
+  apiAuth, verifyCsrfToken, checkinLimiter, scanValidators,
+  roomApi.scan
+);
+router.get('/:id/rooms/:roomId/inside', apiAuth, roomApi.listInside);
+router.post(
+  '/:id/rooms/:roomId/override',
+  apiAuth, verifyCsrfToken, checkinLimiter,
+  [
+    body('registrationId').isInt({ min: 1 }).withMessage('A registration is required'),
+    body('state').isIn(['INSIDE', 'OUTSIDE']).withMessage('State must be INSIDE or OUTSIDE'),
+  ],
+  roomApi.overrideState
+);
+
+// --- assigned seating -------------------------------------------------------
+//
+// Two maps over the same seats. The admin one carries names; the attendee one
+// does not, and is scoped to the caller's own registration — which is resolved
+// server-side, so a request cannot name somebody else's.
+router.get('/:id/seating/map', apiAdmin, seatingApi.adminMap);
+// Who has left their seat, and for how long. Behind the same gate as the admin
+// map, because it names people and reports their movements.
+router.get('/:id/seating/stepped-out', apiAdmin, seatingApi.steppedOut);
+router.get('/:id/seating/my-map', apiAuth, seatingApi.attendeeMap);
+router.get('/:id/seating/seats/:seatId/history', apiAdmin, seatingApi.seatHistory);
+// Open to anyone running a door, not main-admin only: the registration desk is
+// staffed by whoever is scanning, and it needs the free seats and one person's
+// seat to do its job. Neither carries anybody else's name.
+router.get('/:id/seating/available', apiAuth, seatingApi.availableSeats);
+router.get('/:id/seating/registrations/:registrationId/seat', apiAuth, seatingApi.registrationSeat);
+
+router.put(
+  '/:id/seating',
+  apiAdmin, verifyCsrfToken,
+  [body('enabled').isBoolean().withMessage('Enabled must be true or false')],
+  seatingApi.setEnabled
+);
+router.post(
+  '/:id/seating/sections',
+  apiAdmin, verifyCsrfToken,
+  [
+    body('name').isString().trim().isLength({ min: 1, max: 120 }).withMessage('A section name is required'),
+    body('roomId').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1 }),
+    body('displayOrder').optional({ checkFalsy: true }).isInt({ min: 0, max: 9999 }),
+  ],
+  seatingApi.createSection
+);
+router.put(
+  '/:id/seating/sections/:sectionId',
+  apiAdmin, verifyCsrfToken,
+  [
+    body('name').optional().isString().trim().isLength({ min: 1, max: 120 }),
+    body('roomId').optional({ nullable: true }).custom((v) => v === '' || v === null || Number.isInteger(Number(v)))
+      .withMessage('Pick a room, or none'),
+    body('displayOrder').optional().isInt({ min: 0, max: 9999 }),
+  ],
+  seatingApi.updateSection
+);
+router.delete('/:id/seating/sections/:sectionId', apiAdmin, verifyCsrfToken, seatingApi.deleteSection);
+router.post(
+  '/:id/seating/sections/:sectionId/generate',
+  apiAdmin, verifyCsrfToken,
+  [
+    // Bounded here as well as in the service. The service refuses an absurd
+    // grid; this stops the request being parsed at all.
+    body('rows').isInt({ min: 1, max: 200 }).withMessage('Rows must be between 1 and 200'),
+    body('seatsPerRow').isInt({ min: 1, max: 200 }).withMessage('Seats per row must be between 1 and 200'),
+    body('startNumber').optional({ checkFalsy: true }).isInt({ min: 0, max: 9999 }),
+    body('rowLabelStyle').optional({ checkFalsy: true }).isIn(['LETTERS', 'NUMBERS']),
+    body('rowLabelStart').optional({ checkFalsy: true }).isInt({ min: 0, max: 999 }),
+    body('type').optional({ checkFalsy: true }).isIn(['REGULAR', 'VIP', 'ACCESSIBLE', 'TABLE']),
+  ],
+  seatingApi.generateSeats
+);
+router.post(
+  '/:id/seating/seats/:seatId/block',
+  apiAdmin, verifyCsrfToken,
+  [body('blocked').isBoolean().withMessage('Blocked must be true or false')],
+  seatingApi.setBlocked
+);
+router.delete('/:id/seating/seats/:seatId', apiAdmin, verifyCsrfToken, seatingApi.deleteSeat);
+
+// The desk: putting a named person in a named seat, and taking them out again.
+router.post(
+  '/:id/seating/seats/:seatId/assign',
+  apiAdmin, verifyCsrfToken,
+  [body('registrationId').isInt({ min: 1 }).withMessage('A registration is required')],
+  seatingApi.assignSeat
+);
+router.post('/:id/seating/seats/:seatId/release', apiAdmin, verifyCsrfToken, seatingApi.adminRelease);
+
+// The attendee choosing for themselves. No registration in the body — see
+// ownRegistration in seating.api.
+router.post('/:id/seating/seats/:seatId/hold', apiAuth, verifyCsrfToken, seatingApi.holdSeat);
+router.post('/:id/seating/seats/:seatId/confirm', apiAuth, verifyCsrfToken, seatingApi.confirmSeat);
+router.post('/:id/seating/seats/:seatId/give-up', apiAuth, verifyCsrfToken, seatingApi.releaseOwnSeat);
+
+router.get('/:id/sessions', apiAuth, roomApi.listSessions);
+router.post(
+  '/:id/sessions',
+  apiAdmin, verifyCsrfToken,
+  [
+    body('name').isString().trim().isLength({ min: 1, max: 120 }).withMessage('A session name is required'),
+    body('roomId').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1 }),
+    body('startTime').optional({ checkFalsy: true }).isISO8601().withMessage('Enter a valid start time'),
+    body('endTime').optional({ checkFalsy: true }).isISO8601().withMessage('Enter a valid end time'),
+  ],
+  roomApi.createSession
+);
+router.delete('/:id/sessions/:sessionId', apiAdmin, verifyCsrfToken, roomApi.deleteSession);
+
+// One person's movements. Mounted under registrations rather than rooms because
+// it spans every room they entered.
+router.get('/:id/registrations/:registrationId/attendance', apiAuth, roomApi.attendanceHistory);
 
 // Granting the ability to scan is a main-admin power, separate from having it.
 router.get('/:id/checkin/staff', apiAdmin, checkinApi.listStaff);

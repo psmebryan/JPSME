@@ -209,6 +209,34 @@ const config = {
       get sweepIntervalMinutes() { return Number(process.env.RECONCILIATION_SWEEP_INTERVAL_MINUTES) || 15; },
     },
     get broadcastSendIntervalMs() { return Number(process.env.BROADCAST_SEND_INTERVAL_MS) || 350; },
+    // How long after a room scan the same ticket at the same door counts as a
+    // repeat of it rather than its opposite.
+    //
+    // Long enough to absorb a scanner gun double-firing and an operator who
+    // re-scans because they could not tell whether the first one took. Short
+    // enough that somebody genuinely stepping out to take a call is not told
+    // to wait. Eight seconds is comfortably past both ends of that.
+    //
+    // Set to 0 to switch it off entirely, for a door where re-entry really is
+    // expected within seconds.
+    get duplicateScanWindowMs() {
+      const raw = process.env.CHECKIN_DUPLICATE_WINDOW_MS;
+      return raw === undefined || raw === '' ? 8000 : Math.max(0, Number(raw) || 0);
+    },
+    // How long a seat is kept for somebody who has left the venue.
+    //
+    // Once they scan out at the entrance their seat is not free immediately —
+    // stepping out for a call should not cost you your seat. But it cannot be
+    // held forever either, or a hall fills up with seats belonging to people
+    // who went home. After this long it is released and can be given to
+    // somebody else.
+    //
+    // Ten minutes: past a phone call or a queue for coffee, well short of a
+    // session. Set to 0 to release the seat the moment they walk out.
+    get seatGraceMs() {
+      const raw = process.env.SEAT_GRACE_MS;
+      return raw === undefined || raw === '' ? 10 * 60 * 1000 : Math.max(0, Number(raw) || 0);
+    },
     // 'inline' (default) runs the job queue inside the web server, so a host
     // that keeps only one process alive still sends confirmation emails.
     // 'external' leaves the queue entirely to `npm run worker`, which is the

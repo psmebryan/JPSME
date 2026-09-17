@@ -1,0 +1,136 @@
+<%
+/*
+  One room's door. Built on the same rule as the event entrance screen: after a
+  scan, the operator must never touch anything to be ready for the next one.
+
+  What differs from the entrance is that this door goes both ways. The operator
+  does not choose — they scan, and the server answers with ENTERED or LEFT
+  depending on where the person already was. So the verdict panel has to say
+  the direction loudly, because that is the one thing the operator cannot know
+  in advance.
+*/
+function timeOnly(d) {
+  return new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+%>
+<div class="max-w-5xl mx-auto"
+     data-room-scan-root
+     data-event-id="<%= event.id %>"
+     data-room-id="<%= room.id %>">
+
+  <%- include('../partials/event-ops-nav', { event, active: 'rooms' }) %>
+
+  <div class="mt-5 flex flex-wrap items-center justify-between gap-3">
+    <div class="min-w-0">
+      <a href="/admin/events/<%= event.id %>/rooms" class="text-sm text-indigo-600 hover:underline">&larr; All halls</a>
+      <h1 class="admin-h1 mt-1 truncate"><%= room.name %></h1>
+      <p class="admin-subtitle truncate">
+        <%= event.title %>
+        <% if (session) { %> &middot; <span class="text-slate-700"><%= session.name %></span><% } %>
+      </p>
+    </div>
+    <label class="text-sm">
+      <span class="form-label">Station</span>
+      <input type="text" data-station maxlength="64" placeholder="HALL-01"
+             class="form-input w-44 font-mono uppercase" autocomplete="off">
+    </label>
+  </div>
+
+  <% if (!room.isOpen) { %>
+    <div class="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+      <strong class="font-semibold">This room is closed.</strong>
+      Scans will be refused until it is reopened from the rooms page.
+    </div>
+  <% } %>
+
+  <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+    <div class="admin-card p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Inside now</p>
+      <p class="mt-1 text-3xl font-semibold text-slate-900 tabular-nums" data-occupancy
+         data-capacity="<%= room.capacity == null ? '' : room.capacity %>"><%= inside.length %></p>
+    </div>
+    <div class="admin-card p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Capacity</p>
+      <p class="mt-1 text-3xl font-semibold text-slate-900 tabular-nums">
+        <%= room.capacity == null ? '—' : room.capacity %>
+      </p>
+    </div>
+    <div class="admin-card p-4 col-span-2 sm:col-span-1">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Places left</p>
+      <p class="mt-1 text-3xl font-semibold tabular-nums <%= room.capacity != null && (room.capacity - inside.length) <= 0 ? 'text-red-600' : 'text-slate-900' %>"
+         data-available>
+        <%= room.capacity == null ? '—' : Math.max(0, room.capacity - inside.length) %>
+      </p>
+    </div>
+  </div>
+
+  <%# A gun scanner types into whatever has focus and sends Enter, so this is a
+      plain field kept focused. No driver, no pairing. It stays visible so a
+      phone camera app or a keyboard can stand in for it. %>
+  <form data-scan-form class="mt-4 admin-card p-4">
+    <label for="scan-input" class="form-label">Scan to enter or leave</label>
+    <div class="flex gap-2">
+      <input id="scan-input" data-scan-input type="text" inputmode="text" autocomplete="off"
+             autocapitalize="off" spellcheck="false"
+             placeholder="Waiting for scan…"
+             class="form-input flex-1 font-mono text-lg py-3">
+      <button type="submit" class="btn-primary px-6">Scan</button>
+      <button type="button" data-qr-camera
+              class="btn-secondary shrink-0 px-4">Use camera</button>
+    </div>
+    <p class="mt-2 text-xs text-slate-500">
+      One scan does both. The same code entering is an exit, and leaving is an entry.
+    </p>
+  </form>
+
+  <%# The verdict. The only thing that changes between scans, so it carries the
+      direction in the largest type on the screen. %>
+  <div data-result class="mt-4 rounded-xl border-2 border-dashed border-slate-200 bg-white p-8 text-center">
+    <p class="text-slate-400 text-sm">Scan a ticket to begin.</p>
+  </div>
+
+  <div class="mt-4 admin-card p-5">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="font-semibold text-slate-900">Inside now</h2>
+      <button type="button" class="text-sm text-indigo-600 hover:underline" data-refresh-inside>Refresh</button>
+    </div>
+    <div class="mt-3 overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead>
+          <tr class="text-left text-xs uppercase tracking-wide text-slate-500">
+            <th class="py-2 pr-4">Name</th>
+            <th class="py-2 pr-4">Registration</th>
+            <th class="py-2 pr-4">Since</th>
+            <th class="py-2 pr-4">Visits</th>
+            <th class="py-2"></th>
+          </tr>
+        </thead>
+        <tbody data-inside-rows>
+          <% if (!inside.length) { %>
+            <tr data-empty-row><td colspan="5" class="py-4 text-slate-400">Nobody inside yet.</td></tr>
+          <% } %>
+          <% inside.forEach((person) => { %>
+            <tr class="border-t border-slate-100">
+              <td class="py-2 pr-4 font-medium text-slate-800"><%= person.name %></td>
+              <td class="py-2 pr-4 font-mono text-xs text-slate-500"><%= person.registrationNumber || '—' %></td>
+              <td class="py-2 pr-4 tabular-nums text-slate-600"><%= person.since ? timeOnly(person.since) : '—' %></td>
+              <td class="py-2 pr-4 tabular-nums text-slate-600"><%= person.entryCount %></td>
+              <td class="py-2 text-right">
+                <button type="button" class="text-sm text-red-600 hover:underline"
+                        data-mark-outside="<%= person.registrationId %>">Mark as left</button>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <p class="mt-3 text-xs text-slate-500">
+      &ldquo;Mark as left&rdquo; is for somebody who went out through a door with no scanner.
+      It is recorded as a real movement and logged against your account.
+    </p>
+  </div>
+</div>
+
+<script src="/js/scanner-input.js"></script>
+<script src="/js/qr-camera.js"></script>
+<script src="/js/rooms.js"></script>

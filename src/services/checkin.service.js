@@ -219,6 +219,38 @@ const REFUSAL_MESSAGES = {
   REJECTED: 'This account was rejected.',
 };
 
+// Who is this, without admitting them.
+//
+// The registration desk needs to see a person before it acts: their seat has to
+// be chosen, or confirmed, and only then are they checked in. Reusing the scan
+// endpoint for that would admit everybody the moment they were looked up, which
+// is exactly the separation this exists to keep.
+//
+// Deliberately writes nothing — no admission, and no row in the door log. A
+// lookup is not an event at the door; logging one would double the scan history
+// with entries that admitted nobody.
+async function lookupByScan({ eventId, rawScan, staffUser }) {
+  await assertCanCheckIn(staffUser, eventId);
+
+  const event = await prisma.event.findUnique({ where: { id: Number(eventId) } });
+  if (!event) throw new AppError('Event not found', 404);
+
+  const { registration } = await qrService.validateQrToken(rawScan);
+  const verdict = verdictFor(registration, eventId);
+
+  return {
+    ok: verdict === 'SUCCESS',
+    result: verdict,
+    message: verdict === 'SUCCESS' ? null : (REFUSAL_MESSAGES[verdict] || 'This registration cannot be checked in.'),
+    participant: registration ? participantView(registration) : null,
+    registrationId: registration ? registration.id : null,
+    // What tells the desk whether this is an arrival or somebody coming back to
+    // the table to change their seat.
+    checkedInAt: registration ? registration.checkedInAt : null,
+    seatingEnabled: event.seatingEnabled,
+  };
+}
+
 // The scanner path. `rawScan` is whatever the gun typed into the input, sent
 // through unchanged — parsing it is the server's job, not the page's.
 async function checkInByScan({
@@ -418,21 +450,52 @@ async function undoCheckIn({
 
 async function getEventCheckInStats(eventId) {
   const id = Number(eventId);
-  const [registered, checkedIn, pendingPayment] = await Promise.all([
+  const [registered, checkedIn, pendingPayment, insideNow] = await Promise.all([
     prisma.eventRegistration.count({ where: { eventId: id, status: 'REGISTERED' } }),
     prisma.eventRegistration.count({ where: { eventId: id, status: 'REGISTERED', checkedInAt: { not: null } } }),
     prisma.eventRegistration.count({ where: { eventId: id, status: 'PENDING_PAYMENT' } }),
+    // Arrived is cumulative and only ever goes up; this goes down again when
+    // people leave a hall, and is the number a supervisor actually watches.
+    prisma.roomAttendance.count({ where: { room: { eventId: id }, state: 'INSIDE' } }),
   ]);
   return {
     registered,
     checkedIn,
     remaining: registered - checkedIn,
+    insideNow,
     pendingPayment,
     rate: registered ? Math.round((checkedIn / registered) * 10000) / 100 : 0,
   };
 }
 
+// The last few people through, as PEOPLE — not as scan rows.
+//
+// It used to list scan rows, which meant one person appeared three times: once
+// for the desk, once for entering a hall, once for leaving it. Every copy
+// carried the same Remove button, so removing "one of them" appeared to remove
+// all three — they were three views of a single registration all along.
+//
+// Over-fetched and then folded down here rather than done in SQL: Prisma has no
+// DISTINCT ON, and the alternative is raw SQL against a table whose name is
+// already case-folded by this server. The window is small and the query is
+// indexed on (eventId, scannedAt).
 async function getRecentCheckIns(eventId, limit = 10) {
+  const rows = await listRecentScans(eventId, limit * 6);
+
+  const seen = new Set();
+  const people = [];
+  for (const row of rows) {
+    const key = row.eventRegistrationId;
+    // An INVALID_QR row has no registration to fold on and no name to show.
+    if (key == null || seen.has(key)) continue;
+    seen.add(key);
+    people.push(row);
+    if (people.length >= limit) break;
+  }
+  return people;
+}
+
+async function listRecentScans(eventId, limit) {
   return prisma.eventCheckIn.findMany({
     where: { eventId: Number(eventId), result: 'SUCCESS' },
     orderBy: { scannedAt: 'desc' },
@@ -478,6 +541,7 @@ async function searchRegistrations(eventId, term) {
 }
 
 module.exports = {
+  lookupByScan,
   canCheckIn,
   listCheckInEvents,
   listGrantableUsers,

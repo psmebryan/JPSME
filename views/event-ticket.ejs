@@ -33,7 +33,9 @@ function when(e) {
        data-reference="<%= registration.registrationNumber || '' %>"
        data-name="<%= registration.fullName %>"
        data-organization="<%= registration.organizationPath || '' %>"
-       data-badge="<%= registration.checkedInAt ? 'Checked in' : 'Confirmed' %>">
+       data-badge="<%= registration.checkedInAt ? 'Checked in' : 'Confirmed' %>"
+       data-seat="<%= locals.attendance && attendance.seat ? attendance.seat.label : '' %>"
+       data-seat-where="<%= locals.attendance && attendance.seat ? [attendance.seat.section, attendance.seat.room].filter(Boolean).join(' · ') : '' %>">
     <div class="px-6 pt-6 pb-4 text-center ticket-divider">
       <p class="ticket-eyebrow">PSME Event</p>
       <h1 class="mt-2 ticket-title"><%= event.title %></h1>
@@ -51,6 +53,16 @@ function when(e) {
            width="280" height="280"
            class="w-[280px] h-[280px] max-w-full">
     </div>
+
+    <% if (locals.attendance && attendance.seat) { %>
+      <div class="px-6 pb-4 text-center">
+        <p class="ticket-eyebrow">Your Seat</p>
+        <p class="mt-0.5 ticket-seat"><%= attendance.seat.label %></p>
+        <p class="ticket-muted-xs">
+          <%= [attendance.seat.section, attendance.seat.room].filter(Boolean).join(' · ') %>
+        </p>
+      </div>
+    <% } %>
 
     <div class="px-6 pb-6 text-center">
       <p class="ticket-eyebrow">Registration Number</p>
@@ -76,6 +88,57 @@ function when(e) {
   <p class="mt-4 text-center text-sm text-gray-500">
     Show this code at the entrance. It belongs to this registration only.
   </p>
+
+  <%# Deliberately off the card: the card is what gets held up at a door and
+      saved as an image, and a link is no use in either. Shown only when the
+      event actually uses assigned seating, so nobody is invited to choose a
+      seat that does not exist. %>
+  <% if (event.seatingEnabled) { %>
+    <div class="mt-4 text-center">
+      <a href="/events/<%= event.id %>/seat" class="btn-primary inline-block px-6 py-2.5">
+        <%= locals.attendance && attendance.seat ? 'Change my seat' : 'Choose my seat' %>
+      </a>
+      <% if (!(locals.attendance && attendance.seat)) { %>
+        <p class="mt-2 text-xs text-gray-500">You have not picked one yet.</p>
+      <% } %>
+    </div>
+  <% } %>
+
+  <% if (locals.attendance && (attendance.currentRoom || attendance.history.length)) { %>
+    <%# Deliberately below the ticket card, not on it. The card is what gets
+        held up at a door and saved as an image; this is for the person reading
+        their own phone between sessions. %>
+    <div class="mt-5 rounded-xl border border-[#263b70] bg-[#111b3a] p-5">
+      <h2 class="text-sm font-semibold text-white">Where you are</h2>
+
+      <p class="mt-2 text-sm text-slate-300">
+        <% if (attendance.currentRoom) { %>
+          Inside <span class="font-semibold text-white"><%= attendance.currentRoom.name %></span>
+          <% if (attendance.currentRoom.since) { %>
+            since <%= new Date(attendance.currentRoom.since).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) %>
+          <% } %>
+        <% } else if (attendance.checkedInAt) { %>
+          Arrived at the venue &mdash; not in a hall right now.
+        <% } else { %>
+          Not arrived yet.
+        <% } %>
+      </p>
+
+      <% if (attendance.history.length) { %>
+        <ol class="mt-3 space-y-1 border-t border-[#263b70] pt-3 text-xs text-slate-400">
+          <% attendance.history.slice(-8).forEach((move) => { %>
+            <li>
+              <span class="tabular-nums text-slate-300">
+                <%= new Date(move.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) %>
+              </span>
+              <%= move.action === 'CHECK_OUT' ? 'Left' : 'Entered' %>
+              <%= move.room || 'the venue' %><% if (move.session) { %> <span class="text-slate-500">(<%= move.session %>)</span><% } %>
+            </li>
+          <% }) %>
+        </ol>
+      <% } %>
+    </div>
+  <% } %>
 
   <!-- Saving the image is the primary action, so it gets the accent. Most
        people keep the ticket on their phone; the PDF is for the smaller number

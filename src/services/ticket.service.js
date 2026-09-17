@@ -59,7 +59,7 @@ function value(doc, text, x, y, size = 14) {
 
 // A4 portrait: the shape a member's home printer defaults to, and the shape a
 // phone screen crops least awkwardly.
-async function renderETicketPdf(registration) {
+async function renderETicketPdf(registration, seat = null) {
   const event = registration.event;
   // Rendered at 600px so the code stays sharp when the PDF is printed rather
   // than only viewed — a QR downscaled from a larger bitmap survives a cheap
@@ -110,6 +110,20 @@ async function renderETicketPdf(registration) {
     label(doc, 'Registration Number', M, y);
     doc.fillColor(INK).font('Courier-Bold').fontSize(16)
       .text(registration.registrationNumber || '—', M, y + 14);
+
+    // The seat, beside the registration number and set larger than it. On a
+    // printed ticket this is what an usher reads and what the holder is looking
+    // for; the registration number is only ever read aloud at a desk.
+    if (seat && seat.label) {
+      label(doc, 'Seat', M + inner / 2, y);
+      doc.fillColor('#1c2f7a').font('Courier-Bold').fontSize(24)
+        .text(seat.label, M + inner / 2, y + 10);
+      const where = [seat.section, seat.room].filter(Boolean).join(' · ');
+      if (where) {
+        doc.fillColor(MUTED).font('Helvetica').fontSize(9)
+          .text(where, M + inner / 2, y + 38, { width: inner / 2 });
+      }
+    }
     y = doc.y + 26;
 
     // The QR, centred and given room. 260pt square at A4 is comfortably above

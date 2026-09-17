@@ -1,0 +1,143 @@
+<%
+/*
+  The event's home on the day.
+
+  Four screens run an event — desk, room doors, seating, report — and until this
+  page there was no answer to "where do I start". This is that answer: the
+  numbers that say how the day is going, and a way into whichever station needs
+  somebody standing at it.
+
+  There was a fifth, a venue entrance, and it was removed: for a single-hall
+  event it asked a question the hall door had already answered.
+
+  The numbers are chosen to be read as a funnel, because that is what they are:
+  registered, then arrived, then seated, then actually in a hall. Each step
+  loses people, and the gaps are what an organiser acts on.
+*/
+const stations = [
+  {
+    href: `/admin/events/${event.id}/desk`,
+    name: 'Registration desk',
+    blurb: 'Look somebody up, give them a seat, then check them in. Scanning here admits nobody by itself.',
+    cta: 'Open desk',
+  },
+  {
+    href: `/admin/events/${event.id}/rooms`,
+    name: 'Room doors',
+    blurb: 'In and out of a hall, as often as somebody comes and goes. One scan, and the server decides which way.',
+    cta: 'Open room doors',
+  },
+];
+%>
+<div class="max-w-6xl mx-auto">
+  <%- include('../partials/event-ops-nav', { event, active: 'overview' }) %>
+
+  <h1 class="admin-h1 mt-5">Event day</h1>
+  <p class="admin-subtitle">How today is going, and where to stand.</p>
+
+  <%# The funnel. Each number is a subset of the one before it, so the gaps
+      between them are the story: registered but never arrived, arrived but
+      never sat down, seated but not in the hall. %>
+  <div class="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div class="admin-card p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Registered</p>
+      <p class="mt-1 text-3xl font-semibold tabular-nums text-slate-900"><%= stats.registered %></p>
+    </div>
+    <%# Arrived only ever rises — it is "have they turned up today". Inside now
+        falls again when people leave through the entrance, and the two being
+        different is the whole point of separating the desk from the door. %>
+    <div class="admin-card p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Arrived</p>
+      <p class="mt-1 text-3xl font-semibold tabular-nums text-green-700"><%= stats.checkedIn %></p>
+      <p class="text-xs text-slate-500"><%= stats.remaining %> not yet</p>
+    </div>
+    <div class="admin-card p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Seats given</p>
+      <p class="mt-1 text-3xl font-semibold tabular-nums text-indigo-700"><%= seated %></p>
+      <% if (!event.seatingEnabled) { %>
+        <p class="text-xs text-slate-500">Seating is off</p>
+      <% } %>
+    </div>
+    <div class="admin-card p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">In a hall now</p>
+      <p class="mt-1 text-3xl font-semibold tabular-nums text-slate-900"><%= totalInside %></p>
+      <% if (seatedNotInRoom > 0) { %>
+        <p class="text-xs text-amber-700"><%= seatedNotInRoom %> seated, not inside</p>
+      <% } %>
+    </div>
+  </div>
+
+  <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] items-start">
+
+    <!-- Where to stand. -->
+    <div class="space-y-3">
+      <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Stations</h2>
+      <% stations.forEach((station) => { %>
+        <div class="admin-card flex flex-wrap items-center justify-between gap-4 p-5">
+          <div class="min-w-0 max-w-xl">
+            <p class="font-semibold text-slate-900"><%= station.name %></p>
+            <p class="mt-0.5 text-sm text-slate-500"><%= station.blurb %></p>
+          </div>
+          <a href="<%= station.href %>" class="btn-primary shrink-0 px-5 py-2.5"><%= station.cta %></a>
+        </div>
+      <% }) %>
+
+      <% if (currentUser && currentUser.role === 'ADMIN') { %>
+        <div class="admin-card flex flex-wrap items-center justify-between gap-4 p-5">
+          <div class="min-w-0 max-w-xl">
+            <p class="font-semibold text-slate-900">Seating plan</p>
+            <p class="mt-0.5 text-sm text-slate-500">
+              Build the sections and rows, block a seat, and watch the map fill up.
+              Set up before the day rather than during it.
+            </p>
+          </div>
+          <a href="/admin/events/<%= event.id %>/seating" class="btn-secondary shrink-0 px-5 py-2.5">Open seating</a>
+        </div>
+      <% } %>
+
+      <div class="admin-card flex flex-wrap items-center justify-between gap-4 p-5">
+        <div class="min-w-0 max-w-xl">
+          <p class="font-semibold text-slate-900">Report</p>
+          <p class="mt-0.5 text-sm text-slate-500">
+            Every scan that happened at every door, including the ones that were turned away.
+          </p>
+        </div>
+        <a href="/admin/events/<%= event.id %>/check-in/report" class="btn-secondary shrink-0 px-5 py-2.5">Open report</a>
+      </div>
+    </div>
+
+    <!-- Halls, at a glance. -->
+    <div class="admin-card p-5">
+      <div class="flex items-baseline justify-between gap-2">
+        <h2 class="font-semibold text-slate-900">Halls</h2>
+        <a href="/admin/events/<%= event.id %>/rooms" class="text-sm text-indigo-600 hover:underline">Manage</a>
+      </div>
+
+      <% if (!rooms.length) { %>
+        <p class="mt-3 text-sm text-slate-500">
+          No rooms yet. Without one there is nowhere to scan people in and out of,
+          and the seat map can never show anybody as sitting down.
+        </p>
+        <a href="/admin/events/<%= event.id %>/rooms" class="mt-3 inline-block text-sm text-indigo-600 hover:underline">Add a room &rarr;</a>
+      <% } else { %>
+        <ul class="mt-3 divide-y divide-slate-100 border-t border-slate-100">
+          <% rooms.forEach((room) => { %>
+            <li class="flex items-center justify-between gap-3 py-2.5">
+              <div class="min-w-0">
+                <p class="truncate text-sm font-medium text-slate-800"><%= room.name %></p>
+                <p class="text-xs <%= room.isOpen ? 'text-slate-500' : 'text-amber-700' %>">
+                  <%= room.isOpen ? 'Open' : 'Closed' %><% if (room.capacity) { %> · capacity <%= room.capacity %><% } %>
+                </p>
+              </div>
+              <div class="shrink-0 text-right">
+                <p class="text-lg font-semibold tabular-nums text-slate-900"><%= room.occupancy %></p>
+                <a href="/admin/events/<%= event.id %>/rooms/<%= room.id %>/scan"
+                   class="text-xs text-indigo-600 hover:underline">Open door</a>
+              </div>
+            </li>
+          <% }) %>
+        </ul>
+      <% } %>
+    </div>
+  </div>
+</div>

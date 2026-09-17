@@ -101,14 +101,14 @@
           </div>
         </div>
 
-        <div class="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Event Check-in</div>
+        <div class="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Event Day</div>
         <div class="px-1">
           <button id="checkin-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-white/5 hover:text-white focus:outline-none">
-            <span class="flex items-center gap-2.5"><svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('scan') %></svg> Check-in</span>
+            <span class="flex items-center gap-2.5"><svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('scan') %></svg> Attendance</span>
             <svg id="checkin-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('chevron') %></svg>
           </button>
           <div id="checkin-submenu" class="mt-1 space-y-0.5 hidden">
-            <a href="/admin/check-in" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Scan &amp; Reports</a>
+            <a href="/admin/check-in" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Events &amp; Stations</a>
             <% if (currentUser && currentUser.role === 'ADMIN') { %>
               <a href="/admin/check-in/staff" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Check-in Staff</a>
             <% } %>

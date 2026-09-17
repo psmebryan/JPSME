@@ -7,6 +7,8 @@ const organizationService = require('../services/organization.service');
 const organizationAdminService = require('../services/organizationAdmin.service');
 const settingsService = require('../services/settings.service');
 const checkinService = require('../services/checkin.service');
+const roomService = require('../services/roomAttendance.service');
+const seatingService = require('../services/seating.service');
 const ticketService = require('../services/ticket.service');
 const qrService = require('../services/qr.service');
 const checkinReportService = require('../services/checkinReport.service');
@@ -171,11 +173,59 @@ const eventDetailPage = asyncHandler(async (req, res) => {
 const eventTicketPage = asyncHandler(async (req, res) => {
   const registration = await ticketService.getTicket(req.session.user.id, req.params.id);
   const qrDataUrl = await qrService.renderQrDataUrl(registration.qrToken, { width: 600 });
+  // Their seat and their movements. Until this, a seat assigned at the desk
+  // existed only on the organiser's screen — the person holding the ticket had
+  // no way to find out where they were sitting.
+  const attendance = await seatingService.getAttendeeView(registration.id);
+
   res.render('event-ticket', {
     title: 'My Ticket',
     registration,
     event: registration.event,
     qrDataUrl,
+    attendance,
+  });
+});
+
+// The attendee choosing their own seat.
+//
+// Everything this needs already existed on the API side — hold, confirm, give
+// up, and a map that deliberately carries no other attendee's name. What was
+// missing was any page that called it, so assigned seating worked only if a
+// staff member did the assigning at the desk. This is the other half.
+//
+// The guards here mirror assertSeatable() in the seating service rather than
+// trusting it to be the only check: reaching a dead page and being told "no"
+// by a failed fetch is a worse experience than being told why on arrival. The
+// service still enforces all of it — this only decides what to show.
+const eventSeatPickerPage = asyncHandler(async (req, res) => {
+  const event = await eventService.getEventById(req.params.id);
+
+  const registration = await prisma.eventRegistration.findUnique({
+    where: { userId_eventId: { userId: req.session.user.id, eventId: event.id } },
+  });
+
+  // Each of these is a different thing to tell somebody, so they are kept
+  // apart rather than collapsed into one "you cannot do this".
+  let blocked = null;
+  if (!registration || registration.status === 'CANCELLED') {
+    blocked = { reason: 'NOT_REGISTERED', message: 'You are not registered for this event yet.' };
+  } else if (registration.status === 'PENDING_PAYMENT') {
+    blocked = { reason: 'UNPAID', message: 'Your payment is still pending. Once it clears you can choose a seat.' };
+  } else if (!event.seatingEnabled) {
+    blocked = { reason: 'SEATING_OFF', message: 'This event does not use assigned seating — any seat is fine.' };
+  }
+
+  // Server-rendered so the page says something true the moment it opens,
+  // rather than flashing an empty frame while the map loads.
+  const mySeat = (!blocked && registration) ? await seatingService.getSeatFor(registration.id) : null;
+
+  res.render('event-seat', {
+    title: 'Choose Your Seat',
+    event,
+    blocked,
+    mySeat,
+    holdMs: seatingService.HOLD_MS,
   });
 });
 
@@ -266,7 +316,21 @@ const profilePage = asyncHandler(async (req, res) => {
     .map((reg) => reg.eventId);
   const certifiedEventIds = Array.from(await certificateService.getCertifiedEventIds(req.session.user.id, registeredEventIds));
 
+  // Seats, keyed by registration. One query for the whole list rather than one
+  // per row — a member with a dozen registrations should not cost a dozen
+  // lookups to render a page that mostly says "no seat".
+  const seatRows = await prisma.seat.findMany({
+    where: { assignedRegistrationId: { in: registrations.length ? registrations.map((r) => r.id) : [0] } },
+    include: { section: { include: { room: { select: { name: true } } } } },
+  });
+  const seatsByRegistration = new Map(seatRows.map((seat) => [seat.assignedRegistrationId, {
+    label: seat.label,
+    section: seat.section.name,
+    room: seat.section.room ? seat.section.room.name : null,
+  }]));
+
   res.render('profile', {
+    seatsByRegistration,
     title: 'My Profile',
     userProfile,
     registrations,
@@ -799,30 +863,166 @@ const adminCheckInStaffPage = asyncHandler(async (req, res) => {
   });
 });
 
-// The door screen. Reachable by any admin-role session (ensureAdmin), then
-// narrowed here to the people actually allowed to run THIS door — a chapter
-// admin without a grant gets 403 rather than a working scanner that fails on
-// every scan, which would be a far more confusing thing to hand someone at an
-// entrance.
-const adminEventCheckInPage = asyncHandler(async (req, res) => {
+
+// The event's home on the day: the funnel, the halls, and a way into each
+// station.
+//
+// It exists because five screens grew one at a time with no answer to "where do
+// I start". Same gate as the stations themselves — anybody trusted to run a
+// door can see how the day is going.
+const adminEventAttendancePage = asyncHandler(async (req, res) => {
   const event = await eventService.getEventById(req.params.id);
   if (!(await checkinService.canCheckIn(req.session.user, event.id))) {
     throw new AppError('You do not have check-in access for this event', 403);
   }
 
-  // Rendered server-side so the screen is useful the instant it loads, before
-  // any polling — someone opening this at the start of a shift should see the
-  // real numbers, not zeros that fill in a moment later.
-  const [stats, recent] = await Promise.all([
+  const [stats, occupancy] = await Promise.all([
     checkinService.getEventCheckInStats(event.id),
-    checkinService.getRecentCheckIns(event.id, 8),
+    roomService.getOccupancy(event.id),
   ]);
 
-  renderAdmin(req, res, 'admin/event-checkin', {
-    title: `Check-in — ${event.title}`,
+  // Seats given, and how many of those people are not actually in a hall — the
+  // gap the whole desk/entrance/door separation exists to make visible.
+  const seatedRegistrations = await prisma.seat.findMany({
+    where: { section: { eventId: event.id }, assignedRegistrationId: { not: null } },
+    select: { assignedRegistrationId: true },
+  });
+  const insideRows = await prisma.roomAttendance.findMany({
+    where: { room: { eventId: event.id }, state: 'INSIDE' },
+    select: { eventRegistrationId: true },
+  });
+  const inside = new Set(insideRows.map((r) => r.eventRegistrationId));
+
+  renderAdmin(req, res, 'admin/event-attendance', {
+    title: `Event day — ${event.title}`,
     event,
     stats,
-    recent,
+    rooms: occupancy.rooms,
+    totalInside: occupancy.totalInside,
+    seated: seatedRegistrations.length,
+    seatedNotInRoom: seatedRegistrations.filter((s) => !inside.has(s.assignedRegistrationId)).length,
+  });
+});
+
+// The registration desk: the station where somebody arrives, is given a seat,
+// and is checked in — in that order.
+//
+// Same gate as the entrance scanner rather than main-admin only: this is a door
+// being run, and the person on it needs to hand out seats as part of running it.
+const adminEventDeskPage = asyncHandler(async (req, res) => {
+  const event = await eventService.getEventById(req.params.id);
+  if (!(await checkinService.canCheckIn(req.session.user, event.id))) {
+    throw new AppError('You do not have check-in access for this event', 403);
+  }
+
+  const stats = await checkinService.getEventCheckInStats(event.id);
+
+  // The two numbers this separation exists to produce. "Seated" is how many
+  // have a seat at all; "not in the room" is how many of those have arrived and
+  // are still not in any hall — the exact gap that is invisible when arrival
+  // and room entry are the same scan.
+  const seated = await prisma.seat.count({
+    where: { section: { eventId: event.id }, assignedRegistrationId: { not: null } },
+  });
+  const insideIds = await prisma.roomAttendance.findMany({
+    where: { room: { eventId: event.id }, state: 'INSIDE' },
+    select: { eventRegistrationId: true },
+  });
+  const inside = new Set(insideIds.map((r) => r.eventRegistrationId));
+  const seatedRegistrations = await prisma.seat.findMany({
+    where: { section: { eventId: event.id }, assignedRegistrationId: { not: null } },
+    select: { assignedRegistrationId: true },
+  });
+  const notInRoom = seatedRegistrations.filter((s) => !inside.has(s.assignedRegistrationId)).length;
+
+  renderAdmin(req, res, 'admin/event-desk', {
+    title: `Registration desk — ${event.title}`,
+    event,
+    stats,
+    seated,
+    notInRoom,
+  });
+});
+
+// Seat plan and live seat map for one event.
+//
+// Main-admin only, unlike the rooms board — this page assigns and releases
+// seats by hand and shows every attendee's name against a seat number, which
+// is a different thing from being trusted to scan at a door.
+const adminEventSeatingPage = asyncHandler(async (req, res) => {
+  const event = await eventService.getEventById(req.params.id);
+
+  const [sections, rooms, map] = await Promise.all([
+    seatingService.listSections(event.id),
+    roomService.listRooms(event.id),
+    // Server-rendered so the map is on screen the moment the page opens rather
+    // than after a fetch — a plan of two thousand seats is the one thing here
+    // worth not waiting for twice.
+    seatingService.getSeatMap(event.id, { includeNames: true }),
+  ]);
+
+  renderAdmin(req, res, 'admin/event-seating', {
+    title: `Seating — ${event.title}`,
+    event,
+    sections,
+    rooms,
+    map,
+    // So the page can say how long a seat is kept rather than hardcoding a
+    // number that would drift the moment the setting moved.
+    graceMs: require('../config').jobs.seatGraceMs,
+  });
+});
+
+// Rooms for one event: the configuration, and the live occupancy beside it.
+//
+// Same gate as the door itself rather than a main-admin one — a chapter admin
+// trusted to scan at this event needs to see how full the hall is, and being
+// able to add a room matters less than being able to run one.
+const adminEventRoomsPage = asyncHandler(async (req, res) => {
+  const event = await eventService.getEventById(req.params.id);
+  if (!(await checkinService.canCheckIn(req.session.user, event.id))) {
+    throw new AppError('You do not have check-in access for this event', 403);
+  }
+
+  // Server-rendered so the screen is right the instant it opens, before the
+  // first poll. Somebody opening this mid-session should see real occupancy,
+  // not zeros that correct themselves a second later.
+  const [rooms, sessions] = await Promise.all([
+    roomService.listRooms(event.id),
+    roomService.listSessions(event.id),
+  ]);
+
+  renderAdmin(req, res, 'admin/event-rooms', {
+    title: `Rooms — ${event.title}`,
+    event,
+    rooms,
+    sessions,
+    // Only a main admin may change the configuration; everyone who can scan
+    // may read it. The page hides the controls it would be refused rather than
+    // offering buttons that 403.
+    canConfigure: req.session.user.role === 'ADMIN',
+  });
+});
+
+// One room's door screen.
+const adminRoomScanPage = asyncHandler(async (req, res) => {
+  const event = await eventService.getEventById(req.params.id);
+  if (!(await checkinService.canCheckIn(req.session.user, event.id))) {
+    throw new AppError('You do not have check-in access for this event', 403);
+  }
+
+  const room = await roomService.getRoom(event.id, req.params.roomId);
+  const [inside, session] = await Promise.all([
+    roomService.listInside(event.id, room.id),
+    roomService.currentSessionFor(room.id),
+  ]);
+
+  renderAdmin(req, res, 'admin/room-scan', {
+    title: `${room.name} — ${event.title}`,
+    event,
+    room,
+    inside,
+    session,
   });
 });
 
@@ -987,6 +1187,7 @@ module.exports = {
   eventsPage,
   eventDetailPage,
   eventTicketPage,
+  eventSeatPickerPage,
   eventInvitePage,
   submitRsvpFromEmailPage,
   articlesPage,
@@ -1004,8 +1205,12 @@ module.exports = {
   adminEventRegistrationsPage,
   adminCheckInHubPage,
   adminCheckInStaffPage,
-  adminEventCheckInPage,
   adminEventCheckInReportPage,
+  adminEventRoomsPage,
+  adminRoomScanPage,
+  adminEventSeatingPage,
+  adminEventDeskPage,
+  adminEventAttendancePage,
   adminInvitationsPage,
   adminArticlesPage,
   adminCreateArticlePage,

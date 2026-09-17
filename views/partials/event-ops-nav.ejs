@@ -1,0 +1,59 @@
+<%
+/*
+  The tab strip shared by every page that runs an event on the day.
+
+  It exists because these pages grew one at a time and each one linked to
+  whichever others it happened to know about — so an admin could reach the room
+  doors from the entrance but not the seating, and never knew which of the five
+  screens they were on. The stations are genuinely separate (that separation is
+  the whole design), but "separate" must not mean "scattered".
+
+  Include with the event and which tab is current, passing `event` and `active`.
+  (Written out rather than shown as a tag: an EJS tag inside an EJS comment is
+  still parsed, and takes the whole template down.)
+
+  Ordered as the day runs: somebody arrives at the desk, then enters a hall.
+  Seating and the report sit after, because they are set up beforehand and read
+  afterwards rather than operated in the queue.
+
+  There was a third station between those two — a venue entrance — and it was
+  removed. For a single-hall event "in the building" and "in the hall" are the
+  same fact, so it was a third scan that answered nothing the hall door had not
+  already answered, and staff could not tell the two apart.
+*/
+const TABS = [
+  { key: 'overview', label: 'Overview',          href: `/admin/events/${event.id}/attendance` },
+  { key: 'desk',     label: 'Registration desk', href: `/admin/events/${event.id}/desk` },
+  { key: 'rooms',    label: 'Room doors',        href: `/admin/events/${event.id}/rooms` },
+  { key: 'seating',  label: 'Seating',           href: `/admin/events/${event.id}/seating`, mainAdminOnly: true },
+  { key: 'report',   label: 'Report',            href: `/admin/events/${event.id}/check-in/report` },
+];
+const isMainAdmin = locals.currentUser && currentUser.role === 'ADMIN';
+%>
+<div class="border-b border-slate-200">
+  <div class="flex min-w-0 flex-wrap items-baseline justify-between gap-x-6 gap-y-2 pb-2">
+    <div class="min-w-0">
+      <a href="/admin/check-in" class="text-xs text-slate-500 hover:text-indigo-600">&larr; All events</a>
+      <p class="truncate text-sm font-semibold text-slate-900"><%= event.title %></p>
+    </div>
+  </div>
+
+  <%# overflow-x-auto on its own container: six tabs do not fit a phone, and a
+      strip that makes the whole page scroll sideways is worse than one that
+      scrolls itself. %>
+  <nav class="-mb-px flex gap-1 overflow-x-auto" aria-label="Event day">
+    <% TABS.forEach((tab) => { %>
+      <% if (tab.mainAdminOnly && !isMainAdmin) return; %>
+      <a href="<%= tab.href %>"
+         <%# Unescaped: this is an attribute, not text. Escaped, its quotes come
+             out as &quot; and the attribute never exists — which costs a screen
+             reader the only signal saying which tab you are on. %>
+         <%- locals.active === tab.key ? 'aria-current="page"' : '' %>
+         class="shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm <%= locals.active === tab.key
+           ? 'border-indigo-600 font-semibold text-indigo-700'
+           : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800' %>">
+        <%= tab.label %>
+      </a>
+    <% }) %>
+  </nav>
+</div>

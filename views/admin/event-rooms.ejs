@@ -1,0 +1,213 @@
+<%
+/*
+  Rooms for one event: how full each one is, and how they are configured.
+
+  Occupancy is the reason anybody opens this during an event, so it leads. The
+  configuration sits under it and is only rendered for a main admin — a chapter
+  admin running a door reads this screen constantly and never edits it.
+
+  The numbers are server-rendered, then refreshed by polling. There are no
+  websockets on this host, so "live" means a poll the page can afford: see
+  public/js/rooms.js for why the interval is what it is.
+*/
+function pct(occupancy, capacity) {
+  if (!capacity) return 0;
+  return Math.min(100, Math.round((occupancy / capacity) * 100));
+}
+%>
+<div class="max-w-6xl mx-auto" data-rooms-root data-event-id="<%= event.id %>">
+
+  <%- include('../partials/event-ops-nav', { event, active: 'rooms' }) %>
+
+  <div class="mt-5 flex flex-wrap items-center justify-between gap-3">
+    <div class="min-w-0">
+      <h1 class="admin-h1 truncate">Room doors</h1>
+      <p class="admin-subtitle">Who is inside which hall, right now.</p>
+    </div>
+    <div class="text-right">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Currently inside</p>
+      <p class="text-3xl font-semibold text-slate-900 tabular-nums" data-total-inside>
+        <%= rooms.reduce((n, r) => n + r.occupancy, 0) %>
+      </p>
+    </div>
+  </div>
+
+  <!-- Occupancy. One card per room, each linking to its own door screen. -->
+  <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-room-cards>
+    <% if (!rooms.length) { %>
+      <p class="text-sm text-slate-500 sm:col-span-2 lg:col-span-3">
+        No rooms yet.
+        <% if (canConfigure) { %>Add one below to start tracking who is in which hall.<% } %>
+      </p>
+    <% } %>
+
+    <% rooms.forEach((room) => { %>
+      <div class="admin-card p-5" data-room-card="<%= room.id %>">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="font-semibold text-slate-900 truncate"><%= room.name %></p>
+            <% if (room.location) { %>
+              <p class="text-xs text-slate-500 truncate"><%= room.location %></p>
+            <% } %>
+          </div>
+          <%# Closed is the state worth seeing at a glance — it is why scans are
+              being refused at that door. %>
+          <span class="shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold <%= room.isOpen ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-600' %>"
+                data-room-state>
+            <%= room.isOpen ? 'Open' : 'Closed' %>
+          </span>
+        </div>
+
+        <p class="mt-4 text-3xl font-semibold text-slate-900 tabular-nums">
+          <span data-room-occupancy><%= room.occupancy %></span><%
+          %><% if (room.capacity) { %><span class="text-base font-normal text-slate-400"> / <%= room.capacity %></span><% } %>
+        </p>
+        <p class="text-xs text-slate-500">
+          <% if (room.capacity) { %>
+            <span data-room-available><%= room.available %></span> places left
+          <% } else { %>
+            inside &mdash; no capacity set
+          <% } %>
+        </p>
+
+        <% if (room.capacity) { %>
+          <%# A bar rather than only a number: "nearly full" is the thing an
+              organiser needs to notice before it becomes "turned people away".
+              Width is set from a class rather than an inline style — styleSrc
+              carries a nonce and no 'unsafe-inline', so a style attribute
+              written from script is dropped silently. %>
+          <div class="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+            <div class="h-full rounded-full <%= pct(room.occupancy, room.capacity) >= 90 ? 'bg-red-500' : (pct(room.occupancy, room.capacity) >= 70 ? 'bg-amber-500' : 'bg-green-500') %>"
+                 data-room-bar data-pct="<%= pct(room.occupancy, room.capacity) %>"></div>
+          </div>
+        <% } %>
+
+        <div class="mt-4 flex flex-wrap items-center gap-3">
+          <a href="/admin/events/<%= event.id %>/rooms/<%= room.id %>/scan" class="btn-primary px-4 py-2 text-sm">Open door</a>
+          <button type="button" class="text-sm text-indigo-600 hover:underline" data-show-inside="<%= room.id %>">Who's inside</button>
+          <% if (canConfigure) { %>
+            <button type="button" class="text-sm text-slate-500 hover:underline" data-toggle-room="<%= room.id %>" data-open="<%= room.isOpen %>">
+              <%= room.isOpen ? 'Close' : 'Open' %>
+            </button>
+          <% } %>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+
+  <!-- Who is inside, filled on demand rather than polled: it is a question
+       somebody asks occasionally, and loading every name on every refresh
+       would cost far more than the counts do. -->
+  <div class="mt-4 admin-card p-5 hidden" data-inside-panel>
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="font-semibold text-slate-900" data-inside-title>Inside</h2>
+      <button type="button" class="text-sm text-slate-500 hover:underline" data-close-inside>Close</button>
+    </div>
+    <div class="mt-3 overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead>
+          <tr class="text-left text-xs uppercase tracking-wide text-slate-500">
+            <th class="py-2 pr-4">Name</th>
+            <th class="py-2 pr-4">Registration</th>
+            <th class="py-2 pr-4">Since</th>
+            <th class="py-2 pr-4">Visits</th>
+            <th class="py-2"></th>
+          </tr>
+        </thead>
+        <tbody data-inside-rows></tbody>
+      </table>
+    </div>
+  </div>
+
+  <% if (canConfigure) { %>
+    <!-- Configuration. Below the numbers, because during an event nobody is
+         here to edit anything. -->
+    <div class="mt-8 grid gap-6 lg:grid-cols-2">
+
+      <div class="admin-card p-5">
+        <h2 class="font-semibold text-slate-900">Add a room</h2>
+        <p class="mt-1 text-xs text-slate-500">
+          A room belongs to this event only. Leave capacity empty for no limit.
+        </p>
+        <form class="mt-4 space-y-3" data-room-form>
+          <div>
+            <label class="form-label" for="room-name">Name</label>
+            <input id="room-name" name="name" type="text" required maxlength="120"
+                   placeholder="Main Hall" class="form-input w-full">
+          </div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label class="form-label" for="room-capacity">Capacity</label>
+              <input id="room-capacity" name="capacity" type="number" min="1" max="100000"
+                     placeholder="No limit" class="form-input w-full">
+            </div>
+            <div>
+              <label class="form-label" for="room-location">Location</label>
+              <input id="room-location" name="location" type="text" maxlength="191"
+                     placeholder="2nd floor" class="form-input w-full">
+            </div>
+          </div>
+          <button type="submit" class="btn-primary px-5 py-2">Add room</button>
+        </form>
+      </div>
+
+      <div class="admin-card p-5">
+        <h2 class="font-semibold text-slate-900">Sessions</h2>
+        <p class="mt-1 text-xs text-slate-500">
+          A scan records whichever session is running in that room at the time, so a
+          report can say who was present for it. Attendance itself is the room's.
+        </p>
+
+        <form class="mt-4 space-y-3" data-session-form>
+          <div>
+            <label class="form-label" for="session-name">Name</label>
+            <input id="session-name" name="name" type="text" required maxlength="120"
+                   placeholder="Technical Session 1" class="form-input w-full">
+          </div>
+          <div>
+            <label class="form-label" for="session-room">Room</label>
+            <select id="session-room" name="roomId" class="form-input w-full">
+              <option value="">No room</option>
+              <% rooms.forEach((room) => { %>
+                <option value="<%= room.id %>"><%= room.name %></option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label class="form-label" for="session-start">Starts</label>
+              <input id="session-start" name="startTime" type="datetime-local" class="form-input w-full">
+            </div>
+            <div>
+              <label class="form-label" for="session-end">Ends</label>
+              <input id="session-end" name="endTime" type="datetime-local" class="form-input w-full">
+            </div>
+          </div>
+          <button type="submit" class="btn-primary px-5 py-2">Add session</button>
+        </form>
+
+        <% if (sessions.length) { %>
+          <ul class="mt-5 divide-y divide-slate-100 border-t border-slate-100">
+            <% sessions.forEach((session) => { %>
+              <li class="flex items-center justify-between gap-3 py-2.5">
+                <div class="min-w-0">
+                  <p class="text-sm font-medium text-slate-800 truncate"><%= session.name %></p>
+                  <p class="text-xs text-slate-500 truncate">
+                    <%= session.room ? session.room.name : 'No room' %>
+                    <% if (session.startTime) { %>
+                      &middot; <%= new Date(session.startTime).toLocaleString() %>
+                      <% if (session.endTime) { %>&ndash; <%= new Date(session.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) %><% } %>
+                    <% } %>
+                  </p>
+                </div>
+                <button type="button" class="shrink-0 text-sm text-red-600 hover:underline" data-delete-session="<%= session.id %>">Remove</button>
+              </li>
+            <% }) %>
+          </ul>
+        <% } %>
+      </div>
+    </div>
+  <% } %>
+</div>
+
+<script src="/js/rooms.js"></script>

@@ -2,7 +2,7 @@
 // Run `npm run prisma:generate` after changes, and `npm run prisma:migrate` to apply to your local XAMPP MySQL database.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   // Prisma compiles its query engine against a specific libssl and chooses one
   // by sniffing the host at runtime. On this host the sniff fails — "failed to
   // detect the libssl/openssl version" — and it falls back to openssl-1.1.x,
@@ -83,6 +83,20 @@ enum CheckInResult {
   // did happen, and a door log that quietly loses it cannot answer "who let
   // them in, and who reversed it" afterwards. Paired with action CHECK_OUT.
   UNDONE
+  // The room is at capacity. Distinct from the event-level refusals above
+  // because it is the only one a person can recover from by waiting, and the
+  // door staff need to be able to count how often it happened.
+  ROOM_FULL
+  // The room exists but is closed — a session that has ended, or a hall not
+  // yet opened. Told apart from WRONG_EVENT so "staff scanning at a closed
+  // door" is visible rather than looking like people at the wrong event.
+  ROOM_CLOSED
+  // The same ticket, at the same door, seconds after the last one. Not a
+  // refusal and not an admission: the previous scan stands and nothing
+  // changed. Its own value because "this code was presented twice in three
+  // seconds" is a real thing a door report should be able to count — a
+  // scanner double-firing all morning is worth someone noticing.
+  DUPLICATE_SCAN
 }
 
 // Pure delivery lifecycle — engagement (opened/clicked) is tracked as
@@ -110,6 +124,37 @@ enum InvitationRsvpStatus {
   PENDING
   ATTENDING
   NOT_ATTENDING
+}
+
+// Where somebody is right now, for one room. Deliberately only two values:
+// the interesting history lives in EventCheckIn, and this is the cached answer
+// to "should the next scan admit or release them", which is a yes/no.
+// What a seat is for. Carried by the seat rather than only the section,
+// because a section is usually mixed — row A of the main floor holds the
+// accessible places, and the two VIP seats are in with everybody else.
+enum SeatType {
+  REGULAR
+  VIP
+  ACCESSIBLE
+  TABLE
+}
+
+// The seat history. Not the seat's current state — that lives on the seat row
+// itself, for the same reason room attendance does: the decision and the write
+// have to be one statement or two people get the same seat. This is the log of
+// how it got there.
+enum SeatAction {
+  HELD
+  HOLD_EXPIRED
+  ASSIGNED
+  RELEASED
+  BLOCKED
+  UNBLOCKED
+}
+
+enum RoomAttendanceState {
+  INSIDE
+  OUTSIDE
 }
 
 enum Modality {
@@ -185,6 +230,19 @@ enum AuditAction {
   // fact and lets a spent ticket be used again. It belongs where an admin
   // looking for "what was changed by hand" will find it.
   CHECKIN_UNDONE
+  // Seat configuration and by-hand seat changes. Individual attendee choices
+  // are rows in SeatAssignment, not here — the same split as scans.
+  SEATING_UPDATED
+  SEAT_OVERRIDDEN
+  // Rooms and sessions are configuration, not attendance: creating, editing or
+  // closing one changes what the door will accept, so it belongs with the other
+  // administrative actions rather than in the scan log.
+  ROOM_CREATED
+  ROOM_UPDATED
+  ROOM_DELETED
+  // Moving somebody in or out by hand, when a scan could not. Same reasoning as
+  // CHECKIN_UNDONE: it changes an attendance record after the fact.
+  ROOM_ATTENDANCE_OVERRIDDEN
   // Role changes, kept apart from USER_STATUS_CHANGED because they answer a
   // different question. Status is a membership lifecycle; this is who can act
   // on the system. Granting ADMIN in particular hands over every member's
@@ -194,32 +252,32 @@ enum AuditAction {
 }
 
 model User {
-  id              Int      @id @default(autoincrement())
-  firstName       String
-  middleInitial   String?
-  lastName        String
-  email           String   @unique
-  password        String
-  phone           String?
-  school          String?
+  id                      Int        @id @default(autoincrement())
+  firstName               String
+  middleInitial           String?
+  lastName                String
+  email                   String     @unique
+  password                String
+  phone                   String?
+  school                  String?
   // Optional: a member attached at province level (an officer, say) is not
   // studying a year at all, so this is never required.
-  yearLevel       YearLevel?
-  profileImage    String?
+  yearLevel               YearLevel?
+  profileImage            String?
   // A member attaches to whichever organization is actually appropriate — a
   // student unit, or a province directly where no unit applies. Ancestors are
   // derived from Organization.path, never stored redundantly here.
-  organizationId  Int?
-  role            Role     @default(USER)
-  status          UserStatus @default(PENDING)
-  emailVerifiedAt DateTime?
+  organizationId          Int?
+  role                    Role       @default(USER)
+  status                  UserStatus @default(PENDING)
+  emailVerifiedAt         DateTime?
   // When the current paid membership lapses — set to one year from the moment
   // a membership payment is confirmed (payment.service.js's applyPaymentPaid).
   // Null means no membership has ever been paid for, which is a normal state
   // now that payment is optional; it is NOT the same as expired. Renewing
   // extends from whichever is later, the existing expiry or today, so paying
   // early never costs the member the remainder of their current year.
-  membershipExpiresAt DateTime?
+  membershipExpiresAt     DateTime?
   // Where to send them on their first login after finally clearing payment +
   // admin approval — e.g. the event they originally clicked "Create an
   // account" from. Set at registration, read + cleared (one-time) by
@@ -232,29 +290,30 @@ model User {
   // repeating the orientation on a returning member's tenth visit is just an
   // extra click between them and the site. Written on every successful login,
   // so it doubles as "last seen" for admin use.
-  lastLoginAt     DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  lastLoginAt             DateTime?
+  createdAt               DateTime   @default(now())
+  updatedAt               DateTime   @updatedAt
 
-  organization    Organization? @relation("UserOrganization", fields: [organizationId], references: [id], onDelete: SetNull)
-  registrations   EventRegistration[]
+  organization           Organization?           @relation("UserOrganization", fields: [organizationId], references: [id], onDelete: SetNull)
+  registrations          EventRegistration[]
   emailVerificationToken EmailVerificationToken?
 
-  organizationAdmin       OrganizationAdmin?
-  orgAdminAuditsOld       OrganizationAdminAudit[] @relation("old_org_user")
-  orgAdminAuditsNew       OrganizationAdminAudit[] @relation("new_org_user")
-  orgAdminAuditsMade      OrganizationAdminAudit[] @relation("org_changed_by")
+  organizationAdmin  OrganizationAdmin?
+  orgAdminAuditsOld  OrganizationAdminAudit[] @relation("old_org_user")
+  orgAdminAuditsNew  OrganizationAdminAudit[] @relation("new_org_user")
+  orgAdminAuditsMade OrganizationAdminAudit[] @relation("org_changed_by")
 
   eventCertificates EventCertificate[]
 
   payments          Payment[]
-  refundsRequested  Refund[]   @relation("refund_requested_by")
-  auditLogsAsActor  AuditLog[] @relation("audit_actor")
-  auditLogsAsTarget AuditLog[] @relation("audit_target")
+  refundsRequested  Refund[]          @relation("refund_requested_by")
+  auditLogsAsActor  AuditLog[]        @relation("audit_actor")
+  auditLogsAsTarget AuditLog[]        @relation("audit_target")
   broadcastsCreated EmailBroadcast[]
   eventInvitations  EventInvitation[]
 
   checkInsScanned      EventCheckIn[]      @relation("checkin_scanned_by")
+  seatActions          SeatAssignment[]    @relation("seat_actor")
   checkInAccess        EventCheckInStaff[] @relation("checkin_staff_user")
   checkInAccessGranted EventCheckInStaff[] @relation("checkin_staff_granted_by")
   checkInAccessRevoked EventCheckInStaff[] @relation("checkin_staff_revoked_by")
@@ -296,25 +355,25 @@ model EmailVerificationToken {
 }
 
 model Event {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   title       String
-  description String?  @db.Text
+  description String?   @db.Text
   location    String?
-  modality    Modality @default(FACE_TO_FACE)
+  modality    Modality  @default(FACE_TO_FACE)
   imageUrl    String?
   zoomLink    String?
-  featured    Boolean  @default(false)
+  featured    Boolean   @default(false)
   startDate   DateTime
   endDate     DateTime?
   capacity    Int?
-  isPublished Boolean  @default(true)
+  isPublished Boolean   @default(true)
   // 0 = free (unchanged default behavior). Charged via GCash, same PayMongo
   // flow already used for membership registration — see Payment.eventId.
-  feeCentavos Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  feeCentavos Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  registrations EventRegistration[]
+  registrations       EventRegistration[]
   certificateTemplate CertificateTemplate?
   certificates        EventCertificate[]
   emailTemplates      EmailTemplate[]
@@ -322,25 +381,242 @@ model Event {
   invitations         EventInvitation[]
   checkIns            EventCheckIn[]
   checkInStaff        EventCheckInStaff[]
+  rooms               EventRoom[]
+  sessions            EventSession[]
+  seatingSections     SeatingSection[]
+  // Off by default, and the only thing that turns the whole feature on for an
+  // event. A general-admission seminar never sees a seat map; a convention
+  // switches it on and builds one. No code changes between the two.
+  seatingEnabled      Boolean              @default(false)
+}
+
+// A block of seats — "Main Floor", "VIP", "Balcony", "Table 1".
+//
+// Attached to a room rather than floating on the event, because seats are in a
+// place and that place is the thing people are admitted to. It also means the
+// seat map and the occupancy board are describing the same room rather than two
+// parallel ideas of where somebody is. roomId is nullable so a plan can be
+// drafted before the rooms are settled.
+model SeatingSection {
+  id           Int      @id @default(autoincrement())
+  eventId      Int
+  roomId       Int?
+  name         String
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  event Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  room  EventRoom? @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  seats Seat[]
+
+  @@unique([eventId, name])
+  @@index([roomId])
+  @@map("seating_sections")
+}
+
+// One seat.
+//
+// The live state is here, not in the assignment log, and that is the whole
+// concurrency design. Claiming a seat is one conditional UPDATE constrained to
+// "nobody has it" — MySQL applies it atomically, so of two people tapping A15
+// at the same instant exactly one gets a row count of 1. A read-then-write
+// would hand the seat to both, which is the failure this feature is most likely
+// to be judged on.
+//
+// Three columns rather than a status enum, because the states are not a line:
+// a seat can be blocked while still assigned to somebody (an admin closing a
+// row after tickets went out), and a hold and an assignment are held by
+// different people at different times.
+model Seat {
+  id        Int      @id @default(autoincrement())
+  sectionId Int
+  // What is printed on the ticket and read out at the door: "A15", "T3-04".
+  label     String
+  // The parts it was generated from, kept so the map can lay seats out in rows
+  // without parsing the label back apart.
+  rowLabel  String?
+  number    Int?
+  type      SeatType @default(REGULAR)
+  // Configuration, not state: a blocked seat is one nobody may take — a broken
+  // chair, a camera position, a row held back for officials.
+  isBlocked Boolean  @default(false)
+
+  // A tentative claim while somebody is choosing. Expiry is evaluated when the
+  // seat is read rather than swept by a job: a hold that outlives its welcome by
+  // a few seconds is harmless, and a sweep on a host that restarts processes on
+  // its own is a hold that never expires at all.
+  heldByRegistrationId Int?
+  heldUntil            DateTime?
+
+  // The confirmed holder. Unique across every seat, which is what enforces "one
+  // registration, one seat" — a registration belongs to exactly one event, so a
+  // registration appearing on two seats is always wrong.
+  assignedRegistrationId Int? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  section    SeatingSection     @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  // SetNull, not Cascade: cancelling a registration frees the seat, it does not
+  // delete it.
+  assignedTo EventRegistration? @relation("seat_assigned_to", fields: [assignedRegistrationId], references: [id], onDelete: SetNull)
+  heldBy     EventRegistration? @relation("seat_held_by", fields: [heldByRegistrationId], references: [id], onDelete: SetNull)
+  history    SeatAssignment[]
+
+  @@unique([sectionId, label])
+  // Backs the map, which reads a whole section at once.
+  @@index([sectionId, rowLabel])
+  // Backs the expiry check on every availability read.
+  @@index([heldUntil])
+  @@map("seats")
+}
+
+// Append-only: every claim, confirmation, release and block, in order.
+//
+// Deliberately not the source of truth for who has the seat right now — see the
+// comment on Seat. This answers "how did A15 end up with this person", which is
+// the question asked when two people arrive holding the same seat number.
+model SeatAssignment {
+  id             Int        @id @default(autoincrement())
+  seatId         Int
+  registrationId Int?
+  action         SeatAction
+  // Null for a choice made by the attendee themselves; set when an admin did it
+  // on their behalf, which is the distinction a dispute turns on.
+  actorId        Int?
+  at             DateTime   @default(now())
+  notes          String?    @db.Text
+
+  seat         Seat               @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  registration EventRegistration? @relation(fields: [registrationId], references: [id], onDelete: SetNull)
+  actor        User?              @relation("seat_actor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([seatId, at])
+  @@index([registrationId])
+  @@map("seat_assignments")
+}
+
+// A physical space inside an event — Main Hall, Workshop Room, VIP Lounge.
+//
+// Owned by one event, never shared between them. Two conventions that use the
+// same hotel ballroom get a row each: the capacity, the opening hours and every
+// scan belong to the event, not to the building, and a shared row would make
+// "who was inside" span years.
+model EventRoom {
+  id           Int      @id @default(autoincrement())
+  eventId      Int
+  name         String
+  // Null means uncapped. When set, a scan that would take occupancy past it is
+  // refused with ROOM_FULL rather than admitted and reported later.
+  capacity     Int?
+  location     String?
+  // Closing a room refuses entry without deleting anything: the attendance
+  // already recorded there stays readable, and reopening is one toggle.
+  isOpen       Boolean  @default(true)
+  // What the room list is ordered by, so an admin can put Main Hall first
+  // rather than living with whatever order they were created in.
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  event           Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  sessions        EventSession[]
+  attendance      RoomAttendance[]
+  checkIns        EventCheckIn[]
+  seatingSections SeatingSection[]
+
+  // Two rooms called "Main Hall" at one event is a data-entry mistake, not a
+  // configuration anybody wants — staff pick from this list by name.
+  @@unique([eventId, name])
+  @@index([eventId, isOpen])
+  @@map("event_rooms")
+}
+
+// A scheduled block — "Technical Session 1", "Opening Ceremony". Attached to a
+// room when it has one, standalone when it does not (an online session, or a
+// track whose room changes).
+//
+// Sessions do not carry their own attendance in this pass: a scan records which
+// session was running when it happened, and the IN/OUT state is the room's. That
+// keeps one state machine rather than two that can disagree about whether a
+// person is in the building.
+model EventSession {
+  id        Int       @id @default(autoincrement())
+  eventId   Int
+  roomId    Int?
+  name      String
+  startTime DateTime?
+  endTime   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  event    Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  room     EventRoom?     @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  checkIns EventCheckIn[]
+
+  @@index([eventId, startTime])
+  @@index([roomId])
+  @@map("event_sessions")
+}
+
+// The cached answer to "is this person in this room right now".
+//
+// Derivable from EventCheckIn — the latest row for this pair wins — and
+// deliberately not derived. Two reasons, both about the door:
+//
+//   Occupancy is a COUNT on an indexed column here, against an aggregate over
+//   every scan ever recorded there. The live dashboard asks for it constantly.
+//
+//   More importantly it makes the scan safe under two scanners. Deciding IN or
+//   OUT by reading history and then inserting is a race: both read OUTSIDE,
+//   both admit. Here the decision and the write are one conditional UPDATE
+//   (... WHERE state = 'OUTSIDE'), and the number of rows it touched says
+//   whether this scanner won — the same trick EventRegistration.checkedInAt
+//   already uses for arrival.
+//
+// EventCheckIn stays the record of what happened. This is only the current
+// state, and can be rebuilt from that history if it is ever doubted.
+model RoomAttendance {
+  id                  Int                 @id @default(autoincrement())
+  roomId              Int
+  eventRegistrationId Int
+  state               RoomAttendanceState @default(OUTSIDE)
+  // Kept for the per-person report: first arrival, the current or most recent
+  // visit, and how many separate visits there have been.
+  firstEnteredAt      DateTime?
+  lastEnteredAt       DateTime?
+  lastExitedAt        DateTime?
+  entryCount          Int                 @default(0)
+  updatedAt           DateTime            @updatedAt
+
+  room         EventRoom         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  registration EventRegistration @relation(fields: [eventRegistrationId], references: [id], onDelete: Cascade)
+
+  // One row per person per room — the whole point of the conditional update.
+  @@unique([roomId, eventRegistrationId])
+  // Backs the occupancy count and the "who is inside right now" list.
+  @@index([roomId, state])
+  @@map("room_attendance")
 }
 
 model EventRegistration {
-  id           Int      @id @default(autoincrement())
-  userId       Int
-  eventId      Int
-  fullName     String
-  email        String
-  phone        String?
-  school       String?
+  id                 Int                @id @default(autoincrement())
+  userId             Int
+  eventId            Int
+  fullName           String
+  email              String
+  phone              String?
+  school             String?
   // Organization snapshot, captured at registration time for the same reason
   // fullName/email/school above are: a member's affiliation can change, and a
   // past event's report must keep reporting who they were affiliated with
   // THEN. organizationId supports aggregation/joins; organizationPath is the
   // rendered label ("JPSME National › Luzon › Cavite Chapter") so the history
   // survives a later rename, reparent, or deletion of the organization.
-  organizationId   Int?
-  organizationPath String?
-  status       RegistrationStatus @default(REGISTERED)
+  organizationId     Int?
+  organizationPath   String?
+  status             RegistrationStatus @default(REGISTERED)
   // Set only when this registration was completed by clicking through an
   // event invitation (see EventInvitation.registeredAt) — lets the admin
   // registrations list show "invited" registrants distinctly from ones who
@@ -349,14 +625,14 @@ model EventRegistration {
   // by, and print on the ticket. Distinct from Payment.referenceNumber, which
   // identifies a payment rather than a registration. Nullable because it is
   // assigned when the registration becomes valid, not when the row is created.
-  registrationNumber String?   @unique
+  registrationNumber String?            @unique
   // The QR's actual payload: 32 cryptographically random bytes, hex-encoded.
   // Opaque by design — it encodes nothing about the person or the event, so a
   // photographed ticket leaks nothing and the server stays the only thing able
   // to resolve it. Unique, so a collision is a write error rather than a silent
   // two-people-one-ticket. Nullable: a PENDING_PAYMENT or CANCELLED
   // registration legitimately has no usable QR.
-  qrToken            String?   @unique
+  qrToken            String?            @unique
   qrGeneratedAt      DateTime?
   // Denormalized "first successful check-in". The scan hot path gates on this
   // one column with a single conditional UPDATE (... WHERE checkedInAt IS NULL),
@@ -364,16 +640,24 @@ model EventRegistration {
   // transaction open; deriving it from the EventCheckIn rows would mean an
   // aggregate on every scan instead. Null = not yet admitted.
   checkedInAt        DateTime?
-  invitationId Int?     @unique
-  createdAt    DateTime @default(now())
+  invitationId       Int?               @unique
+  createdAt          DateTime           @default(now())
 
-  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  event        Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  invitation   EventInvitation? @relation(fields: [invitationId], references: [id], onDelete: SetNull)
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event           Event             @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  invitation      EventInvitation?  @relation(fields: [invitationId], references: [id], onDelete: SetNull)
   // SetNull, not Cascade — deleting an organization must never delete the
   // historical registration; organizationPath still preserves the label.
-  organization Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  checkIns     EventCheckIn[]
+  organization    Organization?     @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  checkIns        EventCheckIn[]
+  roomAttendance  RoomAttendance[]
+  seat            Seat?             @relation("seat_assigned_to")
+  // A list, not one. An expired hold is left where it is rather than cleared —
+  // expiry is evaluated on read — so a registration can legitimately carry
+  // stale hold pointers on several seats it no longer has any claim to. Only
+  // heldUntil decides whether any of them means anything.
+  heldSeats       Seat[]            @relation("seat_held_by")
+  seatHistory     SeatAssignment[]
 
   @@unique([userId, eventId])
   @@index([organizationId])
@@ -398,7 +682,7 @@ model EventRegistration {
 // four times at three stations" invisible. "Is this person admitted?" is
 // answered by EventRegistration.checkedInAt, never by aggregating this table.
 model EventCheckIn {
-  id                  Int      @id @default(autoincrement())
+  id                  Int           @id @default(autoincrement())
   // Nullable: a scan of a token that matches nothing still gets logged, and by
   // definition has no registration to point at (result = INVALID_QR).
   eventRegistrationId Int?
@@ -406,10 +690,13 @@ model EventCheckIn {
   // never needs a join — and so INVALID_QR scans, which have no registration at
   // all, are still attributable to the event whose door they happened at.
   eventId             Int
-  // Reserved for the session-level check-in in the roadmap (Opening Ceremony,
-  // Technical Session 1, ...). Unused and always null in Phase 1; present now
-  // only so adding sessions later is a new table plus a foreign key, not a
-  // rewrite of how scans are recorded.
+  // Which room this scan happened at. Null for an event-arrival scan, which is
+  // the venue door rather than any one room — that distinction is what keeps
+  // "arrived at the event" and "entered the hall" separate facts.
+  roomId              Int?
+  // Which session was running in that room when the scan happened, recorded so
+  // a report can say who was present for Technical Session 1 without inferring
+  // it from timestamps later. The IN/OUT state itself belongs to the room.
   sessionId           Int?
   scannedAt           DateTime      @default(now())
   // Null only for a scan that somehow reaches the service without a session —
@@ -429,8 +716,14 @@ model EventCheckIn {
   eventRegistration EventRegistration? @relation(fields: [eventRegistrationId], references: [id], onDelete: SetNull)
   event             Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
   scanner           User?              @relation("checkin_scanned_by", fields: [scannedBy], references: [id], onDelete: SetNull)
+  // SetNull, like the registration above: deleting a room must not erase the
+  // record that people were admitted to it.
+  room              EventRoom?         @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  session           EventSession?      @relation(fields: [sessionId], references: [id], onDelete: SetNull)
 
   @@index([eventRegistrationId])
+  // Backs the per-room history and the rebuild-state-from-history path.
+  @@index([roomId, scannedAt])
   // Backs both the live "recent check-ins" feed and any time-windowed report.
   @@index([eventId, scannedAt])
   // Backs the per-result counts (successes, duplicates, invalid) on the
@@ -459,8 +752,8 @@ model EventCheckInStaff {
   revokedAt DateTime?
   revokedBy Int?
 
-  event     Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  user      User  @relation("checkin_staff_user", fields: [userId], references: [id], onDelete: Cascade)
+  event         Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user          User  @relation("checkin_staff_user", fields: [userId], references: [id], onDelete: Cascade)
   grantedByUser User  @relation("checkin_staff_granted_by", fields: [grantedBy], references: [id], onDelete: Cascade)
   revokedByUser User? @relation("checkin_staff_revoked_by", fields: [revokedBy], references: [id], onDelete: SetNull)
 
@@ -470,7 +763,7 @@ model EventCheckInStaff {
 }
 
 model EventInvitation {
-  id            Int              @id @default(autoincrement())
+  id            Int                  @id @default(autoincrement())
   eventId       Int
   userId        Int?
   fullName      String
@@ -478,9 +771,9 @@ model EventInvitation {
   chapter       String?
   school        String?
   company       String?
-  source        InvitationSource @default(ADMIN_SENT)
-  token         String           @unique
-  status        InvitationStatus @default(PENDING)
+  source        InvitationSource     @default(ADMIN_SENT)
+  token         String               @unique
+  status        InvitationStatus     @default(PENDING)
   failureReason String?
   sentAt        DateTime?
   openedAt      DateTime?
@@ -488,8 +781,8 @@ model EventInvitation {
   registeredAt  DateTime?
   rsvpStatus    InvitationRsvpStatus @default(PENDING)
   rsvpAt        DateTime?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
 
   event        Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
   user         User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -523,7 +816,7 @@ model StoredFile {
   data      Bytes?
   createdAt DateTime @default(now())
 
-  chunks    StoredFileChunk[]
+  chunks StoredFileChunk[]
 
   // Backs removeFolder(), which deletes by prefix — an event's certificates,
   // say. Without it that is a full scan of every file ever uploaded.
@@ -556,13 +849,13 @@ model StoredFileChunk {
 }
 
 model Sponsor {
-  id        Int      @id @default(autoincrement())
-  name      String
-  logoUrl   String
+  id         Int      @id @default(autoincrement())
+  name       String
+  logoUrl    String
   websiteUrl String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([isActive])
   @@map("sponsors")
@@ -634,24 +927,24 @@ enum OrganizationType {
 // that reparenting must rewrite a subtree's paths, done inside a transaction
 // (a rare admin action).
 model Organization {
-  id          Int              @id @default(autoincrement())
-  name        String
-  slug        String           @unique
-  code        String?
-  type        OrganizationType
+  id       Int              @id @default(autoincrement())
+  name     String
+  slug     String           @unique
+  code     String?
+  type     OrganizationType
   // NULL only for the single NATIONAL root. Restrict (not Cascade) so an
   // organization with children can never be deleted out from under them —
   // same defensive convention as Payment.event elsewhere in this schema.
-  parentId    Int?
-  path        String           @default("/")
-  depth       Int              @default(0)
+  parentId Int?
+  path     String           @default("/")
+  depth    Int              @default(0)
 
   // Import provenance. The official workbook establishes a parent for only 1
   // of its 176 organization rows, so the importer attaches what it can
   // actually derive (the mother region) and flags the rest for an admin to
   // resolve — rather than silently guessing a cluster/chapter relationship.
-  needsReview Boolean          @default(false)
-  importNote  String?          @db.Text
+  needsReview Boolean @default(false)
+  importNote  String? @db.Text
   sourceSheet String?
 
   institution String?
@@ -659,14 +952,14 @@ model Organization {
   facebookUrl String?
   subRegion   String?
   yearFounded Int?
-  isActive    Boolean          @default(true)
-  order       Int              @default(0)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  isActive    Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  parent        Organization?       @relation("OrgTree", fields: [parentId], references: [id], onDelete: Restrict)
-  children      Organization[]      @relation("OrgTree")
-  users         User[]              @relation("UserOrganization")
+  parent        Organization?            @relation("OrgTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children      Organization[]           @relation("OrgTree")
+  users         User[]                   @relation("UserOrganization")
   admins        OrganizationAdmin[]
   registrations EventRegistration[]
   adminAudits   OrganizationAdminAudit[]
@@ -718,15 +1011,15 @@ model OrganizationAdminAudit {
 // event (eventId set) for that event's certificate. Both customizable only
 // by the main ADMIN.
 model CertificateTemplate {
-  id              Int      @id @default(autoincrement())
+  id              Int                     @id @default(autoincrement())
   type            CertificateTemplateType
-  eventId         Int?     @unique
+  eventId         Int?                    @unique
   backgroundImage String?
-  title           String   @default("Certificate")
-  bodyText        String   @db.Text
-  textColor       String   @default("#1a1a2e")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  title           String                  @default("Certificate")
+  bodyText        String                  @db.Text
+  textColor       String                  @default("#1a1a2e")
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
 
   event Event? @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
@@ -736,13 +1029,13 @@ model CertificateTemplate {
 // A generated event certificate PDF for one user. Membership certificates
 // are generated on demand from live profile data and not stored here.
 model EventCertificate {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   eventId     Int
   userId      Int
   filePath    String
-  generatedAt DateTime @default(now())
+  generatedAt DateTime  @default(now())
   generatedBy Int
-  released    Boolean  @default(false)
+  released    Boolean   @default(false)
   releasedAt  DateTime?
   releasedBy  Int?
 
@@ -759,34 +1052,34 @@ model EventCertificate {
 // so userId is intentionally not unique — "at most one active payment" is
 // enforced in payment.service.js inside a transaction, not by a DB constraint.
 model Payment {
-  id                Int            @id @default(autoincrement())
-  userId            Int
-  purpose           PaymentPurpose @default(MEMBERSHIP_REGISTRATION)
+  id                 Int            @id @default(autoincrement())
+  userId             Int
+  purpose            PaymentPurpose @default(MEMBERSHIP_REGISTRATION)
   // Null for MEMBERSHIP_REGISTRATION payments; set for EVENT_REGISTRATION
   // payments. onDelete: Restrict means an event with any payment history
   // (pending, processing, paid, or refunded) can never be deleted out from
   // under its financial records — event.service.js's deleteEvent() also
   // checks this explicitly before touching anything, so the app-level error
   // is friendly; this is the DB-level backstop.
-  eventId           Int?
-  gateway           String         @default("paymongo")
-  gatewayCheckoutId String?        @unique
-  gatewayPaymentId  String?        @unique
+  eventId            Int?
+  gateway            String         @default("paymongo")
+  gatewayCheckoutId  String?        @unique
+  gatewayPaymentId   String?        @unique
   // The actual fee/membership amount charged to the payer — JPSME absorbs
   // PayMongo's own transaction fee out of this, it's never added on top.
-  amount            Int
+  amount             Int
   // What PayMongo actually deducted from `amount` before crediting JPSME —
   // populated from the Payment resource's own `fee` field once the payment
   // settles (see applyPaymentPaid), not estimated in advance. 0 until then,
   // and stays 0 for a payment that never reaches PAID. `amount - gatewayFeeCentavos`
   // is what JPSME actually received net.
-  gatewayFeeCentavos Int           @default(0)
-  currency          String         @default("PHP")
-  status            PaymentStatus  @default(PENDING)
-  expiresAt         DateTime?
-  paidAt            DateTime?
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  gatewayFeeCentavos Int            @default(0)
+  currency           String         @default("PHP")
+  status             PaymentStatus  @default(PENDING)
+  expiresAt          DateTime?
+  paidAt             DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 
   user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   event    Event?           @relation(fields: [eventId], references: [id], onDelete: Restrict)
