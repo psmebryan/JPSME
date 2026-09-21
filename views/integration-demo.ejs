@@ -1,0 +1,280 @@
+<%#
+  A stand-in for "the other system", for testing on a local machine.
+
+  This page is NOT part of JPSME's own check-in. It deliberately holds no
+  session and knows nothing about who is signed in: it asks for an integration
+  key, stores it in this browser only, and talks to /api/integration exactly the
+  way a separate system would. If it works here, the API works; if it does not,
+  the problem is visible on this page rather than buried in somebody else's
+  codebase.
+
+  It is also the reference implementation — the fetch calls below are the whole
+  integration, and can be copied straight into the real system.
+
+  DEVELOPMENT ONLY. The route that renders it refuses to exist when NODE_ENV is
+  production, so a test harness with a scanner on it can never quietly ship.
+%>
+<div class="mx-auto max-w-3xl px-4 py-8" data-demo>
+
+  <div class="rounded-xl border-2 border-dashed border-amber-400 bg-amber-50 p-4">
+    <p class="text-sm font-bold text-amber-900">Integration test harness — development only</p>
+    <p class="mt-1 text-xs text-amber-800">
+      This page pretends to be your other system. It uses only the public
+      <code>/api/integration</code> endpoints and a key you paste in below —
+      no JPSME login, no session, no special access.
+    </p>
+  </div>
+
+  <h1 class="mt-6 text-2xl font-bold text-slate-900">Scan a JPSME ticket</h1>
+
+  <%# ---- 1. the key ---------------------------------------------------- %>
+  <div class="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <label for="key" class="block text-sm font-medium text-slate-700">Integration key</label>
+    <p class="mt-1 text-xs text-slate-500">
+      Create one in Admin &rarr; Check-in &rarr; Check-in staff, pick the event, then
+      &ldquo;Other systems that can scan here&rdquo;.
+    </p>
+    <div class="mt-2 flex flex-wrap gap-2">
+      <input id="key" data-key type="password" autocomplete="off" spellcheck="false"
+             placeholder="jpsme_ik_…"
+             class="min-w-[260px] flex-1 rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm">
+      <button type="button" data-connect
+              class="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
+        Connect
+      </button>
+    </div>
+    <div data-conn class="mt-3 text-sm text-slate-500">Not connected.</div>
+  </div>
+
+  <%# ---- 2. the scanner ------------------------------------------------ %>
+  <%# data-scan-form / data-scan-input / data-qr-camera are what
+      /js/qr-camera.js looks for: it fills the input and submits this form.
+      A gun scanner types into the focused field and sends Enter, which submits
+      the same form — so both kinds of scanner work with no extra code. %>
+  <form data-scan-form class="mt-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <label for="scan" class="block text-sm font-medium text-slate-700">Scan or type a ticket</label>
+    <div class="mt-2 flex flex-wrap gap-2">
+      <input id="scan" data-scan-input type="text" inputmode="text" autocomplete="off"
+             autocapitalize="off" spellcheck="false" placeholder="Waiting for a scan…"
+             class="min-w-[240px] flex-1 rounded-lg border border-slate-300 px-3 py-3 font-mono text-base">
+      <button type="submit" data-submit disabled
+              class="rounded-lg bg-slate-900 px-5 py-2 text-sm font-semibold text-white disabled:opacity-40">
+        Check in
+      </button>
+      <button type="button" data-qr-camera
+              class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+        Use camera
+      </button>
+    </div>
+    <label class="mt-3 flex items-center gap-2 text-sm text-slate-600">
+      <input type="checkbox" data-lookup-only class="rounded border-slate-300">
+      Look up only — identify without checking in (writes nothing)
+    </label>
+  </form>
+
+  <%# ---- 3. the answer ------------------------------------------------- %>
+  <div data-result class="mt-4 rounded-xl border-2 border-dashed border-slate-200 bg-white p-8 text-center">
+    <p class="text-sm text-slate-400">Connect a key, then scan a ticket.</p>
+  </div>
+
+  <%# ---- 4. what actually went over the wire --------------------------- %>
+  <%# The point of a test harness: when something does not work, this is the
+      part that tells you why. %>
+  <details class="mt-4" data-wire-wrap>
+    <summary class="cursor-pointer text-sm font-medium text-indigo-600">Show the raw request and response</summary>
+    <pre data-wire class="mt-2 overflow-x-auto rounded-lg border border-slate-200 bg-slate-900 p-4 font-mono text-[11px] leading-5 text-slate-100">nothing yet</pre>
+  </details>
+
+  <%# ---- 5. the roster ------------------------------------------------- %>
+  <div class="mt-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 class="font-semibold text-slate-900">Who is registered</h2>
+      <button type="button" data-load-roster disabled
+              class="rounded-lg border border-slate-300 px-4 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40">
+        Load roster
+      </button>
+    </div>
+    <div data-roster class="mt-3 text-sm text-slate-500">Connect a key first.</div>
+  </div>
+</div>
+
+<script src="/js/qr-camera.js"></script>
+<script nonce="<%= cspNonce %>">
+(function () {
+  const root = document.querySelector('[data-demo]');
+  const keyInput   = root.querySelector('[data-key]');
+  const connBox    = root.querySelector('[data-conn]');
+  const form       = root.querySelector('[data-scan-form]');
+  const scanInput  = root.querySelector('[data-scan-input]');
+  const submitBtn  = root.querySelector('[data-submit]');
+  const lookupOnly = root.querySelector('[data-lookup-only]');
+  const resultBox  = root.querySelector('[data-result]');
+  const wire       = root.querySelector('[data-wire]');
+  const rosterBtn  = root.querySelector('[data-load-roster]');
+  const rosterBox  = root.querySelector('[data-roster]');
+
+  // Remembered so a reload during testing does not mean pasting the key again.
+  // sessionStorage rather than localStorage: it is still a credential.
+  const STORE = 'jpsme.demo.key';
+  let key = '';
+  try { key = sessionStorage.getItem(STORE) || ''; } catch (e) { /* private mode */ }
+  if (key) keyInput.value = key;
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+  }
+
+  // THE WHOLE INTEGRATION IS THIS FUNCTION. Everything else on the page is
+  // presentation.
+  async function api(path, options) {
+    const opts = options || {};
+    const req = {
+      method: opts.method || 'GET',
+      headers: {
+        // The key goes in a header. Never in the URL — a credential in a query
+        // string lands in access logs and browser history.
+        Authorization: 'Bearer ' + key,
+        'Content-Type': 'application/json',
+      },
+    };
+    if (opts.body) req.body = JSON.stringify(opts.body);
+
+    const started = performance.now();
+    let res, json;
+    try {
+      res = await fetch('/api/integration' + path, req);
+      json = await res.json();
+    } catch (err) {
+      // A CORS failure or an unreachable host lands here, with no status and no
+      // body — which is exactly the case that looks like "nothing happened".
+      showWire(req.method + ' /api/integration' + path, opts.body, null,
+        'REQUEST FAILED BEFORE A REPLY: ' + err.message
+        + '\n\nIf this says "Failed to fetch", the server was not reached at all —'
+        + '\nwrong address, server not running, or the browser blocked it (CORS).');
+      throw err;
+    }
+    showWire(
+      req.method + ' /api/integration' + path,
+      opts.body,
+      { status: res.status, ms: Math.round(performance.now() - started) },
+      JSON.stringify(json, null, 2)
+    );
+    return { status: res.status, json: json };
+  }
+
+  function showWire(line, body, meta, text) {
+    wire.textContent =
+      '> ' + line + '\n'
+      + '> Authorization: Bearer ' + (key ? key.slice(0, 17) + '…' : '(none)') + '\n'
+      + (body ? '> ' + JSON.stringify(body) + '\n' : '')
+      + (meta ? '\n< HTTP ' + meta.status + '  (' + meta.ms + 'ms)\n' : '\n')
+      + text;
+  }
+
+  // --- connect ---------------------------------------------------------------
+  root.querySelector('[data-connect]').addEventListener('click', async () => {
+    key = keyInput.value.trim();
+    try { sessionStorage.setItem(STORE, key); } catch (e) { /* ignore */ }
+    if (!key) { connBox.textContent = 'Paste a key first.'; return; }
+
+    connBox.textContent = 'Checking…';
+    try {
+      const r = await api('/whoami');
+      if (r.status !== 200) {
+        connBox.innerHTML = '<span class="font-semibold text-red-600">Rejected (' + r.status + ')</span> — '
+          + esc(r.json && r.json.message);
+        submitBtn.disabled = true;
+        rosterBtn.disabled = true;
+        return;
+      }
+      const ev = r.json.data.event;
+      connBox.innerHTML =
+        '<span class="font-semibold text-green-700">Connected</span> — this key opens '
+        + '<strong>' + esc(ev.title) + '</strong> (event ' + ev.id + ')';
+      submitBtn.disabled = false;
+      rosterBtn.disabled = false;
+      scanInput.focus();
+    } catch (err) {
+      connBox.innerHTML = '<span class="font-semibold text-red-600">Could not reach the server.</span>'
+        + ' See the raw request below.';
+    }
+  });
+
+  // --- scanning ---------------------------------------------------------------
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const scanned = scanInput.value.trim();
+    if (!scanned || !key) return;
+
+    // Send what the scanner produced, unchanged. The server parses it.
+    const path = lookupOnly.checked ? '/lookup' : '/checkin';
+    render({ pending: true });
+    try {
+      const r = await api(path, { method: 'POST', body: { qrToken: scanned, station: 'Test harness' } });
+      render(r.json && r.json.data ? r.json.data : { result: 'HTTP ' + r.status, ok: false });
+    } catch (err) {
+      render({ ok: false, result: 'NETWORK', message: 'The request never reached the server.' });
+    }
+    scanInput.value = '';
+    scanInput.focus();
+  });
+
+  const TONE = {
+    SUCCESS: ['border-green-500', 'bg-green-50', 'text-green-900'],
+    ALREADY_CHECKED_IN: ['border-amber-500', 'bg-amber-50', 'text-amber-900'],
+  };
+
+  function render(data) {
+    if (data.pending) {
+      resultBox.className = 'mt-4 rounded-xl border-2 border-slate-200 bg-white p-8 text-center';
+      resultBox.innerHTML = '<p class="text-sm text-slate-400">Asking JPSME…</p>';
+      return;
+    }
+    const tone = TONE[data.result] || ['border-red-500', 'bg-red-50', 'text-red-900'];
+    resultBox.className = 'mt-4 rounded-xl border-2 p-8 text-center ' + tone.join(' ');
+
+    const p = data.participant;
+    resultBox.innerHTML =
+      '<p class="font-mono text-xs font-bold uppercase tracking-widest opacity-70">' + esc(data.result) + '</p>'
+      + (p
+        ? '<p class="mt-3 text-3xl font-bold">' + esc(p.name) + '</p>'
+          + '<p class="mt-1 font-mono text-sm opacity-80">' + esc(p.registrationNumber || '—') + '</p>'
+          + (p.organizationPath ? '<p class="mt-1 text-sm opacity-70">' + esc(p.organizationPath) + '</p>' : '')
+        : '<p class="mt-3 text-2xl font-bold">No match</p>')
+      + (data.message ? '<p class="mt-3 text-sm opacity-80">' + esc(data.message) + '</p>' : '')
+      + (data.checkedInAt
+        ? '<p class="mt-3 text-xs opacity-70">Checked in at '
+          + esc(new Date(data.checkedInAt).toLocaleString()) + '</p>'
+        : '');
+  }
+
+  // --- roster -----------------------------------------------------------------
+  rosterBtn.addEventListener('click', async () => {
+    rosterBox.textContent = 'Loading…';
+    try {
+      const r = await api('/registrations?pageSize=200');
+      const d = r.json.data;
+      if (!d.registrations.length) { rosterBox.textContent = 'Nobody is registered for this event yet.'; return; }
+      rosterBox.innerHTML =
+        '<p class="mb-2 text-xs text-slate-500">' + d.total + ' registered · page ' + d.page + ' of ' + d.pageCount + '</p>'
+        + '<div class="overflow-x-auto"><table class="min-w-full text-sm">'
+        + '<thead><tr class="text-left text-xs uppercase tracking-wide text-slate-500">'
+        + '<th class="py-1 pr-4">Name</th><th class="py-1 pr-4">Reg. no.</th><th class="py-1">Checked in</th></tr></thead><tbody>'
+        + d.registrations.map((x) =>
+          '<tr class="border-t border-slate-100">'
+          + '<td class="py-1.5 pr-4">' + esc(x.fullName) + '</td>'
+          + '<td class="py-1.5 pr-4 font-mono text-xs">' + esc(x.registrationNumber || '—') + '</td>'
+          + '<td class="py-1.5">' + (x.checkedInAt
+            ? '<span class="text-green-700">' + esc(new Date(x.checkedInAt).toLocaleTimeString()) + '</span>'
+            : '<span class="text-slate-400">—</span>') + '</td></tr>').join('')
+        + '</tbody></table></div>';
+    } catch (err) {
+      rosterBox.textContent = 'Could not load the roster. See the raw request above.';
+    }
+  });
+
+  if (key) root.querySelector('[data-connect]').click();
+}());
+</script>

@@ -5,12 +5,21 @@ const organizationService = require('./organization.service');
 
 // Real counts for the homepage stats bar (no invented marketing numbers).
 async function getHomeStats() {
-  const [memberCount, eventCount, registrationCount] = await Promise.all([
+  const [memberCount, eventCount, organizationCount] = await Promise.all([
     prisma.user.count({ where: { role: 'USER', status: 'APPROVED' } }),
     prisma.event.count(),
-    prisma.eventRegistration.count({ where: { status: 'REGISTERED' } }),
+    // Student organizations, which is what the home page's third figure now
+    // says. Counted for real rather than relabelling the registration total
+    // that used to sit there — a headline number that does not mean what its
+    // label claims is worse than no number at all.
+    //
+    // STUDENT_UNIT is the leaf type in the organization tree: NATIONAL has
+    // REGIONs, which have PROVINCEs, which have the student chapters. The
+    // upper three are administrative groupings, not organizations a student
+    // belongs to, so they are deliberately not in this count.
+    prisma.organization.count({ where: { type: 'STUDENT_UNIT', isActive: true } }),
   ]);
-  return { memberCount, eventCount, registrationCount };
+  return { memberCount, eventCount, organizationCount };
 }
 
 const MONTH_WINDOW = 6;

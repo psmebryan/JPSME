@@ -9,6 +9,7 @@ const paymentRoutes = require('./payment.routes');
 const webhookRoutes = require('./webhook.routes');
 const articleRoutes = require('./article.routes');
 const organizationRoutes = require('./organization.routes');
+const integrationRoutes = require('./integration.routes');
 const { success } = require('../../utils/apiResponse');
 const captchaService = require('../../services/captcha.service');
 const challengeService = require('../../services/challenge.service');
@@ -77,5 +78,9 @@ router.use('/payments', paymentRoutes);
 router.use('/webhooks', webhookRoutes);
 router.use('/articles', articleRoutes);
 router.use('/organizations', organizationRoutes);
+// Machine-to-machine, authenticated by a bearer integration key rather than by
+// a session — see integration.routes.js for why it carries no CSRF check and
+// no event id.
+router.use('/integration', integrationRoutes);
 
 module.exports = router;

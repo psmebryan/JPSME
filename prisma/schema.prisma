@@ -249,6 +249,16 @@ enum AuditAction {
   // personal details and the whole payment history, so it should be findable
   // by itself rather than mixed in with approvals.
   USER_ROLE_CHANGED
+  // Issuing or revoking a credential that lets ANOTHER SYSTEM scan an event's
+  // tickets. Administrative, and high-consequence: an integration key admits
+  // people without any JPSME account behind it, so both ends of its life
+  // belong where an admin looks for "what was changed by hand".
+  //
+  // The keyId is recorded; the secret never is. An audit log is read by more
+  // people and kept for longer than anything that should hold a live
+  // credential.
+  INTEGRATION_KEY_CREATED
+  INTEGRATION_KEY_REVOKED
 }
 
 model User {
@@ -312,11 +322,13 @@ model User {
   broadcastsCreated EmailBroadcast[]
   eventInvitations  EventInvitation[]
 
-  checkInsScanned      EventCheckIn[]      @relation("checkin_scanned_by")
-  seatActions          SeatAssignment[]    @relation("seat_actor")
-  checkInAccess        EventCheckInStaff[] @relation("checkin_staff_user")
-  checkInAccessGranted EventCheckInStaff[] @relation("checkin_staff_granted_by")
-  checkInAccessRevoked EventCheckInStaff[] @relation("checkin_staff_revoked_by")
+  checkInsScanned        EventCheckIn[]        @relation("checkin_scanned_by")
+  seatActions            SeatAssignment[]      @relation("seat_actor")
+  checkInAccess          EventCheckInStaff[]   @relation("checkin_staff_user")
+  checkInAccessGranted   EventCheckInStaff[]   @relation("checkin_staff_granted_by")
+  checkInAccessRevoked   EventCheckInStaff[]   @relation("checkin_staff_revoked_by")
+  integrationKeysMade    EventIntegrationKey[] @relation("integration_key_created_by")
+  integrationKeysRevoked EventIntegrationKey[] @relation("integration_key_revoked_by")
 
   @@index([status])
   @@index([organizationId])
@@ -381,13 +393,14 @@ model Event {
   invitations         EventInvitation[]
   checkIns            EventCheckIn[]
   checkInStaff        EventCheckInStaff[]
+  integrationKeys     EventIntegrationKey[]
   rooms               EventRoom[]
   sessions            EventSession[]
   seatingSections     SeatingSection[]
   // Off by default, and the only thing that turns the whole feature on for an
   // event. A general-admission seminar never sees a seat map; a convention
   // switches it on and builds one. No code changes between the two.
-  seatingEnabled      Boolean              @default(false)
+  seatingEnabled      Boolean               @default(false)
 }
 
 // A block of seats — "Main Floor", "VIP", "Balcony", "Table 1".
@@ -643,21 +656,21 @@ model EventRegistration {
   invitationId       Int?               @unique
   createdAt          DateTime           @default(now())
 
-  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  event           Event             @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  invitation      EventInvitation?  @relation(fields: [invitationId], references: [id], onDelete: SetNull)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event          Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  invitation     EventInvitation? @relation(fields: [invitationId], references: [id], onDelete: SetNull)
   // SetNull, not Cascade — deleting an organization must never delete the
   // historical registration; organizationPath still preserves the label.
-  organization    Organization?     @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  checkIns        EventCheckIn[]
-  roomAttendance  RoomAttendance[]
-  seat            Seat?             @relation("seat_assigned_to")
+  organization   Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  checkIns       EventCheckIn[]
+  roomAttendance RoomAttendance[]
+  seat           Seat?            @relation("seat_assigned_to")
   // A list, not one. An expired hold is left where it is rather than cleared —
   // expiry is evaluated on read — so a registration can legitimately carry
   // stale hold pointers on several seats it no longer has any claim to. Only
   // heldUntil decides whether any of them means anything.
-  heldSeats       Seat[]            @relation("seat_held_by")
-  seatHistory     SeatAssignment[]
+  heldSeats      Seat[]           @relation("seat_held_by")
+  seatHistory    SeatAssignment[]
 
   @@unique([userId, eventId])
   @@index([organizationId])
@@ -743,6 +756,59 @@ model EventCheckIn {
 // gave them that" must remain answerable after access is taken away. The unique
 // constraint is on (eventId, userId) alone, so re-granting revives the existing
 // row instead of accumulating duplicates; active means revokedAt IS NULL.
+// A credential that lets ANOTHER SYSTEM scan this event's tickets.
+//
+// The QR payload is opaque by design (see EventRegistration.qrToken): 32 random
+// bytes that encode nothing about the person or the event. So a second system
+// pointed at a JPSME ticket reads a meaningless string — it can only act on it
+// by asking this server. This model is what lets it ask, without being given a
+// staff account and without being handed a copy of every live token.
+//
+// Scoped to ONE event on purpose. The event is not a parameter the caller
+// sends, it is a property of the key, so a key issued for last year's
+// convention cannot be pointed at this year's by changing a URL.
+//
+// Split into a public half and a secret half. keyId is stored in the clear and
+// indexed, so authenticating is one indexed lookup; only the secret is hashed.
+// Storing the whole key hashed would mean hashing every row on every scan to
+// find the match, which is exactly the wrong shape for a door with a queue.
+//
+// SHA-256 rather than bcrypt/argon2 — deliberately. Those exist to make
+// LOW-entropy human passwords expensive to guess. This secret is 32 bytes from
+// the CSPRNG; there is nothing to brute force, and a slow hash on the scan hot
+// path would only slow the queue down.
+model EventIntegrationKey {
+  id         Int       @id @default(autoincrement())
+  eventId    Int
+  // What this key is for, in an admin's words ("Gate system - main lobby").
+  // Shown in the key list and recorded on every scan it makes, so the door log
+  // says which system admitted somebody.
+  label      String
+  // The public half, carried in the presented key and never secret.
+  keyId      String    @unique
+  // SHA-256 of the secret half, hex. The secret itself is shown once, at
+  // creation, and is not recoverable afterwards — there is nowhere it is
+  // stored that could leak it.
+  secretHash String
+  createdBy  Int?
+  createdAt  DateTime  @default(now())
+  // Updated on use, throttled to at most once a minute by the service: a door
+  // scanning hundreds of people does not need hundreds of writes to a column
+  // that exists to answer "is this key still in use?".
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  revokedBy  Int?
+
+  event         Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  // SetNull rather than Cascade: deleting the admin who issued a key must not
+  // delete the key and silently break a working integration mid-event.
+  createdByUser User? @relation("integration_key_created_by", fields: [createdBy], references: [id], onDelete: SetNull)
+  revokedByUser User? @relation("integration_key_revoked_by", fields: [revokedBy], references: [id], onDelete: SetNull)
+
+  @@index([eventId])
+  @@map("event_integration_keys")
+}
+
 model EventCheckInStaff {
   id        Int       @id @default(autoincrement())
   eventId   Int

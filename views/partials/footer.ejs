@@ -1,12 +1,74 @@
-<% if (locals.title === 'Home') { %>
-  <footer class="border-t border-[#26365f] bg-[#080f29] text-slate-400">
-    <div class="mx-auto grid max-w-[1280px] gap-12 px-5 py-16 sm:px-8 md:grid-cols-[2fr_1fr_1fr] lg:px-12">
-      <div><a href="/" class="flex items-center gap-3 text-xl font-extrabold text-amber-400"><img src="<%= locals.logoUrl || '/img/default-logo.svg' %>" alt="" class="h-8 w-8 object-contain">JPSME</a><p class="mt-6 max-w-sm text-sm leading-6">Junior Philippine Society of Mechanical Engineers. Connecting, nurturing, and empowering future mechanical engineers across the Philippine archipelago.</p></div>
-      <div><h2 class="text-sm font-bold text-amber-400">RESOURCES</h2><div class="mt-5 space-y-3 text-sm"><a href="/organizations" class="block py-1 hover:text-white">Organizations</a><a href="/register" class="block py-1 hover:text-white">Membership Guidelines</a><a href="/events" class="block py-1 hover:text-white">Board Exam Prep</a><a href="/about" class="block py-1 hover:text-white">National Bylaws</a></div></div>
-      <div><h2 class="text-sm font-bold text-amber-400">ADMINISTRATION</h2><div class="mt-5 space-y-3 text-sm"><a href="/admin/login" class="block py-1 hover:text-white">National Admin Portal</a><a href="/organizations" class="block py-1 hover:text-white">Organization Verification</a><a href="/contact" class="block py-1 hover:text-white">Webmaster Contact</a></div></div>
+<%#
+  One footer for every page. It used to be written out twice — once for the
+  home page and once for everything else — with the two copies differing only
+  in padding, which meant every change had to be made in both and eventually
+  was not.
+
+  Four columns: who JPSME is, what a member reaches for, what an officer
+  reaches for, and how to get hold of somebody. Nothing here is invented: every
+  link goes to a route that exists.
+%>
+<footer class="border-t border-ink-700 bg-ink-950 text-mist-400">
+  <%# A drafting grid at the very edge of visibility, the same one the closing
+      call to action uses. It ties the foot of the page to the head of it. %>
+  <div class="jp-gridlines">
+    <div class="jp-container py-14 sm:py-16">
+      <div class="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.7fr_1fr_1fr_1fr] lg:gap-8">
+
+        <div class="max-w-sm">
+          <a href="/" class="inline-flex items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950">
+            <img src="<%= locals.logoUrl || '/img/default-logo.svg' %>" alt="" class="h-10 w-10 shrink-0 object-contain">
+            <span>
+              <span class="block text-lg font-extrabold leading-none tracking-tight text-gold-300">JPSME</span>
+              <span class="mt-1 block font-tech text-[10px] font-semibold uppercase tracking-[.18em] text-mist-500">Philippines</span>
+            </span>
+          </a>
+          <p class="mt-6 text-sm leading-7">
+            Junior Philippine Society of Mechanical Engineers. Connecting, nurturing
+            and empowering future mechanical engineers across the Philippine
+            archipelago.
+          </p>
+        </div>
+
+        <div>
+          <h2 class="jp-foot-head">Resources</h2>
+          <ul class="mt-5 flex flex-col gap-1.5">
+            <li><a href="/events" class="jp-foot-link">Events &amp; Assemblies</a></li>
+            <li><a href="/organizations" class="jp-foot-link">Organizations</a></li>
+            <li><a href="/articles" class="jp-foot-link">Articles</a></li>
+            <li><a href="/about/membership" class="jp-foot-link">Membership</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h2 class="jp-foot-head">About</h2>
+          <ul class="mt-5 flex flex-col gap-1.5">
+            <li><a href="/about" class="jp-foot-link">JPSME National</a></li>
+            <li><a href="/about/officers" class="jp-foot-link">Officers</a></li>
+            <li><a href="/about/quality-policy" class="jp-foot-link">Quality Policy</a></li>
+            <li><a href="/about/code-of-ethics" class="jp-foot-link">Code of Ethics</a></li>
+            <li><a href="/about/theme-of-the-year" class="jp-foot-link">Theme of the Year</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h2 class="jp-foot-head">Connect</h2>
+          <ul class="mt-5 flex flex-col gap-1.5">
+            <li><a href="/contact" class="jp-foot-link">Contact Us</a></li>
+            <li><a href="/register" class="jp-foot-link">Become a Member</a></li>
+            <li><a href="/login" class="jp-foot-link">Member Login</a></li>
+            <li><a href="/admin/login" class="jp-foot-link">Administrator Portal</a></li>
+          </ul>
+        </div>
+
+      </div>
     </div>
-    <div class="mx-auto flex max-w-[1280px] flex-col gap-3 border-t border-[#26365f] px-5 py-6 text-sm sm:flex-row sm:justify-between sm:px-8 lg:px-12"><span>&copy; <%= new Date().getFullYear() %> JPSME Philippines. All rights reserved.</span><span>Connecting members, one event at a time.</span></div>
-  </footer>
-<% } else { %>
-  <footer class="border-t border-[#26365f] bg-[#080f29] text-slate-400"><div class="mx-auto grid max-w-[1280px] gap-10 px-5 py-14 sm:px-8 md:grid-cols-[2fr_1fr_1fr]"><div><a href="/" class="flex items-center gap-3 text-xl font-extrabold text-amber-400"><img src="<%= locals.logoUrl || '/img/default-logo.svg' %>" alt="" class="h-8 w-8 object-contain">JPSME</a><p class="mt-5 max-w-sm text-sm leading-6">Junior Philippine Society of Mechanical Engineers. Connecting, nurturing, and empowering future mechanical engineers across the Philippine archipelago.</p></div><div><h2 class="text-sm font-bold text-amber-400">RESOURCES</h2><div class="mt-5 space-y-3 text-sm"><a href="/organizations" class="block py-1 hover:text-white">Organizations</a><a href="/register" class="block py-1 hover:text-white">Membership Guidelines</a><a href="/events" class="block py-1 hover:text-white">Board Exam Prep</a><a href="/about" class="block py-1 hover:text-white">National Bylaws</a></div></div><div><h2 class="text-sm font-bold text-amber-400">ADMINISTRATION</h2><div class="mt-5 space-y-3 text-sm"><a href="/admin/login" class="block py-1 hover:text-white">National Admin Portal</a><a href="/organizations" class="block py-1 hover:text-white">Organization Verification</a><a href="/contact" class="block py-1 hover:text-white">Webmaster Contact</a></div></div></div><div class="mx-auto flex max-w-[1280px] flex-col gap-3 border-t border-[#26365f] px-5 py-6 text-sm sm:flex-row sm:justify-between sm:px-8"><span>&copy; <%= new Date().getFullYear() %> JPSME Philippines. All rights reserved.</span><span>Connecting members, one event at a time.</span></div></footer>
-<% } %>
+  </div>
+
+  <div class="border-t border-ink-700">
+    <div class="jp-container flex flex-col gap-2 py-6 text-[13px] sm:flex-row sm:items-center sm:justify-between">
+      <span>&copy; <%= new Date().getFullYear() %> JPSME Philippines. All rights reserved.</span>
+      <span class="font-tech text-[11px] uppercase tracking-[.14em] text-mist-500">Connecting members, one event at a time</span>
+    </div>
+  </div>
+</footer>

@@ -28,7 +28,9 @@
 
   <link rel="stylesheet" href="/css/tailwind.css">
 </head>
-<body class="min-h-screen flex flex-col bg-[#080f29] text-white overflow-x-hidden">
+<%# Dark is the default for the public site. A page can ask for paper by
+    passing pageTheme: 'light' — only the home page does today. %>
+<body class="min-h-screen flex flex-col overflow-x-hidden <%= locals.pageTheme === 'light' ? 'bg-paper-50 text-pen-700' : 'bg-ink-900 text-white' %>">
   <%- include('partials/navbar') %>
   <main class="public-main flex-1 <%= title === 'Home' ? 'w-full px-4 py-8 sm:px-6 lg:px-8' : 'max-w-6xl w-full mx-auto px-4 py-12 sm:px-6 lg:px-8' %>">
     <%- body %>
@@ -45,8 +47,15 @@
         never delays first paint of a form somebody is about to fill in. %>
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   <% } %>
+  <% if (locals.pageTheme !== 'light') { %>
   <style nonce="<%= cspNonce %>">
     /*
+      This whole block is the DARK theme's remap, and it is skipped entirely on
+      a light page. It used to run on every public page, which meant the light
+      home page was having its card shadows stripped by the last rule here —
+      cards on paper separate by border and shadow alone, so removing the shadow
+      removed half of what made them read as cards.
+
       The public site is dark, but its views are written with light-theme
       utility classes that get remapped here. That means any class NOT listed
       below keeps its light value and renders dark-on-dark — which is exactly
@@ -58,7 +67,7 @@
       each family, rather than the specific classes someone happened to write:
 
         700-950  strong text        -> #fff
-        300-600  secondary text     -> #94a3bd
+        300-600  secondary text     -> #9a98b3
         accents  keep their hue, lightened to read on the dark ground
 
       Adding a new shade within these families now works without anyone having
@@ -68,15 +77,15 @@
     */
 
     /* Surfaces */
-    .public-main .bg-white, .public-main .bg-gray-50, .public-main .bg-slate-50 { background-color:#111b3a !important; }
-    .public-main .bg-indigo-950 { background-color:#101934 !important; }
+    .public-main .bg-white, .public-main .bg-gray-50, .public-main .bg-slate-50 { background-color:#25225d !important; }
+    .public-main .bg-indigo-950 { background-color:#1f1c4f !important; }
     .public-main .bg-indigo-50, .public-main .bg-amber-50, .public-main .bg-gray-100,
-    .public-main .bg-slate-100, .public-main .bg-green-50, .public-main .bg-red-50 { background-color:#0a1128 !important; }
+    .public-main .bg-slate-100, .public-main .bg-green-50, .public-main .bg-red-50 { background-color:#1f1c4f !important; }
 
     /* Borders */
     .public-main .border-gray-100, .public-main .border-gray-200, .public-main .border-gray-300,
     .public-main .border-slate-100, .public-main .border-slate-200, .public-main .border-slate-300,
-    .public-main .border-indigo-200 { border-color:#263b70 !important; }
+    .public-main .border-indigo-200 { border-color:#322d8b !important; }
 
     /* Strong text — headings and emphasised copy */
     .public-main .text-gray-800, .public-main .text-gray-900,
@@ -88,20 +97,20 @@
     .public-main .text-gray-600, .public-main .text-gray-700,
     .public-main .text-slate-300, .public-main .text-slate-400, .public-main .text-slate-500,
     .public-main .text-slate-600, .public-main .text-slate-700,
-    .public-main .text-indigo-100, .public-main .text-indigo-200 { color:#94a3bd !important; }
+    .public-main .text-indigo-100, .public-main .text-indigo-200 { color:#9a98b3 !important; }
 
     /* Accents — hue preserved, lightened enough to read on the dark ground */
     .public-main .text-indigo-600, .public-main .text-indigo-700, .public-main .text-indigo-800,
     .public-main .text-amber-600, .public-main .text-amber-700, .public-main .text-amber-800,
-    .public-main .text-amber-900 { color:#fbbf24 !important; }
+    .public-main .text-amber-900 { color:#ecb827 !important; }
     .public-main .text-green-600, .public-main .text-green-700, .public-main .text-green-800,
-    .public-main .text-emerald-600, .public-main .text-emerald-700 { color:#4ade80 !important; }
-    .public-main .text-red-600, .public-main .text-red-700, .public-main .text-red-800 { color:#f87171 !important; }
-    .public-main .text-sky-600, .public-main .text-sky-700 { color:#38bdf8 !important; }
+    .public-main .text-emerald-600, .public-main .text-emerald-700 { color:#86c79a !important; }
+    .public-main .text-red-600, .public-main .text-red-700, .public-main .text-red-800 { color:#d08a8a !important; }
+    .public-main .text-sky-600, .public-main .text-sky-700 { color:#7fb4d6 !important; }
 
     /* Form controls */
-    .public-main input, .public-main select, .public-main textarea { background:#060b1d !important; border-color:#263b70 !important; color:#fff !important; }
-    .public-main input::placeholder, .public-main textarea::placeholder { color:#71809d !important; }
+    .public-main input, .public-main select, .public-main textarea { background:#131131 !important; border-color:#322d8b !important; color:#fff !important; }
+    .public-main input::placeholder, .public-main textarea::placeholder { color:#8685a3 !important; }
 
     /* Hover surfaces.
        These escape every rule above: Tailwind emits `hover:bg-gray-50` as
@@ -118,10 +127,11 @@
     .public-main .hover\:bg-gray-100:hover, .public-main .hover\:bg-slate-100:hover,
     .public-main .hover\:bg-indigo-50:hover, .public-main .hover\:bg-indigo-100:hover,
     .public-main .hover\:bg-amber-50:hover, .public-main .hover\:bg-green-50:hover,
-    .public-main .hover\:bg-red-50:hover { background-color:#1a2750 !important; }
+    .public-main .hover\:bg-red-50:hover { background-color:#2b2871 !important; }
 
     /* Shadows read as smudges on a dark ground */
     .public-main .shadow-sm, .public-main .shadow-lg, .public-main .shadow-md { box-shadow:none !important; }
   </style>
+  <% } %>
 </body>
 </html>

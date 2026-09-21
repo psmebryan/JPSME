@@ -30,6 +30,7 @@
     "test:seat-lifecycle": "node tests/seatLifecycle.test.js",
     "test:scanner": "node tests/scannerInput.test.js",
     "test:signup-queue": "node tests/signupEmailQueue.test.js",
+    "test:reveal": "node tests/reveal.test.js",
     "preflight": "node -e \"require(\"dotenv\").config();const r=require(\"./src/config/preflight\").check();console.log(JSON.stringify(r,null,2))\"",
     "postinstall": "prisma generate",
     "build": "prisma generate",

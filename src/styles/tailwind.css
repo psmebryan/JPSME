@@ -230,6 +230,513 @@
     color: #7c8ab0;
   }
 
+  /* ---- Motion -------------------------------------------------------------
+     The home page moves; everywhere else is a working tool and stays still.
+
+     THE RULE THAT MATTERS: the resting state of every element here is VISIBLE.
+     The hidden state applies only under [data-motion="on"], which reveal.js
+     sets on <html> after it has loaded and checked the reader's motion
+     preference. So a browser with JavaScript off, a script that 404s, or an
+     error earlier on the page all produce a complete, readable page — never a
+     column of invisible sections waiting for an observer that will never run.
+
+     Inline styles are not an option either (style-src carries a nonce and no
+     'unsafe-inline', and a nonce does not cover style ATTRIBUTES), so the
+     stagger below is nth-child rather than a --delay custom property. */
+
+  .reveal {
+    opacity: 1;
+  }
+  [data-motion="on"] .reveal {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  [data-motion="on"] .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+    /* A long, decelerating ease. The point is that a section settles into
+       place, not that it arrives. */
+    transition: opacity 700ms cubic-bezier(.16, 1, .3, 1),
+                transform 700ms cubic-bezier(.16, 1, .3, 1);
+  }
+
+  /* Children of a stagger container arrive in sequence. Capped at six: past
+     that the last card is still waiting while the reader has moved on. */
+  [data-motion="on"] .reveal-stagger > .reveal.is-visible { transition-delay: 0ms; }
+  [data-motion="on"] .reveal-stagger > .reveal:nth-child(2).is-visible { transition-delay: 90ms; }
+  [data-motion="on"] .reveal-stagger > .reveal:nth-child(3).is-visible { transition-delay: 180ms; }
+  [data-motion="on"] .reveal-stagger > .reveal:nth-child(4).is-visible { transition-delay: 270ms; }
+  [data-motion="on"] .reveal-stagger > .reveal:nth-child(5).is-visible { transition-delay: 360ms; }
+  [data-motion="on"] .reveal-stagger > .reveal:nth-child(n+6).is-visible { transition-delay: 450ms; }
+
+  /* The hero does not wait to be scrolled to — it is already on screen. It
+     plays once on load, in the order the eye reads it. */
+  [data-motion="on"] .hero-rise {
+    opacity: 0;
+    animation: hero-rise 800ms cubic-bezier(.16, 1, .3, 1) forwards;
+  }
+  [data-motion="on"] .hero-rise-1 { animation-delay: 60ms; }
+  [data-motion="on"] .hero-rise-2 { animation-delay: 160ms; }
+  [data-motion="on"] .hero-rise-3 { animation-delay: 260ms; }
+  [data-motion="on"] .hero-rise-4 { animation-delay: 360ms; }
+  [data-motion="on"] .hero-rise-5 { animation-delay: 460ms; }
+
+  @keyframes hero-rise {
+    from { opacity: 0; transform: translateY(22px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  /* The seal is the one thing on the page that is lit rather than drawn, so it
+     is the one thing that breathes. Very slow and very small — at 6 seconds a
+     reader registers it as light rather than as movement. */
+  [data-motion="on"] .seal-glow {
+    animation: seal-breathe 6s ease-in-out infinite;
+  }
+  @keyframes seal-breathe {
+    0%, 100% { opacity: .16; transform: scale(1); }
+    50%      { opacity: .26; transform: scale(1.04); }
+  }
+
+  /* A card is BOTH a .reveal and a .jp-card, and both set a transition on
+     transform. [data-motion="on"] .reveal.is-visible is the more specific of
+     the two, so without this rule a revealed card keeps the reveal's 700ms for
+     everything — including the hover lift, which then trails the pointer by
+     most of a second and reads as the page being slow. A hover has to answer in
+     about a quarter of a second.
+
+     Opacity keeps the long ease, because that one is the arrival. */
+  [data-motion="on"] .reveal.is-visible.jp-card {
+    transition: opacity 700ms cubic-bezier(.16, 1, .3, 1),
+                transform 240ms cubic-bezier(.16, 1, .3, 1),
+                border-color 240ms ease,
+                box-shadow 240ms ease;
+  }
+
+  /* A number counting up needs a fixed-width figure or the whole line jitters
+     as the digits change. */
+  .counter {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The reader asked for less movement. reveal.js already declines to set
+     data-motion in that case, so this is the second line of defence — it also
+     covers a preference changed after the page loaded. */
+  @media (prefers-reduced-motion: reduce) {
+    [data-motion="on"] .reveal,
+    [data-motion="on"] .reveal.is-visible,
+    [data-motion="on"] .hero-rise {
+      opacity: 1;
+      transform: none;
+      transition: none;
+      animation: none;
+    }
+    [data-motion="on"] .seal-glow { animation: none; }
+  }
+
+
+  /* ==========================================================================
+     THE PUBLIC SITE'S DESIGN SYSTEM
+     ==========================================================================
+
+     Everything the public pages are built from lives here, so a change lands
+     in one place rather than in nine views. The rule for using it: a public
+     view should be reaching for these classes and for spacing utilities, and
+     almost nothing else.
+
+     Three decisions hold the whole thing together.
+
+     ONE CONTAINER. .jp-container is the only measure on the site. Sections
+     that each pick their own max-width and padding are the single biggest
+     reason a long page reads as a stack of unrelated blocks rather than as one
+     document — the eye tracks the left edge, and every edge that moves is a
+     seam.
+
+     ONE SPACING RHYTHM. .jp-section is the vertical beat. Tailwind's scale is
+     4px-based, so every multiple used here is an 8px step.
+
+     TWO VOICES. Prose is set in the system sans; anything that is DATA — an
+     eyebrow, a date, a count, a badge, a step number — is set in font-tech,
+     the annotation voice off an engineering drawing. That distinction does
+     more for "this is an engineering organisation" than any ornament, and it
+     costs nothing to load. */
+
+  /* --- Layout --------------------------------------------------------------- */
+
+  .jp-container {
+    @apply mx-auto w-full max-w-container px-5 sm:px-8 lg:px-12;
+  }
+  .jp-section {
+    @apply py-16 sm:py-20 lg:py-24;
+  }
+  .jp-section-sm {
+    @apply py-12 sm:py-14 lg:py-16;
+  }
+
+  /* --- Section headings ------------------------------------------------------
+     An eyebrow carries its own rule, so a section announces itself with one
+     element instead of a label plus a hand-placed line that drifts out of
+     alignment the moment the text length changes. */
+
+  .jp-eyebrow {
+    @apply inline-flex items-center gap-3 font-tech text-[11px] font-bold uppercase tracking-[.2em];
+  }
+  .jp-eyebrow::before {
+    content: '';
+    @apply block h-px w-8 bg-current opacity-70;
+  }
+  .jp-h2 {
+    @apply text-3xl font-bold tracking-tight sm:text-4xl lg:text-[2.6rem] lg:leading-[1.12];
+    text-wrap: balance;
+  }
+  .jp-h3 {
+    @apply text-lg font-bold tracking-tight sm:text-xl;
+  }
+  /* Running text is capped near 60 characters. Longer lines are measurably
+     harder to return from at the end of each one, and this page is read by
+     people deciding whether to join something. */
+  .jp-lede {
+    @apply max-w-[58ch] text-base leading-7 sm:text-lg sm:leading-8;
+  }
+  .jp-body {
+    @apply max-w-[62ch] text-[15px] leading-7;
+  }
+
+  /* --- Buttons ---------------------------------------------------------------
+     Two heights, 44px and 52px. 44px is the smallest target that is reliably
+     hit with a thumb, and this site's readers are students on phones, so
+     nothing interactive on a public page is allowed below it. */
+
+  .jp-btn {
+    @apply inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg px-6
+           text-sm font-bold tracking-tight transition
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+    transition-duration: 180ms;
+  }
+  /* A pressed button should acknowledge the press. */
+  .jp-btn:active {
+    transform: translateY(1px);
+  }
+  .jp-btn-lg {
+    @apply h-[52px] px-7 text-base;
+  }
+
+  /* Primary. Gold surface, navy label — gold as TEXT on light is 1.6:1 and
+     unreadable, so on this site gold is a surface and almost never a letter. */
+  .jp-btn-gold {
+    @apply jp-btn bg-gold-400 text-ink-950 hover:bg-gold-300
+           focus-visible:ring-gold-400 focus-visible:ring-offset-paper-50;
+    box-shadow: 0 1px 0 0 rgb(255 255 255 / .18) inset;
+  }
+  /* On a dark band the focus halo needs a dark offset or it flares. */
+  .jp-on-dark .jp-btn-gold {
+    @apply focus-visible:ring-offset-ink-950;
+  }
+  /* Secondary on light: outlined navy. */
+  .jp-btn-outline {
+    @apply jp-btn border border-pen-900/25 bg-transparent text-pen-900
+           hover:border-pen-900 hover:bg-pen-900 hover:text-paper-0
+           focus-visible:ring-pen-900 focus-visible:ring-offset-paper-50;
+  }
+  /* Secondary on dark: outlined brass. */
+  .jp-btn-ghost {
+    @apply jp-btn border border-gold-400/50 bg-ink-950/40 text-gold-300
+           hover:border-gold-400 hover:bg-gold-400 hover:text-ink-950
+           focus-visible:ring-gold-300 focus-visible:ring-offset-ink-950;
+  }
+  /* The arrow on a call to action nudges forward on hover. One property, one
+     element — the kind of movement that is felt rather than watched. */
+  .jp-btn-arrow {
+    @apply inline-block transition-transform duration-200;
+  }
+  .jp-btn:hover .jp-btn-arrow {
+    transform: translateX(3px);
+  }
+
+  /* --- Surfaces --------------------------------------------------------------
+     A card on paper cannot be lifted by value: paper-0 against paper-50 is
+     1.11:1, which is nothing. So a card here is defined by its border, with the
+     shadow doing only what a real contact shadow does — sit it on the page. */
+
+  .jp-card {
+    @apply rounded-2xl border border-paper-200 bg-paper-0;
+    box-shadow: 0 1px 2px rgb(34 31 51 / .04), 0 10px 30px -24px rgb(34 31 51 / .30);
+    transition: transform 240ms cubic-bezier(.16, 1, .3, 1),
+                border-color 240ms ease,
+                box-shadow 240ms ease;
+  }
+  .jp-card-lift:hover {
+    transform: translateY(-4px);
+    border-color: rgb(236 184 39 / .55);
+    box-shadow: 0 1px 2px rgb(34 31 51 / .05), 0 18px 40px -28px rgb(34 31 51 / .45);
+  }
+
+  /* --- Badges ----------------------------------------------------------------
+     Set in the annotation voice, because every one of them is a fact about the
+     event rather than a piece of prose. */
+
+  .jp-badge {
+    @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1
+           font-tech text-[10px] font-bold uppercase tracking-[.12em];
+  }
+  /* Modality. Navy for online, brass for in-person — the two the brand already
+     owns, so a card gains information without gaining a colour. */
+  .jp-badge-online {
+    @apply bg-ink-900/[.09] text-ink-700;
+  }
+  .jp-badge-f2f {
+    @apply bg-gold-400/25 text-bronze;
+  }
+  /* Availability. Semantic, held well away from the brand colours and muted so
+     none of them can outshout the gold call to action. */
+  .jp-badge-open {
+    @apply bg-[#2f6b46]/10 text-[#2b6040];
+  }
+  .jp-badge-filling {
+    @apply bg-gold-500/15 text-bronze;
+  }
+  .jp-badge-full {
+    @apply bg-[#8a3a3a]/10 text-[#803636];
+  }
+  /* On the dark bands. */
+  .jp-badge-dark {
+    @apply border border-gold-400/45 bg-ink-950/50 text-gold-300;
+  }
+
+  /* --- Statistics ------------------------------------------------------------
+     Not dashboard tiles. There is no box and no icon: the number is large
+     enough to be the object itself, the label sits under it, and a hairline
+     divides one from the next. An icon beside a figure this size competes with
+     it rather than explaining it — the label already says what it counts. */
+
+  .jp-stat-figure {
+    @apply font-tech text-[2.75rem] font-bold leading-none tracking-tight text-pen-900 sm:text-5xl lg:text-[3.5rem];
+    font-variant-numeric: tabular-nums;
+  }
+  .jp-stat-label {
+    @apply mt-3 text-[15px] font-bold text-pen-900;
+  }
+  .jp-stat-note {
+    @apply mt-1 font-tech text-[10px] font-semibold uppercase tracking-[.16em] text-pen-500;
+  }
+
+  /* --- The journey rail ------------------------------------------------------
+     Four steps, and the fact that they are a SEQUENCE is the information — so
+     they are drawn on a rail rather than as four cards side by side. The rail
+     runs horizontally on desktop and vertically on phones, which is the reading
+     direction in each case.
+
+     Cards were the wrong component here: four identical boxes say "four
+     things", not "first this, then that". */
+
+  .jp-journey-step {
+    @apply relative pl-16 lg:pl-0;
+  }
+  .jp-journey-marker {
+    @apply absolute left-0 top-0 flex h-11 w-11 items-center justify-center rounded-full
+           border border-gold-400/60 bg-paper-0 font-tech text-sm font-bold text-bronze
+           lg:relative lg:mb-6;
+    /* No halo behind this. The rail below starts 8px clear of the marker on
+       both axes, so nothing passes behind it to mask — and a fixed halo colour
+       would have been wrong the moment this section moved to a band of a
+       different shade, which it has (it sits on paper-100, not paper-50). */
+    transition: background-color 240ms ease, color 240ms ease, border-color 240ms ease;
+  }
+  .jp-journey-step:hover .jp-journey-marker {
+    @apply border-gold-400 bg-gold-400 text-ink-950;
+  }
+  /* The rail itself: dashed, because the connection is a path rather than a
+     structure. Drawn from each step to the next, so it can never end in mid-air
+     after the last one. */
+  .jp-journey-step:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    left: 1.375rem;
+    top: 3.25rem;
+    bottom: -2.25rem;
+    border-left: 1px dashed #dbd5c6;
+  }
+  @media (min-width: 1024px) {
+    .jp-journey-step:not(:last-child)::before {
+      left: 3.25rem;
+      right: -1.5rem;
+      top: 1.375rem;
+      bottom: auto;
+      border-left: 0;
+      border-top: 1px dashed #dbd5c6;
+    }
+  }
+
+  /* --- Event cards -----------------------------------------------------------
+     One component, used on the home page and reusable anywhere an event is
+     listed. Fixed 16:10 media so a row of cards has one horizon line whatever
+     the uploaded images happen to be. */
+
+  .jp-event-media {
+    @apply relative block aspect-[16/10] w-full overflow-hidden bg-[radial-gradient(circle_at_50%_40%,#322d8b_0%,#1f1c4f_58%,#191740_100%)];
+  }
+  .jp-event-img {
+    @apply h-full w-full object-cover;
+    transition: transform 700ms cubic-bezier(.16, 1, .3, 1);
+  }
+  .jp-event-card:hover .jp-event-img {
+    transform: scale(1.06);
+  }
+  /* A wash across the lower third so the date plate and badges stay readable
+     over a bright uploaded photograph. */
+  .jp-event-scrim {
+    @apply pointer-events-none absolute inset-x-0 bottom-0 h-2/3;
+    background: linear-gradient(to top, rgb(19 17 49 / .82), rgb(19 17 49 / .15) 60%, transparent);
+  }
+  /* The date as a plate rather than a sentence: on a page of events the date is
+     what is being scanned for, and a stacked numeral is found faster than
+     "September 19, 2026" inside a line of text. */
+  .jp-date-plate {
+    @apply flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-lg bg-gold-400 font-tech leading-none text-ink-950;
+  }
+  .jp-date-plate-month {
+    @apply text-[10px] font-bold uppercase tracking-[.14em];
+  }
+  .jp-date-plate-day {
+    @apply mt-1 text-xl font-bold;
+  }
+  .jp-meta-row {
+    @apply flex items-center gap-2 text-[13px] text-pen-500;
+  }
+  /* Two lines of description on every card, so the grid has one baseline for
+     the button no matter how much an organiser wrote. */
+  .jp-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* --- Sponsors --------------------------------------------------------------
+     Sized so one sponsor looks deliberate and twenty still tile. The grid is
+     auto-fit with a minimum, not a fixed column count, which is the whole
+     difference between a section that scales and one that has to be rewritten
+     the first time a partner is added. */
+
+  .jp-sponsor-grid {
+    @apply mx-auto grid gap-4;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+  .jp-sponsor {
+    @apply jp-card jp-card-lift flex h-32 flex-col items-center justify-center gap-3 p-5 text-center;
+  }
+  .jp-sponsor img {
+    @apply max-h-12 max-w-full object-contain;
+  }
+
+  /* --- Technical ground ------------------------------------------------------
+     A drafting grid, drawn in CSS so it costs no request. Used on the dark
+     bands at very low contrast: it should be felt as texture and never
+     resolve into something a reader tries to look at. */
+
+  .jp-gridlines {
+    background-image:
+      repeating-linear-gradient(0deg, rgb(236 184 39 / .07) 0 1px, transparent 1px 48px),
+      repeating-linear-gradient(90deg, rgb(236 184 39 / .07) 0 1px, transparent 1px 48px);
+  }
+  .jp-blueprint {
+    @apply bg-[url('/img/blueprint.svg')] bg-[length:420px_420px];
+  }
+
+  /* --- Navigation ------------------------------------------------------------ */
+
+  /* The bar shrinks and solidifies once the page has moved. Height and colour
+     only: a bar that changes its layout on scroll makes the links move under
+     the pointer. */
+  .jp-nav {
+    @apply sticky top-0 z-50 border-b border-white/10 text-white;
+    background-color: rgb(19 17 49 / .92);
+    backdrop-filter: blur(10px);
+    transition: background-color 260ms ease, border-color 260ms ease, box-shadow 260ms ease;
+  }
+  .jp-nav-inner {
+    @apply flex items-center justify-between gap-6;
+    height: 80px;
+    transition: height 260ms cubic-bezier(.16, 1, .3, 1);
+  }
+  .jp-nav.is-scrolled {
+    @apply border-white/[.14];
+    background-color: #131131;
+    box-shadow: 0 10px 30px -22px rgb(0 0 0 / .9);
+  }
+  .jp-nav.is-scrolled .jp-nav-inner {
+    height: 64px;
+  }
+
+  /* A link's underline grows from the left on hover and stays put when the
+     link is the current page. The transform is on a pseudo-element, so nothing
+     in the bar reflows as it animates. */
+  .jp-nav-link {
+    @apply relative inline-flex items-center py-1 text-sm font-medium text-mist-300 transition-colors
+           hover:text-white focus-visible:outline-none focus-visible:text-white;
+  }
+  .jp-nav-link::after {
+    content: '';
+    @apply absolute inset-x-0 -bottom-1 h-0.5 rounded-full bg-gold-400;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 240ms cubic-bezier(.16, 1, .3, 1);
+  }
+  .jp-nav-link:hover::after,
+  .jp-nav-link:focus-visible::after {
+    transform: scaleX(1);
+  }
+  .jp-nav-link.is-active {
+    @apply text-gold-300;
+  }
+  .jp-nav-link.is-active::after {
+    transform: scaleX(1);
+  }
+
+  .jp-nav-menu {
+    @apply absolute left-0 top-full w-60 overflow-hidden rounded-xl border border-white/10 bg-ink-900 p-1.5;
+    box-shadow: 0 24px 48px -24px rgb(0 0 0 / .8);
+  }
+  .jp-nav-menu a {
+    @apply block rounded-lg px-4 py-2.5 text-sm text-mist-200 transition-colors
+           hover:bg-white/[.07] hover:text-white focus-visible:outline-none focus-visible:bg-white/[.07];
+  }
+
+  /* The phone menu. Full-height rows, generous targets, and the two calls to
+     action pinned at the end where a thumb already is. */
+  .jp-mobile-link {
+    @apply flex min-h-[48px] items-center rounded-lg px-3 text-[15px] font-semibold text-mist-200 transition-colors
+           hover:bg-white/[.07] hover:text-white;
+  }
+  .jp-mobile-sublink {
+    @apply flex min-h-[44px] items-center rounded-lg pl-7 pr-3 text-sm text-mist-300 transition-colors
+           hover:bg-white/[.07] hover:text-white;
+  }
+
+  /* --- Footer ---------------------------------------------------------------- */
+
+  .jp-foot-head {
+    @apply font-tech text-[11px] font-bold uppercase tracking-[.18em] text-gold-300;
+  }
+  .jp-foot-link {
+    @apply inline-flex min-h-[32px] items-center text-sm text-mist-400 transition-colors hover:text-white;
+  }
+
+  /* --- Motion additions ------------------------------------------------------
+     Same contract as the block above: the resting state is visible, and
+     [data-motion="on"] is set by reveal.js only after it has checked the
+     reader's preference. */
+
+  [data-motion="on"] .hero-rise-6 { animation-delay: 560ms; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .jp-card, .jp-card-lift:hover,
+    .jp-event-img, .jp-event-card:hover .jp-event-img,
+    .jp-nav-inner, .jp-nav-link::after, .jp-btn {
+      transition: none;
+      transform: none;
+    }
+  }
+
   /* Empty states */
   /* Empty states.
      .empty-state stays a plain centred line for the many places a one-liner is

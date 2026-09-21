@@ -22,16 +22,40 @@ const paymentService = require('../services/payment.service');
 const emailTemplateService = require('../services/emailTemplate.service');
 const broadcastEmailService = require('../services/broadcastEmail.service');
 const auditService = require('../services/audit.service');
+const integrationKeyService = require('../services/integrationKey.service');
 const articleService = require('../services/article.service');
 const AppError = require('../utils/AppError');
+const config = require('../config');
+
+// The integration test harness: a stand-in for "the other system", so the API
+// can be exercised on a local machine before anybody writes a line of code
+// against it.
+//
+// DEVELOPMENT ONLY, enforced here rather than by remembering not to link to it.
+// In production the route does not exist at all and returns the normal 404 —
+// a page with a scanner on it that talks to a check-in API is not something to
+// leave reachable on a live site, however harmless it is without a key.
+//
+// It holds no session and requires no login, because the thing it is imitating
+// has neither. Its only credential is the key somebody pastes into it.
+const integrationDemoPage = asyncHandler(async (req, res) => {
+  if (config.isProduction) throw new AppError('Not found', 404);
+  res.render('integration-demo', { title: 'Integration Test', pageTheme: 'light' });
+});
 
 const home = asyncHandler(async (req, res) => {
   const [events, stats, sponsors] = await Promise.all([
-    eventService.listActiveEvents(),
+    // Three, chosen and counted by the database rather than sliced in the
+    // view — the card needs a registration count, and counting rows the page
+    // is going to throw away is work for nothing.
+    eventService.listHomeEvents(3),
     statsService.getHomeStats(),
     sponsorService.listActiveSponsors(),
   ]);
-  res.render('index', { title: 'Home', events, stats, sponsors });
+  // The home page is the one public page on paper rather than on the dark
+  // ground — the hero and the closing call to action are still dark, and
+  // they read as bands BECAUSE the rest is light.
+  res.render('index', { title: 'Home', events, stats, sponsors, pageTheme: 'light' });
 });
 
 // ?email= and ?verified= are set by the verification page on its way here.
@@ -846,11 +870,15 @@ const adminCheckInStaffPage = asyncHandler(async (req, res) => {
   let event = null;
   let staff = [];
   let grantable = [];
+  // Systems, as opposed to people, that can open this door. Same page, because
+  // it is the same question.
+  let integrationKeys = [];
   if (eventId) {
     event = await eventService.getEventById(eventId);
-    [staff, grantable] = await Promise.all([
+    [staff, grantable, integrationKeys] = await Promise.all([
       checkinService.listCheckInStaff(eventId),
       checkinService.listGrantableUsers(),
+      integrationKeyService.listKeys(eventId),
     ]);
   }
 
@@ -860,6 +888,7 @@ const adminCheckInStaffPage = asyncHandler(async (req, res) => {
     event,
     staff,
     grantable,
+    integrationKeys,
   });
 });
 
@@ -1173,6 +1202,7 @@ const adminEditArticlePage = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  integrationDemoPage,
   home,
   aboutPage,
   qualityPolicyPage,

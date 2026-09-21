@@ -341,6 +341,22 @@ router.post(
 );
 router.delete('/:id/checkin/staff/:userId', apiAdmin, verifyCsrfToken, checkinApi.revokeStaff);
 
+// Integration keys: the same door, opened by another SYSTEM rather than by a
+// person. Main admin only, for the same reason granting staff is — a key
+// admits people with no JPSME account behind it.
+//
+// These are the admin-facing management routes and are session-authenticated
+// like everything else here. The routes the other system actually calls live
+// at /api/integration and are authenticated by the key itself.
+router.get('/:id/integration-keys', apiAdmin, checkinApi.listIntegrationKeys);
+router.post(
+  '/:id/integration-keys',
+  apiAdmin, verifyCsrfToken,
+  [body('label').trim().isLength({ min: 1, max: 120 }).withMessage('A label is required')],
+  checkinApi.createIntegrationKey
+);
+router.delete('/:id/integration-keys/:keyId', apiAdmin, verifyCsrfToken, checkinApi.revokeIntegrationKey);
+
 // Admin management
 router.post(
   '/',

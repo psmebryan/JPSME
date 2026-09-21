@@ -294,6 +294,16 @@ async function applyVerdict({
   event, registration, staffUser, scannerIdentifier, ipAddress, userAgent, action,
 }) {
   const eventId = event.id;
+  // Null when the scan came from an integration key rather than from a signed-in
+  // operator. EventCheckIn.scannedBy is nullable precisely so that case can be
+  // recorded honestly: no user did this, and inventing one to fill the column
+  // would put a name in the door log that was never at the door. WHICH system
+  // it was travels in scannerIdentifier instead.
+  //
+  // undoCheckIn still reads staffUser.id directly, and should: a reversal is
+  // always made by a person, and one with no name on it is not a reversal
+  // anybody can be accountable for.
+  const staffUserId = staffUser ? staffUser.id : null;
   const verdict = verdictFor(registration, eventId);
 
   // Refusals: log the attempt and stop. Nothing about the registration changes,
@@ -305,7 +315,7 @@ async function applyVerdict({
       // A WRONG_EVENT scan is logged against the door it happened at, not the
       // event the code belongs to — that is the question staff will ask.
       registration, eventId, result: verdict, action,
-      staffUserId: staffUser.id, scannerIdentifier, ipAddress, userAgent,
+      staffUserId, scannerIdentifier, ipAddress, userAgent,
     }));
 
     return {
@@ -334,7 +344,7 @@ async function applyVerdict({
     const result = won ? 'SUCCESS' : 'ALREADY_CHECKED_IN';
     await recordScan(tx, {
       registration, eventId, result, action,
-      staffUserId: staffUser.id, scannerIdentifier, ipAddress, userAgent,
+      staffUserId, scannerIdentifier, ipAddress, userAgent,
     });
     return { won, result };
   });
@@ -361,6 +371,184 @@ async function applyVerdict({
     participant: participantView(registration),
     checkedInAt: fresh.checkedInAt,
   };
+}
+
+// --- scanning from another system -------------------------------------------
+
+// The same door, opened by a machine instead of by a person.
+//
+// These two deliberately go through verdictFor, recordScan and the conditional
+// UPDATE in applyVerdict — the identical path a staff scan takes. A second
+// implementation for the second caller is how two doors end up disagreeing
+// about whether somebody was admitted, and about whether a cancelled or unpaid
+// registration may be.
+//
+// There is no assertCanCheckIn call here, and that is not an omission: a key is
+// scoped to exactly one event, and the event comes from the KEY rather than
+// from anything the caller sends. There is no id to authorise against, and
+// therefore nothing a caller could substitute.
+
+// Identify somebody without admitting them. Writes nothing at all — no
+// admission, and no row in the door log — for the same reason lookupByScan
+// writes nothing: a lookup is not an event at the door.
+async function lookupByIntegration({ integrationKey, rawScan }) {
+  const event = await prisma.event.findUnique({ where: { id: integrationKey.eventId } });
+  if (!event) throw new AppError('Event not found', 404);
+
+  const { registration } = await qrService.validateQrToken(rawScan);
+  const verdict = verdictFor(registration, event.id);
+
+  return {
+    ok: verdict === 'SUCCESS',
+    result: verdict,
+    message: verdict === 'SUCCESS' ? null : (REFUSAL_MESSAGES[verdict] || 'This registration cannot be checked in.'),
+    participant: registration ? participantView(registration) : null,
+    registrationId: registration ? registration.id : null,
+    checkedInAt: registration ? registration.checkedInAt : null,
+  };
+}
+
+// Admit somebody. The attendance lands in THIS database, which is the whole
+// point of doing it this way rather than by exporting a file of tokens.
+async function checkInByIntegration({
+  integrationKey, rawScan, scannerIdentifier = null, ipAddress = null, userAgent = null,
+}) {
+  const event = await prisma.event.findUnique({ where: { id: integrationKey.eventId } });
+  if (!event) throw new AppError('Event not found', 404);
+
+  const { registration } = await qrService.validateQrToken(rawScan);
+  return applyVerdict({
+    event,
+    registration,
+    staffUser: null,
+    // Falls back to the key's own label, so an entry in the door log can always
+    // be traced to the system that made it even when the caller sends no
+    // station name of its own.
+    scannerIdentifier: scannerIdentifier || integrationKey.label,
+    ipAddress,
+    userAgent,
+    action: 'CHECK_IN',
+  });
+}
+
+
+// The roster: everybody registered for this key's event.
+//
+// WHY THE qrToken IS NOT IN HERE, and must never be added.
+//
+// It would be the obvious field to include — the other system is scanning those
+// tokens, so handing over the list looks helpful. But a token is not an
+// identifier, it is the CREDENTIAL that admits somebody. A roster carrying
+// tokens is a file of working tickets: anyone who obtains it can generate a
+// valid QR for every attendee, and it stays valid until each one is manually
+// reissued.
+//
+// The other system never needs them. It reads a token off a physical ticket at
+// the door and sends that; it does not need a copy in advance. What it needs
+// this list for is searching, displaying and reconciling, and registrationNumber
+// serves all three — it is a human-readable reference ("REG-2026-000123")
+// printed on the ticket, safe to hold, and useless as a credential on its own.
+//
+// Paginated because a national convention runs to thousands of rows, and an
+// unpaged list is a request that works in testing and times out on the day.
+async function listRegistrationsForIntegration({
+  integrationKey, page = 1, pageSize = 100, q = null, status = null, checkedIn = null,
+}) {
+  const eventId = integrationKey.eventId;
+  const take = Math.min(Math.max(Number(pageSize) || 100, 1), 500);
+  const currentPage = Math.max(Number(page) || 1, 1);
+
+  const where = { eventId };
+  // Defaults to the people who can actually be admitted. A door asking for "the
+  // list" means the list it will be working from, not every row ever created
+  // for this event including the cancelled ones.
+  if (status) where.status = status;
+  else where.status = { in: ['REGISTERED', 'PENDING_PAYMENT'] };
+
+  if (checkedIn === true) where.checkedInAt = { not: null };
+  else if (checkedIn === false) where.checkedInAt = null;
+
+  const search = (q || '').trim();
+  if (search.length >= 2) {
+    where.OR = [
+      { fullName: { contains: search } },
+      { registrationNumber: { contains: search } },
+      { email: { contains: search } },
+    ];
+  }
+
+  const [total, rows] = await Promise.all([
+    prisma.eventRegistration.count({ where }),
+    prisma.eventRegistration.findMany({
+      where,
+      select: {
+        id: true,
+        registrationNumber: true,
+        fullName: true,
+        organizationPath: true,
+        status: true,
+        checkedInAt: true,
+        // Deliberately absent: qrToken (see above), and email/phone — a roster
+        // pulled into another system is a copy of personal data, so it carries
+        // what a door needs to identify somebody and nothing more.
+      },
+      orderBy: [{ fullName: 'asc' }, { id: 'asc' }],
+      skip: (currentPage - 1) * take,
+      take,
+    }),
+  ]);
+
+  return {
+    eventId,
+    total,
+    page: currentPage,
+    pageSize: take,
+    pageCount: Math.max(Math.ceil(total / take), 1),
+    registrations: rows,
+  };
+}
+
+// Admit somebody who cannot present a scannable code — a lost phone, a dead
+// battery, a torn printout. Identified by the registration number off the
+// roster above rather than by a token, which is the whole point.
+//
+// Goes through the same applyVerdict as a scan, so an unpaid or cancelled
+// registration is refused here exactly as it would be at the QR reader. A
+// manual path that is more permissive than the scanning path is a way around
+// payment, and it is the first thing anybody would find.
+async function checkInManuallyByIntegration({
+  integrationKey, registrationId = null, registrationNumber = null,
+  scannerIdentifier = null, ipAddress = null, userAgent = null,
+}) {
+  const event = await prisma.event.findUnique({ where: { id: integrationKey.eventId } });
+  if (!event) throw new AppError('Event not found', 404);
+
+  let registration = null;
+  if (registrationId) {
+    registration = await prisma.eventRegistration.findUnique({
+      where: { id: Number(registrationId) },
+      include: { user: { select: { id: true, status: true } } },
+    });
+  } else if (registrationNumber) {
+    registration = await prisma.eventRegistration.findUnique({
+      where: { registrationNumber: String(registrationNumber).trim() },
+      include: { user: { select: { id: true, status: true } } },
+    });
+  }
+
+  // Note what is NOT done here: no "not for this event" error is thrown. The
+  // registration is passed through as-is and applyVerdict returns WRONG_EVENT,
+  // so a number belonging to another event produces the same verdict the
+  // scanner would give for the same mistake — one code path, one answer.
+  return applyVerdict({
+    event,
+    registration,
+    staffUser: null,
+    scannerIdentifier: scannerIdentifier || integrationKey.label,
+    ipAddress,
+    userAgent,
+    action: 'MANUAL_CHECK_IN',
+  });
 }
 
 // --- taking an admission back ----------------------------------------------
@@ -551,6 +739,10 @@ module.exports = {
   revokeCheckInAccess,
   checkInByScan,
   checkInManually,
+  lookupByIntegration,
+  checkInByIntegration,
+  listRegistrationsForIntegration,
+  checkInManuallyByIntegration,
   undoCheckIn,
   getEventCheckInStats,
   getRecentCheckIns,

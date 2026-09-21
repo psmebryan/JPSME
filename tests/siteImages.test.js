@@ -214,13 +214,23 @@ async function main() {
     currentUser: null,
     logoUrl: '/uploads/logo/seal.png',
     events: [],
-    stats: { memberCount: 12, eventCount: 3, registrationCount: 40 },
+    stats: { memberCount: 12, eventCount: 3, organizationCount: 40 },
     sponsors: [],
   }, extra);
 
   await test('the home page draws the blueprint when no banner is uploaded', async () => {
     const html = render('index.ejs', homeLocals({ heroImageUrl: null }));
-    assert(html.includes("bg-[url('/img/blueprint.svg')]"), 'the built-in artwork');
+    // The blueprint is applied through the .jp-blueprint component rather than
+    // a bg-[url(...)] utility written into the markup, so this checks BOTH
+    // halves of that: the page asks for the component, and the component
+    // actually resolves to the shipped vector in the built stylesheet.
+    //
+    // Checking only the class name would pass if the rule were deleted;
+    // checking only the stylesheet would pass if the page stopped using it.
+    assert(html.includes('jp-blueprint'), 'the page asks for the built-in artwork');
+    const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'css', 'tailwind.css'), 'utf8');
+    assert(/\.jp-blueprint\{[^}]*\/img\/blueprint\.svg/.test(css),
+      'and that class really draws /img/blueprint.svg');
     assert(html.includes('/uploads/logo/seal.png'), 'and the uploaded seal');
   });
 

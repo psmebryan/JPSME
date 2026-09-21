@@ -143,6 +143,118 @@ const available = grantable.filter(function (u) { return activeIds.indexOf(u.id)
         </div>
       </div>
     <% } %>
+
+    <%# ---- Integration keys ------------------------------------------------
+        On this page rather than its own, because it answers the same question
+        the rest of the page does: what is allowed to open this door. The only
+        difference is that these are systems rather than people. %>
+    <div class="mt-8 border-t border-slate-200 pt-6">
+      <h2 class="text-sm font-semibold text-slate-800">Other systems that can scan here</h2>
+      <p class="text-xs text-slate-500 mt-1 max-w-2xl">
+        A JPSME QR code contains nothing but a random number, so another system cannot
+        identify anybody from a scan on its own &mdash; it has to ask this server. An
+        integration key is how it asks. Each key works for <strong>this event only</strong>,
+        and check-ins it makes are recorded here exactly as if a staff member had scanned them.
+      </p>
+
+      <div class="mt-3 flex flex-wrap gap-2">
+        <input type="text" data-key-label class="form-input flex-1 min-w-[240px]"
+               maxlength="120" placeholder="What is this key for? e.g. Gate system &mdash; main lobby">
+        <button type="button" data-create-key class="btn-primary">Create key</button>
+      </div>
+
+      <%# The one and only time the secret exists in a readable form. Hidden
+          until a key is made, and never re-rendered on a later page load: the
+          server stores a hash and genuinely cannot show it again. %>
+      <div data-new-key hidden class="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-4">
+        <p class="text-sm font-semibold text-amber-900">Copy this key now</p>
+        <p class="text-xs text-amber-800 mt-1">
+          This is the only time it can be shown. Only a hash of it is stored, so if it is
+          lost the key has to be revoked and a new one created.
+        </p>
+        <div class="mt-2 flex flex-wrap items-center gap-2">
+          <code data-new-key-value class="flex-1 min-w-[260px] break-all rounded border border-amber-200 bg-white px-3 py-2 font-mono text-xs text-slate-900"></code>
+          <button type="button" data-copy-key class="btn-secondary">Copy</button>
+        </div>
+      </div>
+
+      <div class="admin-table-wrap mt-3">
+        <table class="admin-table">
+          <thead class="admin-table-head">
+            <tr>
+              <th class="admin-th">Label</th>
+              <th class="admin-th">Key ID</th>
+              <th class="admin-th">Last used</th>
+              <th class="admin-th">Status</th>
+              <th class="admin-th"></th>
+            </tr>
+          </thead>
+          <tbody class="admin-tbody">
+            <% if (!integrationKeys.length) { %>
+              <tr><td colspan="5" class="admin-td">
+                <%- include('../partials/empty-state', {
+                  title: 'No other systems have access',
+                  hint: 'Create a key only if a separate system needs to scan the tickets for this event.',
+                }) %>
+              </td></tr>
+            <% } else { %>
+              <% integrationKeys.forEach(function (k) { %>
+                <tr class="admin-tr">
+                  <td class="admin-td">
+                    <span class="font-medium text-slate-900"><%= k.label %></span>
+                    <span class="block text-xs text-slate-500">Created <%= when(k.createdAt) %><%= k.createdBy ? ' by ' + k.createdBy : '' %></span>
+                  </td>
+                  <td class="admin-td"><code class="font-mono text-xs text-slate-600"><%= k.keyId %></code></td>
+                  <td class="admin-td text-sm text-slate-600 whitespace-nowrap"><%= when(k.lastUsedAt) %></td>
+                  <td class="admin-td">
+                    <% if (k.active) { %>
+                      <span class="badge-green">Active</span>
+                    <% } else { %>
+                      <span class="badge-slate">Revoked <%= when(k.revokedAt) %></span>
+                    <% } %>
+                  </td>
+                  <td class="admin-td text-right">
+                    <% if (k.active) { %>
+                      <button type="button" data-revoke-key="<%= k.id %>"
+                              class="text-sm text-red-600 hover:underline">Revoke</button>
+                    <% } %>
+                  </td>
+                </tr>
+              <% }) %>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+
+      <details class="mt-3">
+        <summary class="cursor-pointer text-sm font-medium text-indigo-600">How the other system uses it</summary>
+        <div class="mt-2 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs text-slate-700">
+          <p>Send the key as a bearer token. The event is part of the key, so it never appears in the URL.</p>
+<pre class="overflow-x-auto rounded border border-slate-200 bg-white p-3 font-mono text-[11px] leading-5">POST <%= locals.appUrl || '' %>/api/integration/checkin
+Authorization: Bearer jpsme_ik_...
+Content-Type: application/json
+
+{ "qrToken": "&lt;whatever the scanner read&gt;", "station": "Lobby 1" }</pre>
+          <p>
+            The reply is the usual <code>{ success, message, data }</code>. Inside <code>data</code>:
+            <code>ok</code> (admitted or not), <code>result</code>, <code>participant</code> and
+            <code>checkedInAt</code>.
+          </p>
+          <p>
+            <code>result</code> is one of <code>SUCCESS</code>, <code>ALREADY_CHECKED_IN</code>,
+            <code>INVALID_QR</code>, <code>WRONG_EVENT</code>, <code>CANCELLED</code>,
+            <code>UNPAID</code>, <code>NOT_REGISTERED</code>, <code>REJECTED</code>. A refusal is
+            still HTTP 200 &mdash; being turned away at a door is a normal outcome, not a failed
+            request.
+          </p>
+          <p>
+            <code>GET /api/integration/whoami</code> confirms which event a key opens, and
+            <code>POST /api/integration/lookup</code> identifies somebody <em>without</em>
+            admitting them.
+          </p>
+        </div>
+      </details>
+    </div>
   <% } %>
 </div>
 
@@ -171,6 +283,68 @@ const available = grantable.filter(function (u) { return activeIds.indexOf(u.id)
         }
       });
     }
+
+    // --- integration keys ---------------------------------------------------
+    const createKeyBtn = root.querySelector('[data-create-key]');
+    if (createKeyBtn) {
+      createKeyBtn.addEventListener('click', async () => {
+        const input = root.querySelector('[data-key-label]');
+        const label = input ? input.value.trim() : '';
+        if (!label) {
+          showToast('Give the key a label, so it is clear later what it is for', 'error');
+          return;
+        }
+        createKeyBtn.disabled = true;
+        try {
+          const res = await apiFetch(`/api/events/${eventId}/integration-keys`, {
+            method: 'POST',
+            body: JSON.stringify({ label }),
+          });
+          // Shown, not reloaded into. The secret exists in this response only,
+          // so reloading the page to pick it up would lose it for good.
+          const panel = root.querySelector('[data-new-key]');
+          const value = root.querySelector('[data-new-key-value]');
+          value.textContent = res.data.plaintext;
+          panel.hidden = false;
+          if (input) input.value = '';
+          showToast('Key created \u2014 copy it now');
+        } catch (err) {
+          showToast(err.message, 'error');
+        } finally {
+          createKeyBtn.disabled = false;
+        }
+      });
+    }
+
+    const copyBtn = root.querySelector('[data-copy-key]');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', async () => {
+        const value = root.querySelector('[data-new-key-value]').textContent;
+        try {
+          await navigator.clipboard.writeText(value);
+          showToast('Key copied');
+        } catch (err) {
+          // The clipboard API needs a secure context, and this panel is the
+          // only place the key exists \u2014 a failed copy must not leave them stuck.
+          showToast('Could not copy automatically. Select the key and copy it by hand.', 'error');
+        }
+      });
+    }
+
+    root.querySelectorAll('[data-revoke-key]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!window.confirm('Revoke this key? The other system stops being able to scan immediately.')) return;
+        btn.disabled = true;
+        try {
+          await apiFetch(`/api/events/${eventId}/integration-keys/${btn.dataset.revokeKey}`, { method: 'DELETE' });
+          showToast('Key revoked');
+          window.location.reload();
+        } catch (err) {
+          showToast(err.message, 'error');
+          btn.disabled = false;
+        }
+      });
+    });
 
     root.querySelectorAll('[data-revoke-user]').forEach((btn) => {
       btn.addEventListener('click', async () => {

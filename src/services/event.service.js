@@ -14,6 +14,21 @@ async function listActiveEvents() {
   });
 }
 
+// The home page's three cards, with the one extra fact they show that the
+// plain listing does not: how many people have already registered.
+//
+// Its own function rather than a flag on listActiveEvents, because that one is
+// also the shape of GET /api/events, and a public API response should not grow
+// a field to suit one page's card design.
+async function listHomeEvents(take = 3) {
+  return prisma.event.findMany({
+    where: { isPublished: true },
+    orderBy: { startDate: 'asc' },
+    take,
+    include: { _count: { select: { registrations: true } } },
+  });
+}
+
 async function listPublishedEvents() {
   return prisma.event.findMany({
     where: { isPublished: true },
@@ -339,6 +354,7 @@ module.exports = {
   notEndedWhere,
   hasEndedWhere,
   listActiveEvents,
+  listHomeEvents,
   listPublishedEvents,
   listAllEvents,
   getEventById,

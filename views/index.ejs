@@ -1,71 +1,455 @@
-<% const displayEvents = events.slice(0, 3); %>
-<div class="-mx-4 -my-8 overflow-hidden bg-[#080f29] text-white sm:-mx-6 lg:-mx-8">
+<%#
+  The home page.
+
+  It is built from the .jp-* components in src/styles/tailwind.css and almost
+  nothing else. If something here needs a look that is not in that file, it
+  belongs in that file — the reason this page reads as one document rather than
+  as seven stacked sections is that every section is measured by the same
+  container, spaced by the same rhythm, and drawn from the same parts.
+
+  Two constraints shaped the visuals, and both are worth knowing before
+  changing anything:
+
+    imgSrc is 'self' and data: only. There is no stock photography here and
+    there cannot be — every drawing on this page is a vector that ships with
+    the code (/img/blueprint.svg, /img/hero-schematic.svg). An uploaded hero
+    image, when an admin sets one, covers the hero's own artwork.
+
+    styleSrc carries a nonce and no 'unsafe-inline', and a nonce does not apply
+    to style ATTRIBUTES. There is not one style="" in this file, and there must
+    never be: it would be dropped silently rather than erroring.
+%>
+<%
+  const fmtDate = (d, opts) => new Date(d).toLocaleDateString('en-US', opts);
+
+  // What a card says about getting in. Derived from real numbers — capacity
+  // and the registration count — never asserted. An event with no capacity set
+  // has no limit, so it simply reads as open.
+  function availability(event) {
+    const taken = (event._count && event._count.registrations) || 0;
+    if (!event.capacity) return { label: 'Registration Open', cls: 'jp-badge-open', full: false };
+    if (taken >= event.capacity) return { label: 'Fully Booked', cls: 'jp-badge-full', full: true };
+    if (taken >= event.capacity * 0.8) return { label: 'Filling Fast', cls: 'jp-badge-filling', full: false };
+    return { label: 'Registration Open', cls: 'jp-badge-open', full: false };
+  }
+
+  // One sponsor should look placed, not marooned in a field of white. The
+  // measure closes in when there are few of them and opens out as they are
+  // added, so the section scales without being rewritten.
+  const sponsorMeasure = !sponsors ? '' :
+    sponsors.length <= 2 ? 'max-w-md' :
+    sponsors.length <= 3 ? 'max-w-2xl' :
+    sponsors.length <= 6 ? 'max-w-4xl' : 'max-w-5xl';
+%>
+<div class="home-light -mx-4 -my-8 overflow-hidden bg-paper-50 text-pen-700 sm:-mx-6 lg:-mx-8">
+
+  <%# ==================================================================== %>
+  <%# HERO                                                                  %>
+  <%# ==================================================================== %>
   <%#
-    The hero, built to match the JPSME banner artwork: navy at both edges with
-    gold burning through the middle, over a technical drawing.
+    Four layers, back to front: the navy-through-gold gradient the JPSME
+    banner artwork is built on; the drafting tile; the gear drawing bled off
+    the right edge; and a wash that darkens the whole thing enough to set white
+    type on. The wash is what makes the gold band safe to write over — gold is
+    far too bright to carry type directly.
 
-    The drawing is public/img/blueprint.svg rather than the raster banner. The
-    host wipes uploaded files on every deploy, so shipping it with the code is
-    what stops the hero going blank at the next publish — and a vector stays
-    sharp on a phone and on a 4K monitor from the same two kilobytes.
-
-    An uploaded hero image, when one is set in Admin - Settings, covers all of
-    it. Rendered as a positioned <img> rather than an inline background-image
-    because styleSrc carries a nonce and no 'unsafe-inline', so a style
-    attribute built from a database value would simply be dropped.
+    Sized by its content plus a floor, not by the viewport. A 100vh hero pushes
+    the rest of the page off the first screen, which is exactly the "too much
+    empty space" problem.
   %>
-  <section class="relative isolate overflow-hidden border-b border-amber-400/25">
-    <%# Layer 1: the gold-through-navy gradient the banner is built on. %>
-    <div class="absolute inset-0 -z-30 bg-[linear-gradient(100deg,#141a5c_0%,#1e2470_22%,#8a6a1e_46%,#f5c518_53%,#8a6a1e_60%,#1e2470_80%,#101641_100%)]"></div>
-    <%# Layer 2: the drawing, tiled. Screen blend keeps the white linework
-        bright over the navy and lets it burn out over the gold, which is what
-        the original artwork does. %>
-    <div class="absolute inset-0 -z-20 bg-[url('/img/blueprint.svg')] bg-[length:420px_420px] opacity-[0.22] mix-blend-screen"></div>
-    <%# Layer 3: darkens the edges so white text stays readable across the gold
-        band, which is far too bright to sit type on directly. %>
-    <div class="absolute inset-0 -z-10 bg-[linear-gradient(90deg,#080f29_0%,rgba(8,15,41,.92)_30%,rgba(8,15,41,.55)_50%,rgba(8,15,41,.9)_72%,#080f29_100%)]"></div>
+  <section class="jp-on-dark relative isolate overflow-hidden border-b border-gold-400/25 text-white">
+    <%# One stacking context for the artwork, children painting in DOM order.
+        Written as a group rather than as four siblings on -z-40, -z-30, -z-20,
+        -z-10 because the order those produced was wrong in a way that is easy
+        to miss: the darkening wash sat ON TOP of the drawing, and at the right
+        edge that wash is 88% opaque, which left the drawing at about a tenth
+        of the opacity it was set to. The drawing belongs above the wash — the
+        wash exists to protect the TYPE on the left, not to erase the artwork on
+        the right. %>
+    <div class="absolute inset-0 -z-10">
+      <div class="absolute inset-0 bg-[linear-gradient(100deg,#131131_0%,#25225d_26%,#82661f_48%,#b58c2a_54%,#6b5419_62%,#221f57_82%,#131131_100%)]"></div>
+      <div class="jp-blueprint absolute inset-0 opacity-[0.18] mix-blend-screen"></div>
+      <div class="absolute inset-0 bg-[linear-gradient(95deg,#131131_0%,rgba(19,17,49,.93)_34%,rgba(19,17,49,.68)_58%,rgba(19,17,49,.88)_100%)]"></div>
 
+      <%# The gear sheet, anchored to the right edge and running past it. A
+          drawing fully inside its box reads as an illustration dropped onto the
+          page; one that continues past the edge reads as the page sitting on a
+          much larger sheet.
+
+          From md up only, and at 128% of the hero's height — the dimension
+          labels are set at 11px in a 640px viewBox, so below roughly 600px of
+          drawn height they stop being annotations and become dirt. %>
+      <img src="/img/hero-schematic.svg" alt="" aria-hidden="true"
+           class="pointer-events-none absolute -right-24 top-1/2 hidden h-[128%] max-w-none -translate-y-1/2 opacity-40 md:block">
+    </div>
+
+    <%# An uploaded hero image, when one is set in Admin → Settings, covers all
+        of the above — same -z-10, later in the document, so it paints over it.
+        Rendered as a positioned <img> rather than an inline background-image
+        because a style attribute built from a database value would be dropped
+        by the CSP. %>
     <% if (locals.heroImageUrl) { %>
-      <img src="<%= heroImageUrl %>" alt="" aria-hidden="true" class="absolute inset-0 -z-10 h-full w-full object-cover">
-      <div class="absolute inset-0 -z-10 bg-[#080f29]/70"></div>
+      <div class="absolute inset-0 -z-10">
+        <img src="<%= heroImageUrl %>" alt="" aria-hidden="true" class="absolute inset-0 h-full w-full object-cover">
+        <div class="absolute inset-0 bg-[linear-gradient(95deg,rgba(19,17,49,.94)_0%,rgba(19,17,49,.82)_45%,rgba(19,17,49,.7)_100%)]"></div>
+      </div>
     <% } %>
 
-    <div class="mx-auto grid max-w-[1280px] items-center gap-12 px-5 py-16 sm:px-8 sm:py-24 lg:min-h-[640px] lg:grid-cols-[1.1fr_.9fr] lg:px-12">
-      <div class="max-w-[630px]">
-        <p class="mb-8 inline-flex rounded-full border border-amber-400 bg-[#080f29]/60 px-3 py-1 text-xs font-bold tracking-[.18em] text-amber-400">NATIONAL STUDENT ORGANIZATION</p>
-        <h1 class="text-6xl font-extrabold tracking-tight drop-shadow-[0_2px_12px_rgba(8,15,41,.9)] sm:text-7xl">JPSME</h1>
-        <p class="mt-4 max-w-xl text-2xl font-bold leading-tight text-amber-400 drop-shadow-[0_2px_10px_rgba(8,15,41,.9)] sm:text-3xl">Junior Philippine Society of Mechanical Engineers</p>
-        <p class="mt-5 max-w-2xl text-base leading-7 text-slate-300 drop-shadow-[0_1px_8px_rgba(8,15,41,.95)] sm:text-lg">&quot;Connecting members, one event at a time.&quot; Building the path for next-generation Pinoy mechanical engineering leaders, innovators, and certified practitioners.</p>
-        <div class="mt-8 flex flex-wrap gap-3">
-          <a href="/register" class="inline-flex items-center rounded-lg bg-amber-400 px-7 py-3.5 text-sm font-extrabold text-[#071126] shadow-lg shadow-black/30 transition hover:bg-amber-300">Be a Member Now <span class="ml-1 text-lg">&rarr;</span></a>
-          <a href="/events" class="inline-flex items-center rounded-lg border border-amber-400/70 bg-[#080f29]/60 px-7 py-3.5 text-sm font-extrabold text-amber-400 transition hover:bg-amber-400 hover:text-[#071126]">See Events</a>
-        </div>
-      </div>
+    <div class="jp-container">
+      <div class="grid items-center gap-12 py-16 sm:py-20 lg:min-h-[600px] lg:grid-cols-[1.15fr_.85fr] lg:gap-10 lg:py-24">
 
-      <%# The seal, lit rather than boxed. The old frame was a plate the logo
-          sat on; against the drawing it reads better as the thing the light is
-          coming from. %>
-      <div class="relative mx-auto flex aspect-square w-full max-w-[420px] items-center justify-center">
-        <div class="absolute inset-[12%] rounded-full bg-amber-300/25 blur-3xl"></div>
-        <div class="absolute inset-[4%] rounded-full border border-amber-400/30"></div>
-        <div class="absolute inset-[-2%] rounded-full border border-amber-400/15"></div>
-        <img src="<%= locals.logoUrl || '/img/default-logo.svg' %>" alt="JPSME seal" class="relative h-[86%] w-[86%] object-contain drop-shadow-[0_0_36px_rgba(245,197,24,.45)]">
+        <div>
+          <p class="hero-rise hero-rise-1 jp-badge jp-badge-dark mb-7">National Student Organization</p>
+
+          <%# The headline answers "who" and "what" in one line. JPSME's own
+              name moves to the line under it: a reader who does not already
+              know the acronym learns nothing from seeing it set 72px. %>
+          <h1 class="hero-rise hero-rise-2 text-[2.6rem] font-extrabold leading-[1.05] tracking-tight [text-wrap:balance] sm:text-6xl lg:text-[4rem]">
+            Building Tomorrow's<br class="hidden sm:block"> Mechanical Engineers
+          </h1>
+
+          <p class="hero-rise hero-rise-3 mt-5 font-tech text-sm font-semibold uppercase tracking-[.16em] text-gold-300 sm:text-base">
+            Junior Philippine Society of Mechanical Engineers
+          </p>
+
+          <p class="hero-rise hero-rise-4 jp-lede mt-6 text-mist-200">
+            The national student guild where mechanical engineering students and
+            young professionals train, connect and qualify — through country-wide
+            conventions, development courses and a chapter network that reaches
+            every region.
+          </p>
+
+          <div class="hero-rise hero-rise-5 mt-9 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            <a href="/register" class="jp-btn jp-btn-gold jp-btn-lg">
+              Become a Member <span class="jp-btn-arrow" aria-hidden="true">&rarr;</span>
+            </a>
+            <a href="/events" class="jp-btn jp-btn-ghost jp-btn-lg">Explore Events</a>
+          </div>
+
+          <p class="hero-rise hero-rise-6 mt-8 flex items-center gap-3 font-tech text-[11px] font-semibold uppercase tracking-[.14em] text-mist-300">
+            <span class="h-px w-7 bg-gold-400/70" aria-hidden="true"></span>
+            Connecting mechanical engineering students nationwide
+          </p>
+        </div>
+
+        <%# The seal sits where the gear's hub is. Lit rather than boxed — a
+            frame would make it a logo pasted onto the drawing instead of the
+            thing the drawing is turning. %>
+        <div class="hero-rise hero-rise-3 relative mx-auto flex aspect-square w-full max-w-[260px] items-center justify-center sm:max-w-[340px] lg:max-w-[420px]">
+          <div class="seal-glow absolute inset-[14%] rounded-full bg-gold-400/15 blur-3xl"></div>
+          <div class="absolute inset-[6%] rounded-full border border-gold-400/25"></div>
+          <div class="absolute inset-0 rounded-full border border-gold-400/12"></div>
+          <img src="<%= locals.logoUrl || '/img/default-logo.svg' %>" alt="JPSME seal"
+               class="relative h-[64%] w-[64%] object-contain drop-shadow-[0_0_26px_rgba(236,184,39,.32)]">
+        </div>
+
       </div>
     </div>
   </section>
 
-  <section class="border-b border-[#26365f] bg-[#111b3a]"><div class="mx-auto grid max-w-[1280px] divide-y divide-[#26365f] px-5 py-5 text-center sm:grid-cols-3 sm:divide-x sm:divide-y-0 sm:px-8 lg:px-12"><div class="py-3"><p class="text-3xl font-extrabold text-amber-400"><%= stats.memberCount %> Approved Members</p><p class="mt-1 text-xs font-medium text-slate-400">VERIFIED PRACTITIONERS</p></div><div class="py-3"><p class="text-3xl font-extrabold text-amber-400"><%= stats.eventCount %> Events Hosted</p><p class="mt-1 text-xs font-medium text-slate-400">KNOWLEDGE &amp; ASSEMBLY FORUMS</p></div><div class="py-3"><p class="text-3xl font-extrabold text-amber-400"><%= stats.registrationCount %> Event Registrations</p><p class="mt-1 text-xs font-medium text-slate-400">ACTIVE ENGAGED ATTENDEES</p></div></div></section>
+  <%# ==================================================================== %>
+  <%# STATISTICS                                                           %>
+  <%# ==================================================================== %>
+  <%#
+    Lifted over the seam between the hero and the page. The overlap is the
+    point: it stitches the two together, so the page opens as one composition
+    rather than as a dark block followed by a light one.
 
-  <section class="mx-auto grid max-w-[1280px] items-center gap-12 px-5 py-24 sm:px-8 lg:grid-cols-2 lg:px-12">
-    <div class="relative flex aspect-[4/2.55] items-center justify-center overflow-hidden rounded-2xl bg-[radial-gradient(circle_at_center,#095b95_0%,#052d59_32%,#071a38_68%,#061126_100%)]"><div class="absolute h-[68%] w-[52%] rounded-full border border-cyan-300/50 shadow-[0_0_0_20px_rgba(14,116,144,.15),0_0_0_48px_rgba(8,145,178,.08)]"></div><div class="absolute h-[42%] w-[72%] rounded-full border border-cyan-300/30"></div><img src="<%= locals.logoUrl || '/img/default-logo.svg' %>" alt="JPSME" class="relative h-28 w-28 object-contain opacity-90 sm:h-40 sm:w-40"><p class="absolute rounded bg-[#0000001a]/90 px-4 py-2 text-center text-sm font-bold leading-4 text-white">Building tomorrow's mechanical<br>engineers, together.</p></div>
-    <div><h2 class="text-4xl font-extrabold leading-tight sm:text-5xl">Advancing Mechanical<br>Excellence</h2><p class="mt-6 max-w-xl leading-7 text-slate-400">The Junior Philippine Society of Mechanical Engineers (JPSME) is the leading national student guild dedicated to bridging academic training with professional reality. Through country-wide conventions, continuous development courses, and peer networks, we pave the way for successful professional licensure and career-long growth.</p><p class="mt-7 border-l-4 border-amber-400 pl-3 font-bold">&quot;Building tomorrow's mechanical engineers, together.&quot;</p><a href="/register" class="mt-7 inline-block rounded-lg bg-amber-400 px-6 py-3.5 text-sm font-extrabold text-[#071126] hover:bg-amber-300">Become a Member</a></div>
+    Not dashboard tiles — there is no box around any individual figure. The
+    numbers are large enough to be the object, and a hairline is enough to
+    separate them.
+  %>
+  <section class="jp-container relative z-10 -mt-10 lg:-mt-14">
+    <div class="jp-card reveal-stagger grid divide-y divide-paper-200 px-6 py-8 text-center sm:grid-cols-3 sm:divide-x sm:divide-y-0 sm:px-4 sm:py-10">
+      <div class="reveal px-4 py-5 sm:py-0">
+        <p class="jp-stat-figure counter" data-count-to="<%= stats.memberCount %>"><%= stats.memberCount %></p>
+        <p class="jp-stat-label">Approved Members</p>
+        <p class="jp-stat-note">Verified nationwide</p>
+      </div>
+      <div class="reveal px-4 py-5 sm:py-0">
+        <p class="jp-stat-figure counter" data-count-to="<%= stats.eventCount %>"><%= stats.eventCount %></p>
+        <p class="jp-stat-label">Events Hosted</p>
+        <p class="jp-stat-note">Conventions &amp; seminars</p>
+      </div>
+      <div class="reveal px-4 py-5 sm:py-0">
+        <p class="jp-stat-figure counter" data-count-to="<%= stats.organizationCount %>"><%= stats.organizationCount %></p>
+        <p class="jp-stat-label">Student Organizations</p>
+        <p class="jp-stat-note">Chapters nationwide</p>
+      </div>
+    </div>
   </section>
 
-  <section class="border-y border-[#15274e] bg-[#111b3a00] px-5 py-24 sm:px-8 lg:px-12"><div class="mx-auto max-w-[1280px] text-center"><h2 class="text-3xl font-extrabold sm:text-4xl">What You Can Do Here</h2><p class="mx-auto mt-3 max-w-xl text-slate-400">Experience seamless onboarding to the most robust student engineering collective in the country.</p><div class="mt-12 grid gap-5 text-left sm:grid-cols-2 xl:grid-cols-4"><% const benefits = [['Create an Account', 'Sign up once with your educational or early career details to pre-validate your regional chapter association.'], ['Get Approved', 'Our local university or national organization administrators verify and confirm your active membership status.'], ['One-Click Register', 'No repetitive forms. Your verified profile details instantly sign you up for key seminars and national events.'], ['Track Registrations', 'Manage event certificates, chapter involvement, and professional metrics straight from your unified dashboard.']]; benefits.forEach((benefit, index) => { %><article class="rounded-2xl border border-[#263b70] bg-[#111b3a] p-8"><span class="flex h-10 w-10 items-center justify-center rounded-full bg-amber-400 font-extrabold text-[#0a1430]"><%= index + 1 %></span><h3 class="mt-5 text-xl font-bold"><%= benefit[0] %></h3><p class="mt-4 text-sm leading-6 text-slate-400"><%= benefit[1] %></p></article><% }) %></div></div></section>
+  <%# ==================================================================== %>
+  <%# ABOUT                                                                %>
+  <%# ==================================================================== %>
+  <%#
+    Editorial rather than two matching halves: the visual is a tall navy plate,
+    and the mission statement overlaps its corner and lands in the text column.
+    That overlap is what stops the artwork reading as a stock rectangle parked
+    next to some paragraphs — the two columns are physically joined.
+  %>
+  <section class="jp-container jp-section">
+    <div class="grid items-center gap-14 lg:grid-cols-[.95fr_1.05fr] lg:gap-16">
 
-  <section class="mx-auto max-w-[1280px] px-5 py-24 sm:px-8 lg:px-12"><div class="mb-10 flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><h2 class="text-3xl font-extrabold sm:text-4xl">Upcoming Events &amp; Assemblies</h2><p class="mt-3 text-slate-400">Stay updated on professional growth opportunities, symposia, and network assemblies.</p></div><a href="/events" class="inline-flex w-fit rounded-lg border border-amber-400 px-6 py-3 text-sm font-bold text-amber-400 hover:bg-amber-400 hover:text-[#071126]">View All Events</a></div><% if (displayEvents.length === 0) { %><div class="rounded-2xl border border-[#263b70] p-8 text-slate-400">No upcoming events right now. Check back soon.</div><% } else { %><div class="grid gap-6 lg:grid-cols-3"><% displayEvents.forEach(event => { %><article class="overflow-hidden rounded-2xl border border-[#263b70] bg-[#111b3a]"><div class="flex h-48 items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_center,#164d79,#0b1d3b_68%)]"><% if (event.imageUrl) { %><img src="<%= event.imageUrl %>" alt="" class="h-full w-full object-cover"><% } else { %><img src="<%= locals.logoUrl || '/img/default-logo.svg' %>" alt="" class="h-24 w-24 object-contain opacity-75"><% } %></div><div class="p-6"><div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-400"><span class="rounded bg-[#203666] px-2 py-1 font-bold text-amber-400"><%= new Date(event.startDate).toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' }) %></span><span><%= event.location || (event.modality === 'ONLINE' ? 'Interactive Online Event' : 'Venue to be announced') %></span></div><h3 class="mt-5 min-h-[3.5rem] text-xl font-bold leading-tight"><%= event.title %></h3><p class="mt-4 min-h-[4.5rem] text-sm leading-6 text-slate-400"><%= event.description || 'Join JPSME members for this upcoming professional development opportunity.' %></p><a href="/events/<%= event.id %>" class="mt-5 block rounded-lg bg-amber-400 px-4 py-3 text-center text-sm font-extrabold text-[#071126] hover:bg-amber-300">Register Now</a></div></article><% }) %></div><% } %></section>
+      <div class="reveal relative">
+        <div class="jp-gridlines relative aspect-[4/3.4] overflow-hidden rounded-[28px] border border-ink-700 bg-[radial-gradient(circle_at_35%_35%,#322d8b_0%,#25225d_42%,#191740_100%)] sm:aspect-[4/3]">
+          <div class="jp-blueprint absolute inset-0 opacity-[0.16] mix-blend-screen"></div>
+          <img src="/img/hero-schematic.svg" alt="" aria-hidden="true"
+               class="absolute left-1/2 top-1/2 h-[175%] max-w-none -translate-x-1/2 -translate-y-1/2 opacity-60">
+          <div class="absolute inset-0 flex items-center justify-center">
+            <div class="relative flex h-32 w-32 items-center justify-center sm:h-40 sm:w-40">
+              <div class="absolute inset-0 rounded-full bg-gold-400/12 blur-2xl"></div>
+              <img src="<%= locals.logoUrl || '/img/default-logo.svg' %>" alt="JPSME"
+                   class="relative h-full w-full object-contain drop-shadow-[0_0_20px_rgba(236,184,39,.25)]">
+            </div>
+          </div>
+        </div>
 
-  <section class="border-y border-[#26365f] bg-[radial-gradient(circle_at_12%_30%,#201447_0%,transparent_32%),linear-gradient(105deg,#0b0924,#0a1028)] px-5 py-28 text-center sm:px-8"><h2 class="text-4xl font-extrabold sm:text-5xl">Join the JPSME Community</h2><p class="mx-auto mt-6 max-w-2xl text-lg text-slate-400">Advancing excellence in mechanical engineering, together. Secure your membership to access certifications, resources, and nation-wide assemblies.</p><a href="/register" class="mt-8 inline-flex rounded-lg bg-amber-400 px-8 py-4 font-extrabold text-[#071126] hover:bg-amber-300">Be a Member Now <span class="ml-1 text-lg">&rarr;</span></a></section>
+        <%# The pull-quote, overlapping the plate and reaching into the column
+            beside it. %>
+        <figure class="jp-card relative z-10 -mt-10 ml-6 mr-0 max-w-sm p-6 sm:ml-10 lg:-mr-16">
+          <blockquote class="border-l-[3px] border-gold-400 pl-4 text-[17px] font-bold leading-7 text-pen-900">
+            Building tomorrow's mechanical engineers, together.
+          </blockquote>
+          <figcaption class="mt-3 pl-4 font-tech text-[10px] font-semibold uppercase tracking-[.16em] text-pen-500">
+            JPSME Philippines
+          </figcaption>
+        </figure>
+      </div>
 
-  <% if (sponsors && sponsors.length) { %><section class="border-b border-[#26365f] bg-[#101934] px-5 py-16 text-center sm:px-8"><p class="text-xs font-bold tracking-[.2em] text-amber-400">OUR SPONSORS</p><h2 class="mt-3 text-3xl font-extrabold">Partners in Engineering Excellence</h2><div class="mx-auto mt-10 flex max-w-5xl flex-wrap items-center justify-center gap-6"><% sponsors.forEach(sponsor => { %><a href="<%= sponsor.websiteUrl || '#' %>" <%= sponsor.websiteUrl ? 'target="_blank" rel="noopener"' : '' %> class="flex h-36 w-48 flex-col items-center justify-center rounded-xl border border-[#263b70] bg-[#080f29] p-5 transition hover:border-amber-400"><img src="<%= sponsor.logoUrl %>" alt="<%= sponsor.name.toUpperCase() %>" class="max-h-20 max-w-full object-contain"><span class="mt-3 text-sm font-bold text-white"><%= sponsor.name.toUpperCase() %></span></a><% }) %></div></section><% } %>
+      <div class="reveal">
+        <p class="jp-eyebrow text-bronze">About JPSME</p>
+        <h2 class="jp-h2 mt-5 text-pen-900">Advancing Mechanical Excellence</h2>
+        <p class="jp-body mt-6">
+          The Junior Philippine Society of Mechanical Engineers is the leading
+          national student guild dedicated to bridging academic training with
+          professional reality — paving the way for successful licensure and
+          career-long growth.
+        </p>
+
+        <%# Three plain lines instead of three more cards. The page already has
+            plenty of boxes; this is a list, and a list should look like one. %>
+        <ul class="mt-8 flex flex-col divide-y divide-paper-200 border-y border-paper-200">
+          <% [
+               ['Country-wide conventions', 'National assemblies that put students in the same room as practising engineers.'],
+               ['Continuous development', 'Courses and seminars that carry through to professional licensure.'],
+               ['A chapter network', 'Peer connections across universities and regions, from first year onward.'],
+             ].forEach(([title, detail]) => { %>
+            <li class="flex gap-4 py-4">
+              <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gold-400" aria-hidden="true"></span>
+              <div>
+                <p class="font-bold text-pen-900"><%= title %></p>
+                <p class="mt-1 text-[15px] leading-6 text-pen-700"><%= detail %></p>
+              </div>
+            </li>
+          <% }) %>
+        </ul>
+
+        <a href="/register" class="jp-btn jp-btn-gold mt-8">
+          Become a Member <span class="jp-btn-arrow" aria-hidden="true">&rarr;</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <%# ==================================================================== %>
+  <%# THE JOURNEY                                                          %>
+  <%# ==================================================================== %>
+  <%#
+    Four steps, drawn on a rail. The fact that they happen IN ORDER is the
+    information in this section, and four identical cards side by side say
+    "four things", not "first this, then that". The rail runs across on desktop
+    and down the left on a phone — the reading direction in each case.
+  %>
+  <section class="jp-section border-y border-paper-200 bg-paper-100">
+    <div class="jp-container">
+      <div class="reveal max-w-2xl">
+        <p class="jp-eyebrow text-bronze">How It Works</p>
+        <h2 class="jp-h2 mt-5 text-pen-900">From sign-up to your first seat</h2>
+        <p class="jp-lede mt-5 text-pen-700">
+          Four steps, once. After that your verified profile does the paperwork
+          for every event you attend.
+        </p>
+      </div>
+
+      <div class="reveal-stagger mt-14 grid gap-y-10 lg:grid-cols-4 lg:gap-x-12">
+        <% [
+             ['Create an Account', 'Sign up once with your school or early-career details so your regional chapter can be matched to you.'],
+             ['Get Approved', 'A university or national administrator verifies your details and confirms your active membership.'],
+             ['One-Click Register', 'No repeated forms. Your verified profile signs you up for seminars and national events instantly.'],
+             ['Track Registrations', 'Certificates, chapter involvement and your event history, all in one dashboard.'],
+           ].forEach(([title, detail], index) => { %>
+          <div class="jp-journey-step reveal">
+            <span class="jp-journey-marker"><%= String(index + 1).padStart(2, '0') %></span>
+            <h3 class="jp-h3 text-pen-900 lg:mt-0"><%= title %></h3>
+            <p class="mt-3 text-[15px] leading-7 text-pen-700"><%= detail %></p>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+  </section>
+
+  <%# ==================================================================== %>
+  <%# EVENTS                                                               %>
+  <%# ==================================================================== %>
+  <section class="jp-container jp-section">
+    <div class="reveal mb-12 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <p class="jp-eyebrow text-bronze">What's On</p>
+        <h2 class="jp-h2 mt-5 text-pen-900">Upcoming Events &amp; Assemblies</h2>
+        <p class="jp-lede mt-4 text-pen-700">
+          Professional growth opportunities, symposia and network assemblies,
+          open to members nationwide.
+        </p>
+      </div>
+      <a href="/events" class="jp-btn jp-btn-outline shrink-0">View All Events</a>
+    </div>
+
+    <% if (!events || events.length === 0) { %>
+      <div class="jp-card border-dashed p-12 text-center sm:p-16">
+        <span class="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-gold-400/20 text-bronze" aria-hidden="true">
+          <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8.5h16M7 3.5v3M17 3.5v3M5.5 5h13A1.5 1.5 0 0 1 20 6.5v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-12A1.5 1.5 0 0 1 5.5 5Z"/></svg>
+        </span>
+        <p class="text-lg font-bold text-pen-900">Nothing scheduled just yet</p>
+        <p class="mx-auto mt-2 max-w-md text-[15px] leading-7 text-pen-500">
+          New conventions, seminars and chapter assemblies appear here as soon as
+          they open. Members are emailed when one does.
+        </p>
+        <a href="/register" class="jp-btn jp-btn-gold mt-7">Become a Member</a>
+      </div>
+    <% } else { %>
+      <div class="reveal-stagger grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <% events.forEach(event => { const status = availability(event); %>
+          <article class="jp-event-card jp-card jp-card-lift reveal flex flex-col overflow-hidden">
+
+            <a href="/events/<%= event.id %>" class="jp-event-media group" aria-label="<%= event.title %>">
+              <% if (event.imageUrl) { %>
+                <img src="<%= event.imageUrl %>" alt="" class="jp-event-img">
+              <% } else { %>
+                <%# No uploaded image: the drafting ground and the seal, so an
+                    event without artwork still looks like this organisation's
+                    event rather than like a missing file. %>
+                <span class="jp-blueprint absolute inset-0 opacity-[0.22] mix-blend-screen"></span>
+                <span class="absolute inset-0 flex items-center justify-center">
+                  <img src="<%= locals.logoUrl || '/img/default-logo.svg' %>" alt="" class="jp-event-img h-20 w-20 object-contain opacity-80">
+                </span>
+              <% } %>
+              <span class="jp-event-scrim"></span>
+
+              <span class="absolute right-3 top-3">
+                <% if (event.modality === 'ONLINE') { %>
+                  <span class="jp-badge jp-badge-dark">Online</span>
+                <% } else { %>
+                  <span class="jp-badge bg-gold-400 text-ink-950">Face-to-Face</span>
+                <% } %>
+              </span>
+
+              <span class="jp-date-plate absolute bottom-3 left-3">
+                <span class="jp-date-plate-month"><%= fmtDate(event.startDate, { month: 'short' }) %></span>
+                <span class="jp-date-plate-day"><%= fmtDate(event.startDate, { day: '2-digit' }) %></span>
+              </span>
+            </a>
+
+            <div class="flex flex-1 flex-col p-6">
+              <p class="font-tech text-[11px] font-semibold uppercase tracking-[.14em] text-pen-500">
+                <%= fmtDate(event.startDate, { weekday: 'long', year: 'numeric' }) %>
+              </p>
+
+              <h3 class="mt-2 text-xl font-bold leading-snug tracking-tight text-pen-900">
+                <a href="/events/<%= event.id %>" class="transition-colors hover:text-bronze focus-visible:outline-none focus-visible:text-bronze"><%= event.title %></a>
+              </h3>
+
+              <p class="jp-meta-row mt-3">
+                <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11Z"/><circle cx="12" cy="10" r="2.5"/></svg>
+                <span class="truncate"><%= event.location || (event.modality === 'ONLINE' ? 'Interactive online event' : 'Venue to be announced') %></span>
+              </p>
+
+              <% if (event.feeCentavos > 0) { %>
+                <p class="jp-meta-row mt-2">
+                  <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M7 6h5a3.5 3.5 0 0 1 0 7H7V4M5 9.5h7M5 12.5h7M7 13v7"/></svg>
+                  <span class="font-tech font-semibold">&#8369;<%= (event.feeCentavos / 100).toFixed(2) %></span>
+                  <span>registration fee</span>
+                </p>
+              <% } %>
+
+              <p class="jp-clamp-2 mt-4 text-[15px] leading-7 text-pen-700">
+                <%= event.description || 'Join JPSME members for this upcoming professional development opportunity.' %>
+              </p>
+
+              <%# mt-auto pins this row to the bottom of every card, so three
+                  cards of different description lengths still land their
+                  buttons on one line. %>
+              <div class="mt-auto pt-6">
+                <span class="jp-badge <%= status.cls %>"><%= status.label %></span>
+                <a href="/events/<%= event.id %>" class="jp-btn <%= status.full ? 'jp-btn-outline' : 'jp-btn-gold' %> mt-4 w-full">
+                  <%= status.full ? 'View Details' : 'Register Now' %>
+                </a>
+              </div>
+            </div>
+          </article>
+        <% }) %>
+      </div>
+    <% } %>
+  </section>
+
+  <%# ==================================================================== %>
+  <%# MEMBERSHIP CALL TO ACTION                                            %>
+  <%# ==================================================================== %>
+  <section class="jp-on-dark jp-section relative isolate overflow-hidden border-y border-ink-700 bg-[radial-gradient(circle_at_50%_-10%,#3c3799_0%,transparent_45%),linear-gradient(105deg,#131131,#1f1c4f)] text-center">
+    <div class="jp-gridlines absolute inset-0 -z-10" aria-hidden="true"></div>
+    <div class="jp-blueprint absolute inset-0 -z-10 opacity-[0.14] mix-blend-screen" aria-hidden="true"></div>
+    <%# The gear sheet, split to either side so the type sits in clear air
+        between the two. Desktop only — on a phone there is no room to the
+        sides, and the pattern alone carries the texture. %>
+    <img src="/img/hero-schematic.svg" alt="" aria-hidden="true"
+         class="pointer-events-none absolute -left-40 top-1/2 -z-10 hidden h-[190%] max-w-none -translate-y-1/2 opacity-25 xl:block">
+    <img src="/img/hero-schematic.svg" alt="" aria-hidden="true"
+         class="pointer-events-none absolute -right-40 top-1/2 -z-10 hidden h-[190%] max-w-none -translate-y-1/2 opacity-25 xl:block">
+
+    <div class="jp-container">
+      <p class="reveal jp-eyebrow mx-auto justify-center text-gold-300">Membership</p>
+      <h2 class="reveal jp-h2 mx-auto mt-5 max-w-3xl text-white">Join the JPSME Community</h2>
+      <p class="reveal jp-lede mx-auto mt-6 text-mist-200">
+        Advance your engineering journey through certifications, resources,
+        events and nationwide connections.
+      </p>
+      <div class="reveal mt-10">
+        <a href="/register" class="jp-btn jp-btn-gold jp-btn-lg">
+          Become a Member Now <span class="jp-btn-arrow" aria-hidden="true">&rarr;</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <%# ==================================================================== %>
+  <%# PARTNERS                                                             %>
+  <%# ==================================================================== %>
+  <% if (sponsors && sponsors.length) { %>
+    <section class="jp-section-sm border-b border-paper-200 bg-paper-100">
+      <div class="jp-container text-center">
+        <p class="jp-eyebrow mx-auto justify-center text-bronze">Our Partners</p>
+        <h2 class="mt-5 text-2xl font-bold tracking-tight text-pen-900 sm:text-3xl">Partners in Engineering Excellence</h2>
+        <div class="jp-sponsor-grid reveal-stagger mt-10 <%= sponsorMeasure %>">
+          <% sponsors.forEach(sponsor => { %>
+            <% if (sponsor.websiteUrl) { %>
+              <a href="<%= sponsor.websiteUrl %>" target="_blank" rel="noopener" class="jp-sponsor reveal">
+                <img src="<%= sponsor.logoUrl %>" alt="<%= sponsor.name %>">
+                <span class="font-tech text-[10px] font-semibold uppercase tracking-[.14em] text-pen-500"><%= sponsor.name %></span>
+              </a>
+            <% } else { %>
+              <div class="jp-sponsor reveal">
+                <img src="<%= sponsor.logoUrl %>" alt="<%= sponsor.name %>">
+                <span class="font-tech text-[10px] font-semibold uppercase tracking-[.14em] text-pen-500"><%= sponsor.name %></span>
+              </div>
+            <% } %>
+          <% }) %>
+        </div>
+      </div>
+    </section>
+  <% } %>
 </div>
+
+<%# Home page only. Sets data-motion on <html> and reveals sections as they
+    arrive; declines entirely if the reader prefers reduced motion, in which
+    case nothing is ever hidden in the first place. %>
+<script src="/js/reveal.js"></script>

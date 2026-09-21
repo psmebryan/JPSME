@@ -136,6 +136,11 @@ router.get('/admin/articles/new', ensureMainAdminOnly, pages.adminCreateArticleP
 router.get('/admin/articles/:id/edit', ensureMainAdminOnly, pages.adminEditArticlePage);
 //end
 
+// A stand-in for another system, for testing the integration API locally.
+// No login: the thing it imitates has none. The controller refuses to serve it
+// when NODE_ENV is production.
+router.get('/integration-demo', pages.integrationDemoPage);
+
 router.get('/admin/logout', (req, res) => {
   req.session.destroy(() => {
     res.clearCookie('jpsme.sid');

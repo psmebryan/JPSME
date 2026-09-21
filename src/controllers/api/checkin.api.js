@@ -3,6 +3,7 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { success, error } = require('../../utils/apiResponse');
 const checkinService = require('../../services/checkin.service');
 const checkinReportService = require('../../services/checkinReport.service');
+const integrationKeyService = require('../../services/integrationKey.service');
 
 // Same shape as admin.api.js's checkValidation: validators declared on the
 // route are inert unless something actually reads the result, so every handler
@@ -138,9 +139,44 @@ const revokeStaff = asyncHandler(async (req, res) => {
   return success(res, null, 'Check-in access revoked');
 });
 
+// --- integration keys (main admin only; enforced by apiAdmin on the route) ---
+//
+// A key lets another system admit people without any JPSME account behind it,
+// which makes issuing one at least as consequential as granting a staff member
+// the door — so it sits behind the same gate.
+
+const listIntegrationKeys = asyncHandler(async (req, res) => {
+  const keys = await integrationKeyService.listKeys(req.params.id);
+  return success(res, { keys });
+});
+
+const createIntegrationKey = asyncHandler(async (req, res) => {
+  if (!checkValidation(req, res)) return undefined;
+  const { key, plaintext } = await integrationKeyService.createKey({
+    eventId: req.params.id,
+    label: req.body.label,
+    adminUserId: req.session.user.id,
+    ipAddress: req.ip,
+  });
+  // `plaintext` appears in this response and nowhere else, ever. Only the hash
+  // is stored, so a key that is not copied out of this one response is gone —
+  // the admin screen has to say so, and does.
+  return success(res, { key, plaintext }, 'Integration key created', 201);
+});
+
+const revokeIntegrationKey = asyncHandler(async (req, res) => {
+  const key = await integrationKeyService.revokeKey({
+    keyRowId: req.params.keyId,
+    adminUserId: req.session.user.id,
+    ipAddress: req.ip,
+  });
+  return success(res, { key }, 'Integration key revoked');
+});
+
 module.exports = {
   lookup,
   scan,
   manualCheckIn, undoCheckIn, searchRegistrations, stats, exportReport,
   listStaff, grantStaff, revokeStaff,
+  listIntegrationKeys, createIntegrationKey, revokeIntegrationKey,
 };
