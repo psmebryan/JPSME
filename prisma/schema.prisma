@@ -270,6 +270,12 @@ enum AuditAction {
   PASSWORD_RESET_COMPLETED
   USER_PASSWORD_SET_BY_ADMIN
   USER_EMAIL_CHANGED_BY_ADMIN
+  // An imported account coming to life: the member opened their activation
+  // link, chose a password and an organization, and the account went from a
+  // spreadsheet row to somebody who can sign in. Kept apart from
+  // PASSWORD_RESET_COMPLETED because it is a different event — that one is a
+  // member recovering an account they already had.
+  ACCOUNT_ACTIVATED
 }
 
 model User {
@@ -292,6 +298,40 @@ model User {
   role                    Role       @default(USER)
   status                  UserStatus @default(PENDING)
   emailVerifiedAt         DateTime?
+  // When a USABLE password was last set on this account — by the member
+  // registering, by them activating an imported account, by a reset, or by an
+  // administrator setting one.
+  //
+  // NULL means there has never been one: the account was created by a
+  // spreadsheet import and is waiting to be activated. Its `password` column
+  // holds a hash of random bytes that were thrown away, so nothing can ever
+  // match it; the account is real but cannot be signed in to.
+  //
+  // "Usable password exists" rather than "the owner chose it" is the meaning
+  // that matters, because login gates on this column. An administrator setting
+  // a password for somebody must set it too, or they would hand out a password
+  // that the login form then refuses.
+  //
+  // This is what separates the two very different kinds of PENDING row:
+  // "registered, waiting for an admin to approve them" and "imported, waiting
+  // for the member to activate". Approving the second achieves nothing, because
+  // they still have no password and no organization.
+  //
+  // It also picks the wording of the emailed link and of the page it opens, and
+  // it stops the login form dead-ending on "Invalid email or password" for
+  // somebody whose account simply has not been activated yet.
+  //
+  // DEFAULTED, and that is the load-bearing part. Login refuses an account whose
+  // value is NULL, so any path that creates a user and forgets this column makes
+  // an account nobody can ever sign in to — and one of those paths is
+  // seedAdmin.js, which would lock the first administrator out of a fresh
+  // deployment. Five paths create users today and nothing stops a sixth.
+  //
+  // The default makes the omission fail the safe way round: a forgotten column
+  // yields a normal, usable account. The importer becomes the single place that
+  // passes NULL, deliberately — which is where an exception this consequential
+  // belongs.
+  passwordSetAt           DateTime?  @default(now())
   // When the current paid membership lapses — set to one year from the moment
   // a membership payment is confirmed (payment.service.js's applyPaymentPaid).
   // Null means no membership has ever been paid for, which is a normal state

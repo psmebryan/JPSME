@@ -25,6 +25,17 @@ const jobService = require('./job.service');
 // later; short enough that a link left in an inbox is not a standing key.
 const TOKEN_TTL_MS = 60 * 60 * 1000;
 
+// An ACTIVATION link is the same credential with a very different life. A reset
+// is answered within minutes by somebody who just failed to sign in; an
+// activation lands unannounced in the inbox of somebody who was not expecting
+// it and may not read mail until the weekend. An hour would expire almost all
+// of them, and every expiry is a person who has to ask an admin to send another.
+//
+// Two weeks is the balance: long enough that the link is still good when they
+// get round to it, short enough that a leaked mailbox from last term does not
+// still open an account.
+const ACTIVATION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+
 const TOKEN_BYTES = 32;
 
 // Matches the registration rule. Reset is not the place to introduce a
@@ -78,9 +89,12 @@ async function requestReset(email, { ipAddress = null } = {}) {
 // Mints the token and returns the link. Called by the job handler, not by the
 // request path — so the plaintext token exists only inside the process that is
 // about to put it in an email, and never sits in a queue row on disk.
-async function issueResetLink(userId) {
+// `ttlMs` lets an activation link outlive a reset link. It is passed in rather
+// than derived from the account here so this function stays a pure minter — the
+// caller already knows which kind of mail it is about to send.
+async function issueResetLink(userId, { ttlMs = TOKEN_TTL_MS } = {}) {
   const token = generateToken();
-  const expiresAt = new Date(Date.now() + TOKEN_TTL_MS);
+  const expiresAt = new Date(Date.now() + ttlMs);
   const tokenHash = hashToken(userId, token);
 
   // upsert, not create: one live reset per account. A second request replaces
@@ -96,7 +110,7 @@ async function issueResetLink(userId) {
   // it — without knowing the account there is nothing to hash against. It is
   // not a secret and grants nothing on its own.
   const url = `${appUrl()}/reset-password?uid=${userId}&token=${token}`;
-  return { url, ttlMs: TOKEN_TTL_MS };
+  return { url, ttlMs };
 }
 
 // --- using a link -----------------------------------------------------------
@@ -135,12 +149,33 @@ async function inspectToken(userId, token) {
   if (row.usedAt) return { ok: false, reason: 'USED', message: REASONS.USED };
   if (row.expiresAt.getTime() <= Date.now()) return { ok: false, reason: 'EXPIRED', message: REASONS.EXPIRED };
 
-  return { ok: true, userId: id };
+  // Which kind of link this is, so the page can render itself correctly.
+  //
+  // Derived from the account rather than carried in the URL: a flag in the link
+  // would be something the holder could flip, and "is this an activation"
+  // decides whether the form asks for an organization and whether submitting it
+  // approves the account. That is not a decision to take from the query string.
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: { passwordSetAt: true, organizationId: true, firstName: true },
+  });
+  if (!user) return { ok: false, reason: 'INVALID', message: REASONS.INVALID };
+
+  return {
+    ok: true,
+    userId: id,
+    isActivation: user.passwordSetAt === null,
+    // Pre-fills the picker when an import happened to name one. The member can
+    // still change it — an admin filling this column in is guessing, and the
+    // person reading the page is not.
+    organizationId: user.organizationId || null,
+    firstName: user.firstName,
+  };
 }
 
 // Sets the new password and burns the link, in one transaction: a password
 // changed without the token being consumed would leave a working link behind.
-async function completeReset({ userId, token, password, ipAddress = null }) {
+async function completeReset({ userId, token, password, organizationId = null, ipAddress = null }) {
   if (!password || String(password).length < MIN_PASSWORD_LENGTH) {
     return { ok: false, reason: 'WEAK', message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` };
   }
@@ -148,27 +183,67 @@ async function completeReset({ userId, token, password, ipAddress = null }) {
   const check = await inspectToken(userId, token);
   if (!check.ok) return check;
 
+  // --- activation only -------------------------------------------------------
+  //
+  // An imported account has no organization until the member picks one, and a
+  // member with no organization is invisible to their own chapter. Enforced
+  // here rather than only in the form: the form is a convenience, this is the
+  // rule.
+  const chosenOrg = organizationId ? Number(organizationId) : (check.organizationId || null);
+  if (check.isActivation) {
+    if (!chosenOrg || !Number.isInteger(chosenOrg)) {
+      return { ok: false, reason: 'NO_ORGANIZATION', message: 'Please choose your school or organization.' };
+    }
+    const org = await prisma.organization.findUnique({
+      where: { id: chosenOrg },
+      select: { id: true, isActive: true },
+    });
+    if (!org || !org.isActive) {
+      return { ok: false, reason: 'NO_ORGANIZATION', message: 'That organization was not found. Please choose again.' };
+    }
+  }
+
   const hashed = await bcrypt.hash(String(password), 10);
+  const now = new Date();
 
   // The conditional update is the concurrency story: two submissions of the
   // same link race on `usedAt: null`, and exactly one wins. Without it, a
   // double-click could apply two different passwords and leave the account on
   // whichever landed second.
+  //
+  // For an activation this transaction carries four changes that must land
+  // together or not at all — password, verification, organization, approval. A
+  // half-applied activation is the worst outcome available here: an account that
+  // is approved but has no password, or verified but has no chapter, is one a
+  // member cannot use and an admin cannot diagnose.
   const claimed = await prisma.$transaction(async (tx) => {
     const claim = await tx.passwordResetToken.updateMany({
       where: { userId: check.userId, usedAt: null },
-      data: { usedAt: new Date() },
+      data: { usedAt: now },
     });
     if (claim.count !== 1) return false;
-    await tx.user.update({ where: { id: check.userId }, data: { password: hashed } });
+
+    const data = { password: hashed, passwordSetAt: now };
+    if (check.isActivation) {
+      // Using the link IS the proof the address reaches them, so there is no
+      // separate six-digit code for an imported member — see the import plan.
+      data.emailVerifiedAt = now;
+      data.organizationId = chosenOrg;
+      data.status = 'APPROVED';
+    }
+    await tx.user.update({ where: { id: check.userId }, data });
     return true;
   });
 
   if (!claimed) return { ok: false, reason: 'USED', message: REASONS.USED };
 
   await auditService.log({
-    action: 'PASSWORD_RESET_COMPLETED',
+    // Told apart on purpose: a member resetting a password they had is routine,
+    // and an account coming to life for the first time is the moment an
+    // imported row becomes a person who can sign in.
+    action: check.isActivation ? 'ACCOUNT_ACTIVATED' : 'PASSWORD_RESET_COMPLETED',
     targetUserId: check.userId,
+    metadata: check.isActivation ? { organizationId: chosenOrg } : null,
     ipAddress,
   });
 
@@ -177,9 +252,40 @@ async function completeReset({ userId, token, password, ipAddress = null }) {
   // that person's session alive has not actually locked them out.
   const revoked = await revokeSessionsFor(check.userId);
 
-  await jobService.enqueue('SEND_PASSWORD_CHANGED_EMAIL', { userId: check.userId, byAdmin: false });
+  // Only for a reset. A "your password was changed" warning is useful to
+  // somebody who did not change it; sending one to a member who has just
+  // finished creating their account reads as an alarm about the thing they are
+  // in the middle of doing.
+  if (!check.isActivation) {
+    await jobService.enqueue('SEND_PASSWORD_CHANGED_EMAIL', { userId: check.userId, byAdmin: false });
+  }
 
-  return { ok: true, userId: check.userId, sessionsRevoked: revoked };
+  return {
+    ok: true,
+    userId: check.userId,
+    sessionsRevoked: revoked,
+    activated: Boolean(check.isActivation),
+  };
+}
+
+// --- inviting somebody to activate ------------------------------------------
+
+// Queues an activation email for one account.
+//
+// Refuses on an account that has already been activated rather than quietly
+// doing nothing: the caller is either an admin clicking "resend" or a bulk
+// send, and both want to know they aimed at somebody who no longer needs it.
+// Returns false instead of throwing, because a bulk send hitting one already
+// activated member should skip them and carry on, not abort the batch.
+async function queueActivation(userId) {
+  const user = await prisma.user.findUnique({
+    where: { id: Number(userId) },
+    select: { id: true, passwordSetAt: true },
+  });
+  if (!user || user.passwordSetAt !== null) return false;
+
+  await jobService.enqueue('SEND_ACTIVATION_EMAIL', { userId: user.id });
+  return true;
 }
 
 // --- signing out everywhere -------------------------------------------------
@@ -221,6 +327,8 @@ module.exports = {
   completeReset,
   revokeSessionsFor,
   hashToken,
+  queueActivation,
   TOKEN_TTL_MS,
+  ACTIVATION_TTL_MS,
   MIN_PASSWORD_LENGTH,
 };

@@ -109,6 +109,56 @@ async function sendVerificationEmail(user, code, ttlMs) {
 //
 // The lifetime is passed in by the caller, which owns it, rather than written
 // into the copy here where it would go stale the moment that changes.
+// The invitation to activate an imported account.
+//
+// Deliberately NOT the reset email with different words. A reset opens with
+// "somebody asked to reset your password", which is a warning — correct for
+// somebody who did not ask, and alarming for a student who has just been told
+// their chapter signed them up. This one opens by saying who made the account
+// and why, because the reader was not expecting it and their first question is
+// "is this real".
+//
+// No password is mentioned as existing, because none does: the link is the only
+// way in until they choose one.
+async function sendActivationEmail(user, url, ttlMs) {
+  const days = Math.max(1, Math.round((Number(ttlMs) || 14 * 24 * 60 * 60 * 1000) / 86400000));
+  const lifetime = `This link works for ${days} day${days === 1 ? '' : 's'} and can be used once.`;
+
+  try {
+    await transporter.sendMail({
+      from: MAIL_FROM,
+      to: user.email,
+      subject: 'Activate your JPSME account',
+      text: `Hi ${user.firstName},\n\n`
+        + `A JPSME administrator has created an account for you, using this email address.\n\n`
+        + `Open this link to finish setting it up — you will choose your own password and `
+        + `pick your school or organization:\n${url}\n\n`
+        + `${lifetime}\n\n`
+        + `Until you do, the account cannot be signed in to. Nobody, including the `
+        + `administrator who created it, knows or can see your password.\n\n`
+        + `If you were not expecting this, you can ignore this email and nothing will happen.`,
+      html: `
+        <p>Hi ${user.firstName},</p>
+        <p>A JPSME administrator has created an account for you, using this email address.</p>
+        <p>Open the link below to finish setting it up. You will choose your own password and
+        pick your school or organization.</p>
+        <p style="margin:24px 0;">
+          <a href="${url}" style="background:#ecb827;color:#131131;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Activate my account</a>
+        </p>
+        <p style="color:#666;font-size:13px;">Or paste this into your browser:<br>
+        <span style="word-break:break-all;">${url}</span></p>
+        <p style="color:#666;font-size:13px;">${lifetime}<br>
+        Until you do, the account cannot be signed in to. Nobody &mdash; including the
+        administrator who created it &mdash; knows or can see your password.<br>
+        If you were not expecting this, you can ignore this email and nothing will happen.</p>
+      `,
+    });
+    return true;
+  } catch (err) {
+    return reportSendFailure('activation link', user.email, err);
+  }
+}
+
 async function sendPasswordResetEmail(user, url, ttlMs) {
   const minutes = Math.max(1, Math.round((Number(ttlMs) || 60 * 60 * 1000) / 60000));
   const lifetime = minutes >= 60
@@ -372,6 +422,7 @@ async function sendEventInvitationEmail(invitation, event) {
 }
 
 module.exports = {
+  sendActivationEmail,
   sendPasswordResetEmail,
   sendPasswordChangedEmail,
   sendEmailChangedNotice,

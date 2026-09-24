@@ -81,6 +81,10 @@ async function registerUser({
       organizationId: Number(organizationId),
       status: "PENDING",
       role: "USER",
+      // They just chose this password, so the account has a usable one. Without
+      // this every new signup would look like an imported row awaiting
+      // activation and be refused at the login form.
+      passwordSetAt: new Date(),
       postApprovalRedirectUrl: sanitizeRedirectPath(next),
     },
     include: userInclude,
@@ -114,6 +118,24 @@ async function login(email, password, { context = "user" } = {}) {
     // alone lets an attacker enumerate registered emails.
     await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
     throw new AppError("Invalid email or password", 401);
+  }
+
+  // An account created by a spreadsheet import has never had a password set:
+  // its `password` column holds a hash of random bytes that were discarded, so
+  // bcrypt below can only ever fail. Left to itself that produces "Invalid email
+  // or password" — which is both untrue and unactionable, because there is no
+  // password they could type that would work and nothing on the page tells them
+  // so. Checked BEFORE the compare for exactly that reason.
+  //
+  // Unlike the "no such account" path above, saying this leaks nothing an
+  // attacker can use: they had to know a real address to get here, and an
+  // account waiting to be activated is one they cannot sign in to either.
+  if (user.passwordSetAt === null) {
+    throw new AppError(
+      "This account has not been activated yet. Check your email for the activation link, or ask for a new one.",
+      403,
+      'ACCOUNT_NOT_ACTIVATED',
+    );
   }
 
   const passwordMatches = await bcrypt.compare(password, user.password);

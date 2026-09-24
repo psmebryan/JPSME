@@ -327,5 +327,146 @@ test('the layout really does load api.js after the page body', () => {
   assert(api > main, 'api.js is loaded after <main>, which is why inline page scripts must wait');
 });
 
+// --- activation (bulk import, phase 1) ---------------------------------------
+//
+// An activation link is a reset link pointed at an account that has never had a
+// password. The properties below are the ones that make that safe to reuse.
+
+test('an account with no password set cannot be signed in to, and is told why', () => {
+  // Its password column holds a hash of discarded random bytes, so bcrypt can
+  // only ever fail. Left alone that yields "Invalid email or password", which is
+  // untrue and unactionable — there is no password they could type.
+  const src = readSrc('src', 'services', 'auth.service.js');
+  const fn = /async function login\([\s\S]*?\n\}/.exec(src);
+  assert(fn, 'login exists');
+  assert(/ACCOUNT_NOT_ACTIVATED/.test(fn[0]), 'the un-activated case is tagged for the page to act on');
+
+  // Order matters: the check has to come BEFORE the bcrypt compare, or the
+  // compare fails first and the useful message never runs.
+  const guard = fn[0].indexOf('passwordSetAt === null');
+  const compare = fn[0].indexOf('bcrypt.compare(password, user.password)');
+  assert(guard !== -1 && compare !== -1, 'both are present');
+  assert(guard < compare, 'the activation check runs before the password compare');
+});
+
+test('passwordSetAt is defaulted, so forgetting it cannot lock anybody out', () => {
+  // Login refuses NULL. Five code paths create users and nothing stops a sixth;
+  // one of them is seedAdmin, which would lock the first administrator out of a
+  // fresh deployment. The default makes the omission fail safe.
+  const schema = readSrc('prisma', 'schema.prisma');
+  const line = /passwordSetAt\s+DateTime\?\s*(@default\([^)]*\))?/.exec(schema);
+  assert(line, 'the column exists');
+  assert(line[1] && /now\(\)/.test(line[1]),
+    'it carries @default(now()) — without it any path that omits the column creates an unusable account');
+});
+
+test('registration sets it explicitly too', () => {
+  // Belt as well as braces: the default covers a forgotten path, but the one
+  // path we know about should not be relying on it.
+  const src = readSrc('src', 'services', 'auth.service.js');
+  // Anchored on a closing brace at column 0: registerUser takes a destructured
+  // parameter list, so a lazy `\n\}` stops at the brace closing the PARAMETERS
+  // and captures none of the body.
+  const fn = /async function registerUser\([\s\S]*?\n\}\n/.exec(src);
+  assert(fn, 'registerUser exists');
+  assert(/passwordSetAt/.test(fn[0]), 'registration records that a password was chosen');
+});
+
+test('an admin setting a password records it, or hands out one login refuses', () => {
+  const fn = /async function adminSetPassword\([\s\S]*?\n\}/.exec(USER_SERVICE);
+  assert(fn, 'adminSetPassword exists');
+  assert(/passwordSetAt/.test(fn[0]),
+    'it sets passwordSetAt — otherwise the password it just set is refused at the login form');
+});
+
+test('an activation link outlives a reset link by a long way', () => {
+  // A reset is answered in minutes by somebody who just failed to sign in. An
+  // activation lands unannounced and may not be read until the weekend; an hour
+  // would expire almost all of them.
+  assert(service.ACTIVATION_TTL_MS > service.TOKEN_TTL_MS * 24,
+    `activation ${service.ACTIVATION_TTL_MS}ms should be far longer than reset ${service.TOKEN_TTL_MS}ms`);
+  assert(service.ACTIVATION_TTL_MS <= 30 * 24 * 60 * 60 * 1000,
+    'but still expires — a leaked mailbox from last term must not still open an account');
+});
+
+test('whether a link is an activation comes from the account, not the link', () => {
+  // A flag in the URL would be something the holder could flip — and this flag
+  // decides whether submitting the form also verifies an address and approves
+  // the account.
+  const fn = /async function inspectToken\([\s\S]*?\n\}/.exec(SERVICE_SRC);
+  assert(fn, 'inspectToken exists');
+  assert(/passwordSetAt === null/.test(fn[0]), 'it is derived from the user row');
+
+  const api = readSrc('src', 'controllers', 'api', 'auth.api.js');
+  const handler = /const checkResetToken = asyncHandler\([\s\S]*?\n\}\);/.exec(api);
+  assert(handler, 'the check handler exists');
+  assert(!/req\.query\.isActivation|req\.body\.isActivation/.test(handler[0]),
+    'and never read from the request');
+});
+
+test('activation requires an organization on the server, not just in the form', () => {
+  // An imported row has no organization until the member picks one, and a member
+  // with no organization is invisible to their own chapter.
+  const fn = /async function completeReset\([\s\S]*?\n\}/.exec(SERVICE_SRC);
+  assert(fn, 'completeReset exists');
+  assert(/NO_ORGANIZATION/.test(fn[0]), 'there is a refusal for it');
+  assert(/check\.isActivation/.test(fn[0]), 'applied only to activations, so a plain reset needs none');
+  // And it must be a real, active organization rather than any integer.
+  assert(/organization\.findUnique/.test(fn[0]) && /isActive/.test(fn[0]),
+    'the id is checked against a real active organization');
+});
+
+test('activation applies its four changes in one transaction', () => {
+  // Password, verification, organization and approval. A half-applied
+  // activation is the worst outcome available here: approved with no password,
+  // or verified with no chapter, is an account a member cannot use and an admin
+  // cannot diagnose.
+  const fn = /async function completeReset\([\s\S]*?\n\}/.exec(SERVICE_SRC)[0];
+  const tx = /\$transaction\(async \(tx\) => \{[\s\S]*?\n  \}\);/.exec(fn);
+  assert(tx, 'there is a transaction');
+  // Assigned onto a `data` object inside the transaction rather than written as
+  // object properties, so look for the assigned names.
+  ['passwordSetAt', 'emailVerifiedAt', 'organizationId', 'APPROVED'].forEach((field) => {
+    assert(tx[0].includes(field), `${field} is set inside the transaction, not after it`);
+  });
+});
+
+test('an activated member never gets a six-digit verification code', () => {
+  // Using the link IS the proof the address works. Queueing a code as well
+  // would ask them to prove it twice, the second time with no way to know why.
+  const fn = /async function completeReset\([\s\S]*?\n\}/.exec(SERVICE_SRC)[0];
+  assert(!/SEND_VERIFICATION_EMAIL/.test(fn), 'no verification code on the activation path');
+  // Nor the "your password was changed" warning, which on a brand new account
+  // reads as an alarm about the thing they are in the middle of doing.
+  assert(/if \(!check\.isActivation\)/.test(fn),
+    'the password-changed notice is a reset-only send');
+});
+
+test('activation is audited as its own event', () => {
+  const fn = /async function completeReset\([\s\S]*?\n\}/.exec(SERVICE_SRC)[0];
+  assert(/ACCOUNT_ACTIVATED/.test(fn), 'activation has its own action');
+  const schema = readSrc('prisma', 'schema.prisma');
+  assert(/^\s*ACCOUNT_ACTIVATED$/m.test(schema), 'which is a real enum value');
+});
+
+test('the activation invitation carries no secret in its job row', () => {
+  const handlers = readSrc('src', 'jobs', 'handlers', 'index.js');
+  const fn = /async SEND_ACTIVATION_EMAIL\(\{[\s\S]*?\n  \},/.exec(handlers);
+  assert(fn, 'the handler exists');
+  assert(/issueResetLink/.test(fn[0]), 'it mints the token itself');
+  // And re-checks at send time: a bulk send takes a while to drain, and somebody
+  // who activated from an earlier invitation should not get a second one.
+  assert(/passwordSetAt !== null/.test(fn[0]), 'it skips anyone already activated');
+});
+
+test('the activation page reuses the register organization picker', () => {
+  // Rather than a second implementation of a cascade that has to agree with the
+  // first about what a valid branch is.
+  const view = readSrc('views', 'reset-password.ejs');
+  ['organization-search', 'organization-cascade', 'organizationId', 'organization-selected']
+    .forEach((id) => assert(view.includes(id), `binds #${id}, which public/js/auth.js already drives`));
+  assert(/<script src="\/js\/auth\.js">/.test(view), 'and loads that script');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -236,6 +236,10 @@ router.post(
     body('uid').isInt({ min: 1 }),
     body('token').isString().isLength({ min: 32, max: 256 }),
     body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+    // Only sent when activating an imported account. Optional here because a
+    // plain reset has no organization to send; whether it is REQUIRED is
+    // decided by the service, which knows which kind of link this is.
+    body('organizationId').optional({ checkFalsy: true }).isInt({ min: 1 }),
   ],
   authApi.resetPassword
 );

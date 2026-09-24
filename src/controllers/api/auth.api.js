@@ -231,7 +231,22 @@ const forgotPassword = asyncHandler(async (req, res) => {
 // Nothing here is a secret: the caller already holds the link.
 const checkResetToken = asyncHandler(async (req, res) => {
   const result = await passwordResetService.inspectToken(req.query.uid, req.query.token);
-  return success(res, { valid: result.ok, reason: result.reason || null }, result.message || 'This link is valid.');
+
+  // isActivation decides what the page renders: an activation asks for an
+  // organization as well as a password, and says "activate your account"
+  // instead of "reset your password". It comes from the account, never from the
+  // link, so it is not something the holder of a link can flip.
+  //
+  // firstName is returned only on a valid link — a greeting on an activation
+  // page is worth it, and naming somebody behind an invalid link would turn
+  // this endpoint into a way to look accounts up.
+  return success(res, {
+    valid: result.ok,
+    reason: result.reason || null,
+    isActivation: result.ok ? Boolean(result.isActivation) : false,
+    organizationId: result.ok ? (result.organizationId || null) : null,
+    firstName: result.ok ? result.firstName : null,
+  }, result.message || 'This link is valid.');
 });
 
 const resetPassword = asyncHandler(async (req, res) => {
@@ -241,6 +256,9 @@ const resetPassword = asyncHandler(async (req, res) => {
     userId: req.body.uid,
     token: req.body.token,
     password: req.body.password,
+    // Only meaningful on an activation. The service ignores it otherwise, so a
+    // reset cannot be used to move somebody between chapters.
+    organizationId: req.body.organizationId,
     ipAddress: req.ip,
   });
 
@@ -248,7 +266,9 @@ const resetPassword = asyncHandler(async (req, res) => {
   // the page can show the reason and offer to send a new one.
   if (!result.ok) return error(res, result.message, 400, null, result.reason);
 
-  return success(res, null, 'Your password has been changed. You can now sign in.');
+  return success(res, { activated: result.activated }, result.activated
+    ? 'Your account is active. You can now sign in.'
+    : 'Your password has been changed. You can now sign in.');
 });
 
 module.exports = {

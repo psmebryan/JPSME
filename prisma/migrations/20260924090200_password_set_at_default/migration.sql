@@ -1,0 +1,23 @@
+-- Give User.passwordSetAt a default, so forgetting it cannot lock somebody out.
+--
+-- Login refuses an account whose passwordSetAt is NULL — that is how an imported
+-- account waiting for activation is recognised. The consequence is that ANY code
+-- path creating a user without setting this column produces an account nobody
+-- can ever sign in to.
+--
+-- There are five such paths today (auth.service registration, src/jobs/seedAdmin,
+-- prisma/seed, and two dev seeders) and nothing stops a sixth being added. One of
+-- them is seedAdmin, which runs on a fresh deployment and would lock the first
+-- administrator out of their own site.
+--
+-- With a default the omission fails the safe way round: a forgotten column gives
+-- a normal, usable account, and the importer becomes the one place that passes
+-- NULL on purpose.
+--
+-- Column-level only. It does not touch existing rows, which the previous
+-- migration already backfilled.
+--
+-- Re-runnable: ALTER ... MODIFY restates the definition, so applying it twice is
+-- a no-op rather than an error.
+ALTER TABLE `User`
+    MODIFY `passwordSetAt` DATETIME(3) NULL DEFAULT CURRENT_TIMESTAMP(3);

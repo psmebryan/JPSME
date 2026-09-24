@@ -50,6 +50,27 @@ const handlers = {
     await mailService.sendPasswordResetEmail(user, url, ttlMs);
   },
 
+  // The invitation to activate an imported account. Same token machinery as a
+  // reset, minted here for the same reason, but with a fortnight's life — this
+  // one lands unannounced in an inbox that may not be read until the weekend.
+  //
+  // Re-checks passwordSetAt at send time rather than trusting the moment the
+  // job was queued. A bulk send of 500 takes a while to drain, and somebody who
+  // activated from an earlier invitation in the meantime should not receive a
+  // second one telling them their account is not set up.
+  async SEND_ACTIVATION_EMAIL({ userId }) {
+    const user = await prisma.user.findUnique({
+      where: { id: Number(userId) },
+      select: { id: true, email: true, firstName: true, passwordSetAt: true },
+    });
+    if (!user || user.passwordSetAt !== null) return;
+
+    const { url, ttlMs } = await passwordResetService.issueResetLink(user.id, {
+      ttlMs: passwordResetService.ACTIVATION_TTL_MS,
+    });
+    await mailService.sendActivationEmail(user, url, ttlMs);
+  },
+
   async SEND_PASSWORD_CHANGED_EMAIL({ userId, byAdmin }) {
     const user = await prisma.user.findUnique({
       where: { id: Number(userId) },

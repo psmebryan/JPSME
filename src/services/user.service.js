@@ -342,7 +342,14 @@ async function adminSetPassword(userId, newPassword, { actorId = null, ipAddress
   }
 
   const hashed = await bcrypt.hash(password, 10);
-  await prisma.user.update({ where: { id: target.id }, data: { password: hashed } });
+  // passwordSetAt too: login gates on it, so setting a password without it
+  // would hand somebody a password the login form then refuses. It also takes an
+  // imported account out of "awaiting activation", which is right — it now has a
+  // usable password, whoever chose it.
+  await prisma.user.update({
+    where: { id: target.id },
+    data: { password: hashed, passwordSetAt: new Date() },
+  });
 
   await auditService.log({
     action: 'USER_PASSWORD_SET_BY_ADMIN',
