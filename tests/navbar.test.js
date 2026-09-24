@@ -51,6 +51,13 @@ function assertEqual(actual, expected, message) {
 
 const ROOT = path.join(__dirname, '..');
 const SOURCE = fs.readFileSync(path.join(ROOT, 'public', 'js', 'navbar.js'), 'utf8');
+
+// Line endings normalised: the working tree here is CRLF, so a multi-line
+// pattern written with \n silently matches nothing.
+function readSrc() {
+  var parts = Array.prototype.slice.call(arguments);
+  return fs.readFileSync(path.join.apply(path, [ROOT].concat(parts)), 'utf8').replace(/\r\n/g, '\n');
+}
 const CSS = fs.readFileSync(path.join(ROOT, 'public', 'css', 'tailwind.css'), 'utf8');
 
 // --- the two numbers the fix depends on -------------------------------------
@@ -221,6 +228,77 @@ test('the harness really does catch the bug it was written for', () => {
     if (oscillates(page)) caught.push(content);
   }
   assert(caught.length > 0, 'the old single-threshold logic oscillates, and this harness sees it');
+});
+
+// --- the dropdown menus ------------------------------------------------------
+//
+// These guard a bug that is invisible in the code and obvious in the hand: the
+// panel sits 12px below its button, and without a bridge across that gap the
+// pointer moving from "My Profile"'s button to "My Profile" passes through
+// 12px belonging to neither element. That fires mouseleave on the wrapper and
+// the menu shuts before it can be clicked.
+
+function navCss() {
+  return fs.readFileSync(path.join(ROOT, 'public', 'css', 'tailwind.css'), 'utf8');
+}
+
+test('the gap under a dropdown is bridged, and the two match', () => {
+  const css = navCss();
+  const menu = /\.jp-nav-menu\{[^}]*\}/.exec(css);
+  const bridge = /\.jp-nav-menu:before\{[^}]*\}/.exec(css);
+  assert(menu, 'the menu rule ships');
+  assert(bridge, 'and so does the ::before bridge — without it the gap is a dead zone');
+
+  const gap = /margin-top:([0-9.]+)px/.exec(menu[0]);
+  const height = /height:([0-9.]+)px/.exec(bridge[0]);
+  assert(gap, 'the menu declares its own gap');
+  assert(height, 'the bridge declares a height');
+  assertEqual(height[1], gap[1],
+    `the bridge must cover the whole gap, but the gap is ${gap[1]}px and the bridge ${height[1]}px`);
+  assert(/bottom:100%/.test(bridge[0]), 'and sit directly above the panel');
+});
+
+test('the dropdown does not clip its own bridge', () => {
+  // overflow-hidden would cut the bridge off and restore the dead zone exactly.
+  // It was never needed: the links are rounded-lg inside 6px of padding, so
+  // they never reach the container's corners.
+  const menu = /\.jp-nav-menu\{[^}]*\}/.exec(navCss())[0];
+  assert(!/overflow:hidden/.test(menu),
+    'overflow-hidden on .jp-nav-menu clips the ::before bridge away');
+});
+
+test('the gap is declared once, not also as a utility in the markup', () => {
+  // Two sources for one measurement is how the bridge and the gap drift apart.
+  const nav = fs.readFileSync(path.join(ROOT, 'views', 'partials', 'navbar.ejs'), 'utf8');
+  const menus = nav.match(/class="jp-nav-menu[^"]*"/g) || [];
+  assert(menus.length >= 2, `found the menus, got ${menus.length}`);
+  menus.forEach((cls) => {
+    assert(!/\bmt-\d/.test(cls), `no margin utility on the menu itself: ${cls}`);
+  });
+});
+
+test('closing is delayed but opening and clicking are not', () => {
+  // A pointer moving diagonally to a lower item can clip the wrapper's corner
+  // for a few milliseconds. Closing instantly on that makes the menu feel like
+  // it is dodging the cursor.
+  const src = readSrc('public', 'js', 'navbar.js');
+  const delay = /CLOSE_DELAY\s*=\s*(\d+)/.exec(src);
+  assert(delay, 'there is a named close delay');
+  const ms = Number(delay[1]);
+  assert(ms >= 120 && ms <= 500, `the delay is forgiving but not sticky, got ${ms}ms`);
+
+  assert(/function openNow\(\)[\s\S]{0,140}clearTimeout/.test(src),
+    'opening cancels any pending close');
+  assert(/mouseleave['"]?\s*,\s*closeSoon/.test(src), 'leaving closes on a delay');
+  assert(/mouseenter['"]?\s*,\s*openNow/.test(src), 'entering opens at once');
+});
+
+test('a deliberate click is never swallowed by a pending close', () => {
+  const src = readSrc('public', 'js', 'navbar.js');
+  const click = /btn\.addEventListener\('click'[\s\S]*?\}\);/.exec(src);
+  assert(click, 'the button has a click handler');
+  assert(/openNow\(\)/.test(click[0]) && /closeNow\(\)/.test(click[0]),
+    'it uses the immediate forms, so a click acts now rather than after the grace period');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

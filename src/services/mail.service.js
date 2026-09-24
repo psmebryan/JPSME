@@ -101,6 +101,118 @@ async function sendVerificationEmail(user, code, ttlMs) {
   }
 }
 
+// The reset link itself.
+//
+// No code to type and nothing to copy: somebody locked out of an account is
+// already having a bad time, and a six-digit code they have to transcribe from
+// one device to another is another place to fail.
+//
+// The lifetime is passed in by the caller, which owns it, rather than written
+// into the copy here where it would go stale the moment that changes.
+async function sendPasswordResetEmail(user, url, ttlMs) {
+  const minutes = Math.max(1, Math.round((Number(ttlMs) || 60 * 60 * 1000) / 60000));
+  const lifetime = minutes >= 60
+    ? `This link works for ${Math.round(minutes / 60)} hour${minutes >= 120 ? 's' : ''} and can be used once.`
+    : `This link works for ${minutes} minutes and can be used once.`;
+
+  try {
+    await transporter.sendMail({
+      from: MAIL_FROM,
+      to: user.email,
+      subject: 'Reset your JPSME password',
+      text: `Hi ${user.firstName},\n\n`
+        + `Somebody asked to reset the password for your JPSME account.\n\n`
+        + `Open this link to choose a new one:\n${url}\n\n`
+        + `${lifetime}\n\n`
+        + `If this was not you, you can ignore this email — your password has not changed, `
+        + `and nobody can use this link without opening it from your inbox.`,
+      html: `
+        <p>Hi ${user.firstName},</p>
+        <p>Somebody asked to reset the password for your JPSME account.</p>
+        <p style="margin:24px 0;">
+          <a href="${url}" style="background:#ecb827;color:#131131;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Choose a new password</a>
+        </p>
+        <p style="color:#666;font-size:13px;">Or paste this into your browser:<br>
+        <span style="word-break:break-all;">${url}</span></p>
+        <p style="color:#666;font-size:13px;">${lifetime}<br>
+        If this was not you, you can ignore this email — your password has not changed,
+        and nobody can use this link without opening it from your inbox.</p>
+      `,
+    });
+    return true;
+  } catch (err) {
+    return reportSendFailure('password reset link', user.email, err);
+  }
+}
+
+// Sent AFTER a password changes, to the address on the account.
+//
+// This is the one that catches a real compromise. Somebody who has taken over
+// an account will change the password; this mail is what tells the owner it
+// happened, while they can still act on it. It is not a courtesy.
+async function sendPasswordChangedEmail(user, { byAdmin = false } = {}) {
+  const how = byAdmin
+    ? 'A JPSME administrator set a new password on your account.'
+    : 'The password on your JPSME account was just changed.';
+  const next = byAdmin
+    ? 'If you were not expecting this, reply to this email or contact your chapter administrator.'
+    : 'If this was not you, reset your password immediately and contact us — somebody else may have access to your account.';
+
+  try {
+    await transporter.sendMail({
+      from: MAIL_FROM,
+      to: user.email,
+      subject: 'Your JPSME password was changed',
+      text: `Hi ${user.firstName},\n\n${how}\n\n`
+        + `You have been signed out everywhere and will need to sign in again.\n\n${next}`,
+      html: `
+        <p>Hi ${user.firstName},</p>
+        <p>${how}</p>
+        <p>You have been signed out everywhere and will need to sign in again.</p>
+        <p style="color:#666;font-size:13px;">${next}</p>
+      `,
+    });
+    return true;
+  } catch (err) {
+    return reportSendFailure('password change notice', user.email, err);
+  }
+}
+
+// Sent to the OLD address when an administrator changes the email on an
+// account.
+//
+// Changing the address is how an account is taken over permanently: every
+// future reset link goes somewhere else, and the real owner has no way to find
+// out. Telling the old address is the only warning they will ever get, so this
+// goes to the address that is being replaced, not the new one.
+async function sendEmailChangedNotice(user, previousEmail, newEmail) {
+  try {
+    await transporter.sendMail({
+      from: MAIL_FROM,
+      to: previousEmail,
+      subject: 'The email address on your JPSME account was changed',
+      text: `Hi ${user.firstName},\n\n`
+        + `A JPSME administrator changed the email address on your account from `
+        + `${previousEmail} to ${newEmail}.\n\n`
+        + `Future sign-ins and password resets will use the new address.\n\n`
+        + `If you did not ask for this, contact your chapter administrator straight away — `
+        + `this message was sent to your old address because it may be the only one you can still read.`,
+      html: `
+        <p>Hi ${user.firstName},</p>
+        <p>A JPSME administrator changed the email address on your account from
+        <strong>${previousEmail}</strong> to <strong>${newEmail}</strong>.</p>
+        <p>Future sign-ins and password resets will use the new address.</p>
+        <p style="color:#666;font-size:13px;">If you did not ask for this, contact your chapter
+        administrator straight away — this message was sent to your old address because it may be
+        the only one you can still read.</p>
+      `,
+    });
+    return true;
+  } catch (err) {
+    return reportSendFailure('email change notice', previousEmail, err);
+  }
+}
+
 // Fires when an admin approves a pending applicant. Best-effort: a mail
 // failure here must never undo or fail the approval action itself.
 async function sendMemberApprovedEmail(user) {
@@ -260,6 +372,9 @@ async function sendEventInvitationEmail(invitation, event) {
 }
 
 module.exports = {
+  sendPasswordResetEmail,
+  sendPasswordChangedEmail,
+  sendEmailChangedNotice,
   sendVerificationEmail,
   sendMemberApprovedEmail,
   sendAccountApprovedEmail,

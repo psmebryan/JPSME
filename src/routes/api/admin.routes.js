@@ -98,6 +98,31 @@ router.get(
 router.post('/users/:id/approve', verifyCsrfToken, param('id').isInt(), adminApi.approveUser);
 router.post('/users/:id/reject', verifyCsrfToken, param('id').isInt(), adminApi.rejectUser);
 
+// A member's credentials. MAIN_ADMIN only — note these sit BELOW the
+// apiAdmin gate that /users/:id/approve is under, not with the
+// apiAdminOrChapterAdmin routes higher up: setting a password means being able
+// to sign in as that member, and changing their address means every future
+// reset link goes somewhere else. Neither is chapter-level member management.
+router.post(
+  '/users/:id/password',
+  verifyCsrfToken,
+  [
+    param('id').isInt(),
+    body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+  ],
+  adminApi.setUserPassword
+);
+router.put(
+  '/users/:id/email',
+  verifyCsrfToken,
+  [
+    param('id').isInt(),
+    body('email').trim().isEmail().withMessage('A valid email is required').normalizeEmail(),
+    body('requireVerification').optional().isBoolean(),
+  ],
+  adminApi.changeUserEmail
+);
+
 router.get('/settings/logo', adminApi.getLogo);
 router.post('/settings/logo', verifyCsrfToken, uploadLogo.single('logo'), verifyImageSignature, adminApi.uploadLogo);
 // The other three site images, same gate and same signature check as the logo.

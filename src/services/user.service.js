@@ -3,6 +3,9 @@ const AppError = require('../utils/AppError');
 const { toPublicUser } = require('./auth.service');
 const mailService = require('./mail.service');
 const auditService = require('./audit.service');
+const bcrypt = require('bcryptjs');
+const jobService = require('./job.service');
+const passwordResetService = require('./passwordReset.service');
 const sheetsSyncService = require('./sheetsSync.service');
 const organizationService = require('./organization.service');
 const normalizeName = (value) => String(value || '').trim().toUpperCase();
@@ -307,6 +310,133 @@ async function updateUser(userId, data, { allowAdminRole = false, actorId = null
   return toPublicUser(updated);
 }
 
+// --- credentials, changed by an administrator -------------------------------
+//
+// Both of these hand an administrator the ability to take over a member's
+// account: set the password and you can sign in as them; change the email and
+// every future reset link arrives in your inbox instead of theirs.
+//
+// That is a legitimate need — members lose access, addresses are mistyped at
+// sign-up, and somebody has to be able to fix it. It is not a reason to make it
+// quiet. Each one is audited under its own action, and each one mails the
+// member, including at the address being replaced.
+
+const MIN_PASSWORD_LENGTH = 8;
+
+// Sets a member's password outright.
+//
+// Notice what this deliberately does NOT do: return the password, echo it back,
+// or store it anywhere except as a bcrypt hash. The administrator typed it and
+// can read it off their own screen; putting it in a response body puts it in
+// logs and in browser history.
+async function adminSetPassword(userId, newPassword, { actorId = null, ipAddress = null } = {}) {
+  const target = await prisma.user.findUnique({
+    where: { id: Number(userId) },
+    select: { id: true, email: true, firstName: true },
+  });
+  if (!target) throw new AppError('User not found', 404);
+
+  const password = String(newPassword || '');
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    throw new AppError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`, 422);
+  }
+
+  const hashed = await bcrypt.hash(password, 10);
+  await prisma.user.update({ where: { id: target.id }, data: { password: hashed } });
+
+  await auditService.log({
+    action: 'USER_PASSWORD_SET_BY_ADMIN',
+    actorId,
+    targetUserId: target.id,
+    metadata: { email: target.email },
+    ipAddress,
+  });
+
+  // Signed out everywhere. If the reason for this change is that somebody else
+  // got into the account, leaving their session alive achieves nothing.
+  const sessionsRevoked = await passwordResetService.revokeSessionsFor(target.id);
+
+  // Any outstanding reset link is dead too — it was issued against the old
+  // password's circumstances, and a live link after an admin intervention is a
+  // second way in that nobody is watching.
+  await prisma.passwordResetToken.deleteMany({ where: { userId: target.id } });
+
+  await jobService.enqueue('SEND_PASSWORD_CHANGED_EMAIL', { userId: target.id, byAdmin: true });
+
+  return { id: target.id, sessionsRevoked };
+}
+
+// Changes the address on an account.
+//
+// requireVerification decides whether the member has to prove the new address
+// reaches them before they can sign in again, and the right answer genuinely
+// differs:
+//
+//   ON (the default) is for the common case — the address was mistyped at
+//   sign-up and the member never got their verification mail. Clearing
+//   emailVerifiedAt and sending a fresh code to the new address is exactly the
+//   fix, and it confirms the new address actually works.
+//
+//   OFF is for an administrator who already knows the address is good and does
+//   not want to lock out an active member over a correction. It trusts the
+//   administrator, which is why it is a deliberate choice rather than the
+//   default, and why it is audited as one.
+async function adminChangeEmail(userId, newEmail, { requireVerification = true, actorId = null, ipAddress = null } = {}) {
+  const target = await prisma.user.findUnique({
+    where: { id: Number(userId) },
+    select: { id: true, email: true, firstName: true, emailVerifiedAt: true },
+  });
+  if (!target) throw new AppError('User not found', 404);
+
+  const address = String(newEmail || '').trim().toLowerCase();
+  if (!address || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+    throw new AppError('A valid email address is required', 422);
+  }
+  if (address === target.email.toLowerCase()) {
+    throw new AppError('That is already the address on this account', 400);
+  }
+
+  // Checked before writing so the failure is a sentence rather than a unique
+  // constraint violation surfacing as a 500.
+  const taken = await prisma.user.findUnique({ where: { email: address }, select: { id: true } });
+  if (taken) throw new AppError('Another account already uses that email address', 409);
+
+  const previousEmail = target.email;
+
+  await prisma.user.update({
+    where: { id: target.id },
+    data: {
+      email: address,
+      // Clearing this is what forces verification: login checks it.
+      emailVerifiedAt: requireVerification ? null : (target.emailVerifiedAt || new Date()),
+    },
+  });
+
+  // A reset link issued against the old address must not survive the change —
+  // otherwise the previous owner of that inbox still holds a way in.
+  await prisma.passwordResetToken.deleteMany({ where: { userId: target.id } });
+
+  await auditService.log({
+    action: 'USER_EMAIL_CHANGED_BY_ADMIN',
+    actorId,
+    targetUserId: target.id,
+    metadata: { from: previousEmail, to: address, requireVerification: Boolean(requireVerification) },
+    ipAddress,
+  });
+
+  // To the OLD address. This is the only warning the real owner will get if the
+  // change was not theirs, and it has to go to the inbox they can still read.
+  await jobService.enqueue('SEND_EMAIL_CHANGED_NOTICE', {
+    userId: target.id, previousEmail, newEmail: address,
+  });
+
+  if (requireVerification) {
+    await jobService.enqueue('SEND_VERIFICATION_EMAIL', { userId: target.id });
+  }
+
+  return { id: target.id, email: address, requiresVerification: Boolean(requireVerification) };
+}
+
 async function deleteUser(userId) {
   const user = await prisma.user.findUnique({ where: { id: Number(userId) } });
   if (!user) throw new AppError('User not found', 404);
@@ -315,4 +445,6 @@ async function deleteUser(userId) {
   return { deleted: true };
 }
 
-module.exports = { listByStatus, listMembersForAdmin, setStatus, listAdmins, listByOrganization, getById, updateUser, deleteUser };
+module.exports = {
+  adminSetPassword,
+  adminChangeEmail, listByStatus, listMembersForAdmin, setStatus, listAdmins, listByOrganization, getById, updateUser, deleteUser };

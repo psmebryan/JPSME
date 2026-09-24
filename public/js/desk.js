@@ -99,7 +99,85 @@
         </div>`;
     }
 
+    // "Recently admitted" is the EVENT's list, not this tab's.
+    //
+    // It used to be built only from admissions made in this browser, by a
+    // prepend inside the check-in handler. Three consequences, all of which
+    // read as the panel being broken:
+    //
+    //   Reloading the page emptied it, even though the server knew perfectly
+    //   well who had been admitted.
+    //
+    //   Anybody admitted at another station never appeared, so two desks at one
+    //   door each saw half the picture.
+    //
+    //   Scanning somebody ALREADY checked in added nothing — that branch
+    //   renders no "Check in" button, so the prepend it lived in never ran. A
+    //   person genuinely admitted five minutes ago was simply missing.
+    //
+    // The stats endpoint has been returning `recent` all along; this code was
+    // throwing it away and reading only the counts.
+    function renderRecent(rows) {
+      if (!recent) return;
+      recent.innerHTML = '';
+      if (!rows || !rows.length) {
+        const empty = document.createElement('li');
+        empty.className = 'text-slate-400';
+        empty.textContent = 'Nobody admitted yet.';
+        recent.appendChild(empty);
+        return;
+      }
+      rows.slice(0, 8).forEach((row) => {
+        const reg = row.eventRegistration || {};
+        const seatLabel = reg.seat ? reg.seat.label : null;
+        const when = row.scannedAt
+          ? new Date(row.scannedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : '';
+
+        const li = document.createElement('li');
+        li.className = 'flex items-center justify-between gap-3';
+
+        const label = document.createElement('span');
+        // textContent, not innerHTML: these are attendee names straight off the
+        // database, and this list is rebuilt on every scan.
+        label.textContent = `${reg.fullName || 'Unknown'}${seatLabel ? ` — ${seatLabel}` : ''}${when ? ` · ${when}` : ''}`;
+        li.appendChild(label);
+
+        if (reg.checkedInAt) {
+          // Reversing an admission. The endpoint has existed all along and
+          // nothing in the UI ever called it, so the only way to undo a
+          // mis-scan was to edit the database — which, at a live door, means
+          // no way at all.
+          //
+          // Offered to anyone who can run this door rather than to main admins
+          // only, matching the service: the person who needs it is the operator
+          // who just scanned the wrong ticket, with a queue waiting.
+          const undo = document.createElement('button');
+          undo.type = 'button';
+          undo.dataset.undo = reg.id;
+          undo.className = 'shrink-0 text-xs font-semibold text-red-600 hover:underline';
+          undo.textContent = 'Remove';
+          li.appendChild(undo);
+        } else {
+          // Already reversed. The row stays: "nobody was ever admitted on this
+          // ticket" and "somebody was admitted and then removed" are different
+          // facts, and a list that cannot tell them apart is worse than none.
+          label.className = 'text-slate-400 line-through';
+          const note = document.createElement('span');
+          note.className = 'shrink-0 text-xs text-slate-400';
+          note.textContent = 'removed';
+          li.appendChild(note);
+        }
+
+        recent.appendChild(li);
+      });
+    }
+
+    // Shown immediately on a successful check-in so the operator gets an
+    // instant acknowledgement, then replaced wholesale by the server's list a
+    // moment later. Same person at the top either way, so there is no flicker.
     function addRecent(name, seatLabel) {
+      if (!recent) return;
       const li = document.createElement('li');
       li.textContent = `${name}${seatLabel ? ` — ${seatLabel}` : ''} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
       if (recent.firstElementChild && recent.firstElementChild.classList.contains('text-slate-400')) {
@@ -122,11 +200,15 @@
     async function refreshStats() {
       try {
         const res = await apiFetch(`/api/events/${eventId}/checkin/stats`);
-        const counts = res.data.counts || res.data;
+        const counts = res.data.stats || res.data.counts || res.data;
         ['registered', 'checkedIn'].forEach((key) => {
           const el = root.querySelector(`[data-stat="${key}"]`);
           if (el && counts[key] != null) el.textContent = counts[key];
         });
+        // The same response carries the event's recent admissions. Reading it
+        // is what makes the panel show other stations' work, survive a reload,
+        // and include somebody who was already checked in before this scan.
+        if (res.data.recent) renderRecent(res.data.recent);
       } catch (err) { /* the numbers are a comfort, not the job */ }
     }
 
@@ -237,6 +319,46 @@
         refocus();
       }
     });
+
+    // Delegated, not bound per button: renderRecent replaces the whole list on
+    // every refresh, so per-row listeners would be discarded and re-created
+    // constantly — and any that leaked would fire against detached nodes.
+    if (recent) {
+      recent.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-undo]');
+        if (!btn) return;
+        const registrationId = Number(btn.dataset.undo);
+        if (!registrationId) return;
+        if (!window.confirm('Remove this check-in? They will be able to check in again.')) return;
+
+        btn.disabled = true;
+        btn.textContent = 'Removing…';
+        try {
+          await apiFetch(`/api/events/${eventId}/checkin/undo`, {
+            method: 'POST',
+            body: JSON.stringify({
+              registrationId,
+              scannerIdentifier: station ? station.value.trim().toUpperCase() : null,
+            }),
+          });
+          showToast('Check-in removed');
+          // Re-read rather than patch the row: the counters move too, and the
+          // server is the thing that knows what the list is now.
+          refreshStats();
+        } catch (err) {
+          showToast(err.message, 'error');
+          btn.disabled = false;
+          btn.textContent = 'Remove';
+        } finally {
+          refocus();
+        }
+      });
+    }
+
+    // On load, not only after a scan. A desk opened part-way through an event
+    // was showing "Nothing yet this session" over a door that had already
+    // admitted two hundred people.
+    refreshStats();
 
     // Clicking anywhere that is not a control puts focus back on the input, so
     // the next scan lands somewhere useful.

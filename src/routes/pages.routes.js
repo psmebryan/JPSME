@@ -139,6 +139,12 @@ router.get('/admin/articles/:id/edit', ensureMainAdminOnly, pages.adminEditArtic
 // A stand-in for another system, for testing the integration API locally.
 // No login: the thing it imitates has none. The controller refuses to serve it
 // when NODE_ENV is production.
+// Getting back in. Reachable while signed out, obviously, but NOT behind
+// ensureGuest: somebody already signed in on one device may well be resetting
+// because they are locked out on another.
+router.get('/forgot-password', pages.forgotPasswordPage);
+router.get('/reset-password', pages.resetPasswordPage);
+
 router.get('/integration-demo', pages.integrationDemoPage);
 
 router.get('/admin/logout', (req, res) => {

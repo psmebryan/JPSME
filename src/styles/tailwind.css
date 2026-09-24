@@ -692,9 +692,36 @@
     transform: scaleX(1);
   }
 
+  /* The gap between the button and this panel is decorative, and without a
+     bridge it is a DEAD ZONE: the pointer moving from the button down to the
+     first item passes through 12px that belongs to neither, which fires
+     mouseleave on the wrapper and shuts the menu before it can be clicked.
+
+     So the gap is margin on this element and the ::before below covers it.
+     A pseudo-element of the menu is part of the menu for hit-testing, and the
+     menu is inside the wrapper — so hovering the bridge keeps the pointer
+     "inside" and the menu open.
+
+     The gap lives here rather than as an mt-3 utility in the markup precisely
+     so it cannot drift out of step with the bridge's height. Change one and
+     change the other.
+
+     overflow-hidden is deliberately NOT set: it would clip the bridge away and
+     put the dead zone straight back. It was never doing anything anyway — the
+     links are rounded-lg inside 6px of padding, so they never reach the
+     container's own corners. */
   .jp-nav-menu {
-    @apply absolute left-0 top-full w-60 overflow-hidden rounded-xl border border-white/10 bg-ink-900 p-1.5;
+    @apply absolute left-0 top-full w-60 rounded-xl border border-white/10 bg-ink-900 p-1.5;
     box-shadow: 0 24px 48px -24px rgb(0 0 0 / .8);
+    margin-top: 12px;
+  }
+  .jp-nav-menu::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    height: 12px;
   }
   .jp-nav-menu a {
     @apply block rounded-lg px-4 py-2.5 text-sm text-mist-200 transition-colors

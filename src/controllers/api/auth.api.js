@@ -3,6 +3,7 @@ const { validationResult } = require('express-validator');
 const asyncHandler = require('../../utils/asyncHandler');
 const { success, error } = require('../../utils/apiResponse');
 const authService = require('../../services/auth.service');
+const passwordResetService = require('../../services/passwordReset.service');
 const emailVerificationService = require('../../services/emailVerification.service');
 const storageService = require('../../services/storage.service');
 const logger = require('../../utils/logger');
@@ -208,7 +209,52 @@ const verifyEmailCode = asyncHandler(async (req, res) => {
   );
 });
 
+// --- forgotten passwords ----------------------------------------------------
+
+// Always the same answer, whether or not that address has an account.
+//
+// "No account with that email" is a free membership check for anyone holding a
+// list of addresses, and this site's members are students whose addresses are
+// often guessable from their names. The uniform reply is the feature, not
+// vagueness — and the service queues the mail rather than sending it inline so
+// the RESPONSE TIME does not leak the same fact the wording is hiding.
+const forgotPassword = asyncHandler(async (req, res) => {
+  if (!checkValidation(req, res)) return undefined;
+
+  await passwordResetService.requestReset(req.body.email, { ipAddress: req.ip });
+
+  return success(res, null,
+    'If that address has a JPSME account, a reset link is on its way. Check your inbox and spam folder.');
+});
+
+// Whether a link is still good, asked by the reset page before it shows a form.
+// Nothing here is a secret: the caller already holds the link.
+const checkResetToken = asyncHandler(async (req, res) => {
+  const result = await passwordResetService.inspectToken(req.query.uid, req.query.token);
+  return success(res, { valid: result.ok, reason: result.reason || null }, result.message || 'This link is valid.');
+});
+
+const resetPassword = asyncHandler(async (req, res) => {
+  if (!checkValidation(req, res)) return undefined;
+
+  const result = await passwordResetService.completeReset({
+    userId: req.body.uid,
+    token: req.body.token,
+    password: req.body.password,
+    ipAddress: req.ip,
+  });
+
+  // A dead link is the caller's problem to act on, not a server fault — 400 so
+  // the page can show the reason and offer to send a new one.
+  if (!result.ok) return error(res, result.message, 400, null, result.reason);
+
+  return success(res, null, 'Your password has been changed. You can now sign in.');
+});
+
 module.exports = {
+  forgotPassword,
+  checkResetToken,
+  resetPassword,
   register,
   login,
   logout,

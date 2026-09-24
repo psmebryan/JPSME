@@ -198,4 +198,46 @@ router.post(
   authApi.verifyEmailCode
 );
 
+// --- forgotten passwords ----------------------------------------------------
+
+// Tighter than login: each request sends real mail to a real person, so this is
+// an email-bombing tool as much as an account-guessing one. Keyed per IP.
+const forgotLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many reset requests. Please try again later.' },
+});
+
+// Looser, because the caller already holds a link — this is somebody clicking
+// the mail they were sent, possibly twice, not somebody searching.
+const resetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many attempts. Please try again later.' },
+});
+
+router.post(
+  '/forgot-password',
+  verifyCsrfToken, forgotLimiter,
+  [body('email').trim().isEmail().withMessage('A valid email is required').normalizeEmail()],
+  authApi.forgotPassword
+);
+
+router.get('/reset-password/check', resetLimiter, authApi.checkResetToken);
+
+router.post(
+  '/reset-password',
+  verifyCsrfToken, resetLimiter,
+  [
+    body('uid').isInt({ min: 1 }),
+    body('token').isString().isLength({ min: 32, max: 256 }),
+    body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+  ],
+  authApi.resetPassword
+);
+
 module.exports = router;

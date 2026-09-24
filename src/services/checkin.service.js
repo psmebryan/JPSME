@@ -696,6 +696,12 @@ async function listRecentScans(eventId, limit) {
       eventRegistration: {
         select: {
           id: true, fullName: true, registrationNumber: true, checkedInAt: true,
+          // The seat comes along so the desk's "recently admitted" list can be
+          // rendered from THIS data rather than from whatever the browser
+          // happened to remember. Without it, moving that list to the server
+          // would quietly drop the seat number — which at a seated event is
+          // the one thing the operator reads back to the attendee.
+          seat: { select: { label: true } },
         },
       },
     },

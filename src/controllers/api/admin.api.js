@@ -374,4 +374,42 @@ const setOrganizationActiveApi = asyncHandler(async (req, res) => {
   return success(res, result, isActive ? 'Organization reactivated' : 'Organization deactivated');
 });
 
-module.exports = { uploadFavicon, uploadHeroImage, uploadOgImage, listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, getMembershipPaymentRequired, updateMembershipPaymentRequired, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin, getOrganizationTreeLevel, createChildOrganization, deleteOrganizationApi, setOrganizationActiveApi };
+// --- a member's credentials, changed by an administrator --------------------
+//
+// MAIN_ADMIN only, enforced on the route. Setting a password means being able
+// to sign in as that member, and changing the address means every future reset
+// link arrives somewhere else — neither belongs to chapter-level management of
+// their own members.
+
+const setUserPassword = asyncHandler(async (req, res) => {
+  if (!checkValidation(req, res)) return undefined;
+
+  const result = await userService.adminSetPassword(req.params.id, req.body.password, {
+    actorId: req.session.user.id,
+    ipAddress: req.ip,
+  });
+
+  // The password is never echoed back. The administrator typed it and can read
+  // it off their own screen; putting it in a response body puts it into logs
+  // and into browser history.
+  return success(res, { sessionsRevoked: result.sessionsRevoked },
+    'Password updated. They have been signed out everywhere and emailed about the change.');
+});
+
+const changeUserEmail = asyncHandler(async (req, res) => {
+  if (!checkValidation(req, res)) return undefined;
+
+  const result = await userService.adminChangeEmail(req.params.id, req.body.email, {
+    requireVerification: req.body.requireVerification !== false,
+    actorId: req.session.user.id,
+    ipAddress: req.ip,
+  });
+
+  return success(res, result, result.requiresVerification
+    ? 'Email updated. A verification code has been sent to the new address — they cannot sign in until they enter it.'
+    : 'Email updated and marked as verified. They can sign in with the new address straight away.');
+});
+
+module.exports = {
+  setUserPassword,
+  changeUserEmail, uploadFavicon, uploadHeroImage, uploadOgImage, listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, getMembershipPaymentRequired, updateMembershipPaymentRequired, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin, getOrganizationTreeLevel, createChildOrganization, deleteOrganizationApi, setOrganizationActiveApi };

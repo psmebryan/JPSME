@@ -71,6 +71,23 @@ const loginPage = (req, res) => res.render('login', {
   justVerified: req.query.verified === '1',
 });
 
+const forgotPasswordPage = (req, res) => res.render('forgot-password', {
+  title: 'Forgot Password',
+  // Carried over from the login form so somebody who has just failed to sign in
+  // does not retype the address they were already looking at.
+  email: typeof req.query.email === 'string' ? req.query.email.slice(0, 200) : '',
+});
+
+// The uid and token are read straight off the query and handed to the page,
+// which asks the API whether they are any good before showing a form. Neither
+// is trusted here: the page escapes them on the way out, and the API is the
+// only thing that decides whether they mean anything.
+const resetPasswordPage = (req, res) => res.render('reset-password', {
+  title: 'Reset Password',
+  uid: typeof req.query.uid === 'string' ? req.query.uid.slice(0, 20) : '',
+  token: typeof req.query.token === 'string' ? req.query.token.slice(0, 256) : '',
+});
+
 const aboutPage = (req, res) => res.render('about', { title: 'About' });
 
 const contactPage = (req, res) => res.render('contact', { title: 'Contact Us' });
@@ -1202,6 +1219,8 @@ const adminEditArticlePage = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  forgotPasswordPage,
+  resetPasswordPage,
   integrationDemoPage,
   home,
   aboutPage,

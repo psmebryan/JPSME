@@ -115,19 +115,55 @@
     var chevron = chevronId ? document.getElementById(chevronId) : null;
     if (!wrap || !btn || !menu) return;
 
+    // Closing is delayed; opening and clicking are not.
+    //
+    // The stylesheet bridges the 12px gap between the button and the panel,
+    // which fixes the dead zone on the way straight down. This covers the rest:
+    // a pointer moving DIAGONALLY towards a lower item can clip the wrapper's
+    // corner and be outside it for a few milliseconds on the way. Closing
+    // instantly on that makes the menu feel like it is dodging the cursor —
+    // which is exactly what "it closes before I can click My Profile" is.
+    //
+    // Long enough to cross a corner, short enough that a menu deliberately left
+    // behind still closes promptly.
+    var CLOSE_DELAY = 220;
+    var closeTimer = null;
+
     function set(open) {
       menu.classList.toggle('hidden', !open);
       btn.setAttribute('aria-expanded', open ? 'true' : 'false');
       if (chevron) chevron.classList.toggle('rotate-180', open);
     }
-    btn.addEventListener('click', function () { set(menu.classList.contains('hidden')); });
-    wrap.addEventListener('mouseenter', function () { set(true); });
-    wrap.addEventListener('mouseleave', function () { set(false); });
-    wrap.addEventListener('focusout', function (e) {
-      if (!wrap.contains(e.relatedTarget)) set(false);
+    function openNow() {
+      window.clearTimeout(closeTimer);
+      set(true);
+    }
+    function closeNow() {
+      window.clearTimeout(closeTimer);
+      set(false);
+    }
+    function closeSoon() {
+      window.clearTimeout(closeTimer);
+      closeTimer = window.setTimeout(function () { set(false); }, CLOSE_DELAY);
+    }
+
+    btn.addEventListener('click', function () {
+      // A click is deliberate, so it acts now rather than being swallowed by a
+      // pending close.
+      if (menu.classList.contains('hidden')) openNow();
+      else closeNow();
     });
-    document.addEventListener('click', function (e) { if (!wrap.contains(e.target)) set(false); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') set(false); });
+    wrap.addEventListener('mouseenter', openNow);
+    wrap.addEventListener('mouseleave', closeSoon);
+    // Any movement back inside cancels a pending close — including moving
+    // between the panel's own items, which is where corner-clipping happens.
+    wrap.addEventListener('mousemove', function () { window.clearTimeout(closeTimer); });
+
+    wrap.addEventListener('focusout', function (e) {
+      if (!wrap.contains(e.relatedTarget)) closeNow();
+    });
+    document.addEventListener('click', function (e) { if (!wrap.contains(e.target)) closeNow(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeNow(); });
   }
   wireMenu('aboutDropdown', 'aboutDropdownBtn', 'aboutDropdownMenu', 'aboutChevron');
   wireMenu('userMenuDropdown', 'userMenuBtn', 'userMenuList', null);

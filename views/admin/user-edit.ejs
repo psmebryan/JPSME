@@ -71,6 +71,67 @@
   </form>
 </div>
 
+<%# ---- Credentials -------------------------------------------------------
+    Main admins only. `restricted` is the chapter-admin view of this page, and
+    neither of these is chapter-level member management: setting a password
+    means being able to sign in as that member, and changing their address
+    means every future reset link arrives somewhere else. The API enforces the
+    same thing — this only decides whether the controls are drawn. %>
+<% if (!(typeof restricted !== 'undefined' && restricted)) { %>
+<div class="max-w-2xl mx-auto mt-6 admin-card p-6" data-creds data-user-id="<%= user.id %>">
+  <h2 class="text-sm font-semibold text-slate-900">Sign-in details</h2>
+  <p class="mt-1 text-xs text-slate-500">
+    Both of these email <%= user.firstName %> about the change, and sign them out everywhere.
+  </p>
+
+  <%# ---- email ---- %>
+  <div class="mt-5 border-t border-slate-200 pt-5">
+    <label class="form-label" for="new-email">Email address</label>
+    <p class="mb-2 text-xs text-slate-500">
+      Currently <strong><%= user.email %></strong><%= user.emailVerifiedAt ? ' (verified)' : ' (not yet verified)' %>.
+    </p>
+    <div class="flex flex-wrap gap-2">
+      <input id="new-email" data-new-email type="email" class="form-input min-w-[240px] flex-1"
+             placeholder="new.address@example.com" autocomplete="off">
+      <button type="button" data-save-email class="btn-secondary">Change email</button>
+    </div>
+    <label class="mt-3 flex items-start gap-2 text-sm text-slate-600">
+      <input type="checkbox" data-require-verification checked class="mt-0.5 rounded border-slate-300">
+      <span>
+        Make them verify the new address
+        <span class="block text-xs text-slate-500">
+          Recommended. Sends a code to the new address and blocks sign-in until they enter it &mdash; which
+          is what fixes a mistyped address. Untick only if you already know the address works, and want
+          them to keep signing in without interruption.
+        </span>
+      </span>
+    </label>
+  </div>
+
+  <%# ---- password ---- %>
+  <div class="mt-5 border-t border-slate-200 pt-5">
+    <label class="form-label" for="new-password">Set a new password</label>
+    <p class="mb-2 text-xs text-slate-500">
+      For somebody who cannot receive email at all. Otherwise prefer
+      <a href="/forgot-password" class="text-indigo-600 hover:underline">the reset link</a>, which lets them
+      choose their own and means nobody else ever knows it.
+    </p>
+    <div class="flex flex-wrap gap-2">
+      <input id="new-password" data-new-password type="text" class="form-input min-w-[240px] flex-1 font-mono"
+             placeholder="at least 8 characters" autocomplete="off">
+      <button type="button" data-save-password class="btn-secondary">Set password</button>
+    </div>
+    <%# Deliberately type="text": the administrator has to read this back to the
+        member, and a masked field they cannot check is how a typo becomes a
+        second lockout. It is never stored or echoed back by the server. %>
+    <p class="mt-2 text-xs text-amber-700">
+      Shown as you type so you can read it back to them. Write it down before you save &mdash;
+      it cannot be shown again afterwards.
+    </p>
+  </div>
+</div>
+<% } %>
+
 <script nonce="<%= cspNonce %>">
   document.getElementById('user-edit-form').addEventListener('submit', async function (e) {
     e.preventDefault();
@@ -89,3 +150,63 @@
     }
   });
 </script>
+<% if (!(typeof restricted !== 'undefined' && restricted)) { %>
+<script nonce="<%= cspNonce %>">
+(function () {
+  const root = document.querySelector('[data-creds]');
+  if (!root) return;
+  const userId = root.dataset.userId;
+
+  root.querySelector('[data-save-email]').addEventListener('click', async function () {
+    const input = root.querySelector('[data-new-email]');
+    const email = input.value.trim();
+    if (!email) { showToast('Enter the new email address', 'error'); return; }
+
+    const requireVerification = root.querySelector('[data-require-verification]').checked;
+    const warning = requireVerification
+      ? `Change the email to ${email}?\n\nThey will be signed out and cannot sign in again until they enter a code sent to the new address.`
+      : `Change the email to ${email} and mark it verified?\n\nThey will be able to sign in with it straight away, without proving they can receive mail there.`;
+    if (!window.confirm(warning)) return;
+
+    const btn = root.querySelector('[data-save-email]');
+    btn.disabled = true;
+    try {
+      const res = await apiFetch(`/api/admin/users/${userId}/email`, {
+        method: 'PUT',
+        body: JSON.stringify({ email, requireVerification }),
+      });
+      showToast(res.message);
+      window.location.reload();
+    } catch (err) {
+      showToast(err.message, 'error');
+      btn.disabled = false;
+    }
+  });
+
+  root.querySelector('[data-save-password]').addEventListener('click', async function () {
+    const input = root.querySelector('[data-new-password]');
+    const password = input.value;
+    if (password.length < 8) { showToast('Password must be at least 8 characters', 'error'); return; }
+    if (!window.confirm('Set this password?\n\nThey will be signed out everywhere and emailed that an administrator changed it.')) return;
+
+    const btn = root.querySelector('[data-save-password]');
+    btn.disabled = true;
+    try {
+      const res = await apiFetch(`/api/admin/users/${userId}/password`, {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+      });
+      showToast(res.message);
+      // Cleared, not reloaded into: the password exists only in this field and
+      // leaving it on screen after the job is done is one more place it can be
+      // read over a shoulder.
+      input.value = '';
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}());
+</script>
+<% } %>

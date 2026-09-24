@@ -259,6 +259,17 @@ enum AuditAction {
   // credential.
   INTEGRATION_KEY_CREATED
   INTEGRATION_KEY_REVOKED
+  // Credentials. Every one of these is a way into somebody's account, so each
+  // is recorded separately rather than folded into one PASSWORD_CHANGED.
+  //
+  // Who did it is the whole point of the split: a member resetting their own
+  // password is routine, and an administrator setting a member's password is an
+  // administrator who can then sign in as that member. The second needs to be
+  // findable on its own.
+  PASSWORD_RESET_REQUESTED
+  PASSWORD_RESET_COMPLETED
+  USER_PASSWORD_SET_BY_ADMIN
+  USER_EMAIL_CHANGED_BY_ADMIN
 }
 
 model User {
@@ -307,6 +318,7 @@ model User {
   organization           Organization?           @relation("UserOrganization", fields: [organizationId], references: [id], onDelete: SetNull)
   registrations          EventRegistration[]
   emailVerificationToken EmailVerificationToken?
+  passwordResetToken     PasswordResetToken?
 
   organizationAdmin  OrganizationAdmin?
   orgAdminAuditsOld  OrganizationAdminAudit[] @relation("old_org_user")
@@ -343,6 +355,43 @@ model User {
 // digits, which changes what the storage has to defend against: guessing is now
 // feasible in a way it never was for 256 bits. Hence the attempt counter, and a
 // far shorter life than the old 24-hour link.
+// A single-use link that lets somebody who has lost their password prove they
+// still control the address on the account.
+//
+// Same shape as EmailVerificationToken, and the same reasoning behind it: only
+// a hash is stored, so the table is worthless to anyone who reads it, and the
+// user id is mixed into the hash so a leaked digest cannot be matched against a
+// precomputed table without also knowing which account it belongs to.
+//
+// Two differences from the verification code, both because this credential
+// travels in a URL rather than being typed:
+//
+//   It is 32 random bytes, not six digits. A six-digit code is only safe
+//   because it is short-lived AND attempt-limited AND tied to a known account;
+//   a reset link is handed out to anyone who knows an address, so it has to be
+//   unguessable on its own.
+//
+//   usedAt rather than an attempt counter. There is nothing to guess, so the
+//   risk is replay: a link sitting in an inbox, or in a mail server's logs,
+//   must not open a second time.
+model PasswordResetToken {
+  id     Int    @id @default(autoincrement())
+  // One live reset per account: requesting a second link invalidates the first,
+  // so a stolen older mail cannot be used once the real owner asks again.
+  userId Int    @unique
+  // sha256 of "<userId>:<token>". The token itself is in the emailed link and
+  // is stored nowhere.
+  tokenHash String
+  expiresAt DateTime
+  // Set the moment the password is actually changed. A used link is kept rather
+  // than deleted so a second click can say "already used" instead of the
+  // indistinguishable "invalid", which is what makes people request three more.
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
 model EmailVerificationToken {
   id        Int      @id @default(autoincrement())
   userId    Int      @unique

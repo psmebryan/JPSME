@@ -43,7 +43,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
             </svg>
           </button>
-          <div id="aboutDropdownMenu" class="jp-nav-menu mt-3 hidden">
+          <div id="aboutDropdownMenu" class="jp-nav-menu hidden">
             <% aboutPages.forEach(([href, label]) => { %><a href="<%= href %>"><%= label %></a><% }) %>
           </div>
         </div>
@@ -71,7 +71,7 @@
                 <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
               </svg>
             </button>
-            <div id="userMenuList" class="jp-nav-menu left-auto right-0 mt-3 hidden w-56">
+            <div id="userMenuList" class="jp-nav-menu left-auto right-0 hidden w-56">
               <p class="px-4 pb-2 pt-2.5 font-tech text-[10px] font-bold uppercase tracking-[.16em] text-mist-500">Signed in as</p>
               <p class="truncate px-4 pb-2 text-sm font-semibold text-white"><%= currentUser.firstName %> <%= currentUser.lastName %></p>
               <div class="my-1.5 h-px bg-white/10"></div>

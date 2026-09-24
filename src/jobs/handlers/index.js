@@ -1,5 +1,6 @@
 const prisma = require('../../config/prisma');
 const mailService = require('../../services/mail.service');
+const passwordResetService = require('../../services/passwordReset.service');
 const certificateService = require('../../services/certificate.service');
 const emailVerificationService = require('../../services/emailVerification.service');
 
@@ -35,6 +36,38 @@ const handlers = {
   // Re-read rather than carried in the payload, like every handler here: the
   // code itself is NOT in the payload, because a job row is a place a secret
   // would sit in plain text long after it expired.
+  // Mints the reset token here rather than in the request path, so the
+  // plaintext never sits in a queue row on disk. The payload carries a user id
+  // and nothing else.
+  async SEND_PASSWORD_RESET_EMAIL({ userId }) {
+    const user = await prisma.user.findUnique({
+      where: { id: Number(userId) },
+      select: { id: true, email: true, firstName: true },
+    });
+    if (!user) return;
+
+    const { url, ttlMs } = await passwordResetService.issueResetLink(user.id);
+    await mailService.sendPasswordResetEmail(user, url, ttlMs);
+  },
+
+  async SEND_PASSWORD_CHANGED_EMAIL({ userId, byAdmin }) {
+    const user = await prisma.user.findUnique({
+      where: { id: Number(userId) },
+      select: { id: true, email: true, firstName: true },
+    });
+    if (!user) return;
+    await mailService.sendPasswordChangedEmail(user, { byAdmin: Boolean(byAdmin) });
+  },
+
+  async SEND_EMAIL_CHANGED_NOTICE({ userId, previousEmail, newEmail }) {
+    const user = await prisma.user.findUnique({
+      where: { id: Number(userId) },
+      select: { id: true, firstName: true },
+    });
+    if (!user || !previousEmail) return;
+    await mailService.sendEmailChangedNotice(user, previousEmail, newEmail);
+  },
+
   async SEND_VERIFICATION_EMAIL({ userId }) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     // Deleted between enqueue and send, or verified already by another route —
