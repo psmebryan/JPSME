@@ -55,7 +55,8 @@
     "test:require-human": "node tests/requireHuman.test.js",
     "test:rooms": "node tests/roomAttendance.test.js",
     "test:event-retry": "node tests/eventCreateRetry.test.js",
-    "test:seating": "node tests/seating.test.js"
+    "test:seating": "node tests/seating.test.js",
+    "test:bulk-import": "node tests/bulkImport.test.js"
   },
   "license": "UNLICENSED",
   "dependencies": {
