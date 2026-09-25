@@ -101,18 +101,39 @@
         <div>
           <p class="hero-rise hero-rise-1 jp-badge jp-badge-dark mb-7">National Student Organization</p>
 
-          <%# The headline answers "who" and "what" in one line. JPSME's own
-              name moves to the line under it: a reader who does not already
-              know the acronym learns nothing from seeing it set 72px. %>
-          <h1 class="hero-rise hero-rise-2 text-[2.6rem] font-extrabold leading-[1.05] tracking-tight [text-wrap:balance] sm:text-6xl lg:text-[4rem]">
-            Building Tomorrow's<br class="hidden sm:block"> Mechanical Engineers
+          <%# The organisation's own name is the largest thing on the page, and
+              the order below is the order the official banner uses: the mark,
+              then what it stands for, then the theme of the year.
+
+              This was the other way round and it was wrong. The argument for
+              demoting it — that an acronym teaches a stranger nothing — is a
+              reasonable argument about a headline, and this is not a headline.
+              It is the masthead of the organisation's own site, where a member
+              arriving should see the thing they belong to, not a slogan about
+              it. The slogan still exists, further down, as the pull-quote it
+              always should have been.
+
+              One <h1>, two sizes. Splitting these into a heading and a
+              paragraph would make the expansion a separate thought, when it is
+              the same thought spelled out. %>
+          <h1 class="hero-rise hero-rise-2">
+            <span class="block text-[3.5rem] font-extrabold leading-[0.95] tracking-tight drop-shadow-[0_2px_12px_rgba(19,17,49,.45)] sm:text-[5rem] lg:text-[6.5rem]">JPSME</span>
+            <span class="mt-4 block max-w-[34rem] text-base font-bold uppercase leading-snug tracking-[.05em] text-gold-300 sm:text-lg lg:text-xl">
+              Junior Philippine Society of Mechanical Engineers
+            </span>
           </h1>
 
-          <p class="hero-rise hero-rise-3 mt-5 font-tech text-sm font-semibold uppercase tracking-[.16em] text-gold-300 sm:text-base">
-            Junior Philippine Society of Mechanical Engineers
+          <%# The theme of the year, set the way the banner sets NATIONAL: wide
+              tracking between two rules. The trailing rule runs to the end of
+              the column so the line reads as a band rather than as one more
+              sentence. %>
+          <p class="hero-rise hero-rise-3 mt-7 flex items-center gap-4 font-tech text-[11px] font-bold uppercase tracking-[.32em] text-white sm:text-xs sm:tracking-[.4em]">
+            <span class="h-px w-8 shrink-0 bg-gold-400" aria-hidden="true"></span>
+            <span class="whitespace-nowrap">Steadfast and Resilient</span>
+            <span class="h-px flex-1 bg-gold-400/35" aria-hidden="true"></span>
           </p>
 
-          <p class="hero-rise hero-rise-4 jp-lede mt-6 text-mist-200">
+          <p class="hero-rise hero-rise-4 jp-lede mt-7 text-mist-200">
             The national student guild where mechanical engineering students and
             young professionals train, connect and qualify — through country-wide
             conventions, development courses and a chapter network that reaches
@@ -126,10 +147,6 @@
             <a href="/events" class="jp-btn jp-btn-ghost jp-btn-lg">Explore Events</a>
           </div>
 
-          <p class="hero-rise hero-rise-6 mt-8 flex items-center gap-3 font-tech text-[11px] font-semibold uppercase tracking-[.14em] text-mist-300">
-            <span class="h-px w-7 bg-gold-400/70" aria-hidden="true"></span>
-            Connecting mechanical engineering students nationwide
-          </p>
         </div>
 
         <%# The seal sits where the gear's hub is. Lit rather than boxed — a
