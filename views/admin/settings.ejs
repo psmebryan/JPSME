@@ -173,16 +173,39 @@
     The Organizations and Members sheets can be edited and imported back.
   </p>
 
-  <a href="/api/admin/data/export" class="btn-primary inline-block">Export to Excel</a>
+  <div class="flex flex-wrap gap-2">
+    <a href="/api/admin/data/export" class="btn-primary inline-block">Export to Excel</a>
+    <%# Listed beside the export because they look like alternatives, and for
+        adding members the template IS the right one: the export carries every
+        member's contact details and the whole payment ledger, which is not
+        something to hand a chapter officer collecting twelve names. %>
+    <a href="/api/admin/data/import-template" class="btn-secondary inline-block">Download member template</a>
+  </div>
+  <p class="mt-2 text-xs text-slate-500">
+    Adding members? Use the <strong>template</strong> &mdash; it is the same Members sheet with
+    nothing in it, and it explains the rules on a second tab. The export is for editing what is
+    already here.
+  </p>
 
   <div class="mt-6 pt-5 border-t border-slate-200">
     <label class="form-label" for="import-file">Import a workbook</label>
     <input type="file" id="import-file" accept=".xlsx"
            class="form-input file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm">
     <p class="mt-1 text-xs text-slate-500">
-      Only the <strong>Organizations</strong> and <strong>Members</strong> sheets are read.
-      Nothing is ever deleted, and member accounts are never created &mdash; people register
-      themselves, so a member row only updates an account matched by email.
+      Only the <strong>Organizations</strong> and <strong>Members</strong> sheets are read, and
+      nothing is ever deleted. A member row with an email that already has an account
+      <strong>updates</strong> it; one with a new email <strong>creates</strong> an account.
+    </p>
+    <p class="mt-2 text-xs text-slate-500">
+      To add members, give each row a <strong>First Name</strong>, <strong>Last Name</strong> and
+      <strong>Email</strong> and leave the ID blank. That is the whole minimum &mdash;
+      <strong>leave Organization Path blank</strong> and the member picks their own school when
+      they activate, which saves you filling it in and getting it wrong.
+    </p>
+    <p class="mt-2 text-xs text-slate-500">
+      New accounts are created with <strong>no password</strong> and cannot be signed in to.
+      Nobody is emailed by the import &mdash; you send the activation links below, once you are
+      happy with what was created.
     </p>
 
     <div class="mt-3 flex flex-wrap items-center gap-2">
@@ -191,5 +214,38 @@
     </div>
 
     <div id="import-report" class="hidden mt-4 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm max-h-72 overflow-y-auto"></div>
+  </div>
+
+  <%# ---- Activation invitations -----------------------------------------
+      Its own step, below the import rather than inside it. An imported
+      account is inert until somebody is emailed about it, and that is the
+      one part of this flow that leaves the building — so it is a decision,
+      not a side effect of uploading a file. %>
+  <div class="mt-6 pt-5 border-t border-slate-200" data-activation>
+    <h3 class="text-sm font-semibold text-slate-800">Activation links</h3>
+    <p class="mt-1 text-xs text-slate-500">
+      Imported members cannot sign in until they open a link and choose a password.
+      Sending is separate from importing, so you can check what the sheet created first.
+    </p>
+
+    <p class="mt-3 text-sm text-slate-700">
+      <span data-activation-count class="font-semibold"><%= typeof pendingActivations !== 'undefined' ? pendingActivations : 0 %></span>
+      member(s) waiting to be invited.
+    </p>
+
+    <div class="mt-3 flex flex-wrap items-center gap-2">
+      <button type="button" data-send-activations class="btn-primary"
+              <%= (typeof pendingActivations !== 'undefined' ? pendingActivations : 0) ? '' : 'disabled' %>>
+        Send activation links
+      </button>
+      <button type="button" data-refresh-activations class="text-sm text-indigo-600 hover:underline">Refresh</button>
+    </div>
+
+    <p class="mt-2 text-xs text-slate-500">
+      Safe to press twice &mdash; anyone already invited in the last few minutes, or still in the
+      queue, is skipped. Links last two weeks, and the emails go out over a few minutes rather
+      than all at once.
+    </p>
+    <div data-activation-result class="hidden mt-3 rounded-md border border-slate-200 bg-white p-3 text-sm"></div>
   </div>
 </div>

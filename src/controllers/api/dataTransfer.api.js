@@ -2,6 +2,7 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { success, error } = require('../../utils/apiResponse');
 const dataExportService = require('../../services/dataExport.service');
 const dataImportService = require('../../services/dataImport.service');
+const importTemplateService = require('../../services/importTemplate.service');
 
 // MAIN_ADMIN only — enforced at the route layer. The export contains every
 // member's contact details and the full payment ledger, so it is not something
@@ -11,6 +12,18 @@ const exportWorkbook = asyncHandler(async (req, res) => {
   const stamp = new Date().toISOString().slice(0, 10);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="jpsme-data-${stamp}.xlsx"`);
+  res.send(Buffer.from(buffer));
+});
+
+// The blank sheet somebody fills in to add members.
+//
+// Not the export: that is the whole database, including every member's contact
+// details and the payment ledger, which is a lot to hand a chapter officer who
+// wants to add twelve names.
+const importTemplate = asyncHandler(async (req, res) => {
+  const buffer = await importTemplateService.buildTemplate();
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="jpsme-member-import-template.xlsx"');
   res.send(Buffer.from(buffer));
 });
 
@@ -33,4 +46,4 @@ const runImport = asyncHandler(async (req, res) => {
   );
 });
 
-module.exports = { exportWorkbook, previewImport, runImport };
+module.exports = { exportWorkbook, importTemplate, previewImport, runImport };

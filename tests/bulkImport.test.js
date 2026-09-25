@@ -25,6 +25,7 @@ const ExcelJS = require('exceljs');
 const bcrypt = require('bcryptjs');
 const prisma = require('../src/config/prisma');
 const dataImport = require('../src/services/dataImport.service');
+const importTemplate = require('../src/services/importTemplate.service');
 const organizationService = require('../src/services/organization.service');
 
 let passed = 0;
@@ -241,6 +242,64 @@ async function main() {
       plan.members[0].changes.some((c) => /chosen on activation/.test(c)),
       `and the preview says so: ${JSON.stringify(plan.members[0].changes)}`,
     );
+  });
+
+  // --- the template ------------------------------------------------------------
+
+  await test('the template is a workbook the importer accepts, with nothing in it', async () => {
+    const buf = Buffer.from(await importTemplate.buildTemplate());
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf);
+
+    const members = wb.getWorksheet('Members');
+    assert(members, 'it has a Members sheet');
+    const headers = members.getRow(1).values.slice(1).map(String);
+    ['First Name', 'Last Name', 'Email', 'Year Level', 'Organization Path'].forEach((h) => {
+      assert(headers.includes(h), `the ${h} column the importer looks for`);
+    });
+
+    const plan = await dataImport.analyze(buf);
+    assertEqual(plan.errors.length, 0, `imports cleanly, got ${JSON.stringify(plan.errors)}`);
+    assertEqual(plan.summary.membersToCreate, 0, 'and finds nobody to create');
+  });
+
+  await test('the template has no phantom rows, so row 2 is row 2', async () => {
+    // Setting the Year Level dropdown cell by cell materialises every cell it
+    // touches: G2..G600 individually left the sheet claiming 600 rows, so the
+    // next row appended landed at 601 and every error message would have named
+    // a line number hundreds away from the one the reader is looking at.
+    // Adding it as a RANGE applies the same dropdown to a one-row sheet.
+    const buf = Buffer.from(await importTemplate.buildTemplate());
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf);
+    assertEqual(wb.getWorksheet('Members').rowCount, 1, 'the Members sheet is just its header');
+
+    // And prove it end to end: a row typed straight under the header is row 2.
+    const filled = new ExcelJS.Workbook();
+    await filled.xlsx.load(buf);
+    filled.getWorksheet('Members').addRow(['', '', '', 'NoFirstName', E('phantom'), '', '', '']);
+    const plan = await dataImport.analyze(Buffer.from(await filled.xlsx.writeBuffer()));
+    const report = plan.errors.join('\n');
+    assert(/row 2: First Name is required/.test(report),
+      `the first data row is reported as row 2:\n${report}`);
+  });
+
+  await test('the examples cannot be imported by accident', async () => {
+    // They live on a sheet the importer never reads, because an example sitting
+    // in row 2 of the sheet being edited is an example somebody forgets to
+    // delete — and then "Juan dela Cruz" is a member of JPSME.
+    const buf = Buffer.from(await importTemplate.buildTemplate());
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf);
+
+    const guide = wb.getWorksheet('How to use this');
+    assert(guide, 'there is a guide sheet');
+    let hasExample = false;
+    guide.eachRow((row) => { if (String(row.values).includes('@example.com')) hasExample = true; });
+    assert(hasExample, 'the examples are on it');
+
+    const plan = await dataImport.analyze(buf);
+    assertEqual(plan.summary.membersToCreate, 0, 'and the importer creates nobody from them');
   });
 
   // --- updates still work -------------------------------------------------------

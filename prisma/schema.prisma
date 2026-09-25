@@ -276,6 +276,11 @@ enum AuditAction {
   // PASSWORD_RESET_COMPLETED because it is a different event — that one is a
   // member recovering an account they already had.
   ACCOUNT_ACTIVATED
+  // A bulk send of activation links. Recorded because it is the moment an
+  // import stops being a private list in the database and starts arriving in
+  // people's inboxes — the one step of the whole flow that is visible outside
+  // the building, and the one worth being able to date afterwards.
+  ACTIVATION_INVITES_SENT
 }
 
 model User {

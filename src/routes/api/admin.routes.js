@@ -112,6 +112,15 @@ router.post(
   ],
   adminApi.setUserPassword
 );
+// Activation invitations. MAIN_ADMIN, inherited from router.use(apiAdmin) above.
+//
+// A send is its own action rather than part of the import that created the
+// accounts, so a sheet can be checked after it is applied and before anybody is
+// emailed about it.
+router.get('/members/activation-status', adminApi.activationStatus);
+router.post('/members/send-activations', verifyCsrfToken, adminApi.sendActivations);
+router.post('/users/:id/resend-activation', verifyCsrfToken, param('id').isInt(), adminApi.resendActivation);
+
 router.put(
   '/users/:id/email',
   verifyCsrfToken,
@@ -159,6 +168,9 @@ router.put(
 // contact details and the whole payment ledger, and the import writes to the
 // organization tree and member records.
 router.get('/data/export', dataTransferApi.exportWorkbook);
+// The blank sheet for adding members. Carries no data of its own, so unlike the
+// export it is safe to hand to whoever is collecting the names.
+router.get('/data/import-template', dataTransferApi.importTemplate);
 router.post('/data/import/preview', verifyCsrfToken, uploadDataWorkbook.single('workbook'), dataTransferApi.previewImport);
 router.post('/data/import', verifyCsrfToken, uploadDataWorkbook.single('workbook'), dataTransferApi.runImport);
 

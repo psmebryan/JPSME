@@ -288,6 +288,83 @@ async function queueActivation(userId) {
   return true;
 }
 
+// How recently an invitation counts as "already sent", so pressing the button
+// twice does not mail everybody twice. Long enough to cover a bulk send
+// draining, short enough that a genuine "they say it never arrived" retry ten
+// minutes later still works.
+const RECENTLY_INVITED_MS = 10 * 60 * 1000;
+
+// Everybody an import created who has not activated yet.
+//
+// Counted for the admin screen so "60 members are waiting to be invited" is
+// visible without running the send — the number is the whole reason somebody
+// presses the button.
+async function pendingActivationCount() {
+  return prisma.user.count({ where: { passwordSetAt: null } });
+}
+
+// Sends activation links to everyone still waiting for one.
+//
+// Separate from the import on purpose. Importing 500 rows must not fire 500
+// emails from one button press: the queue drains one every couple of seconds,
+// so that is twenty minutes of sending with no way to stop it, and a mistake in
+// the sheet would already be in 500 inboxes before anybody noticed.
+//
+// Resumable and safe to press twice. Three things are skipped rather than
+// re-sent, because "I clicked it again because I was not sure" is the normal
+// way this gets used:
+//
+//   anyone who has since activated — the handler re-checks at send time too,
+//   since a bulk send takes a while to drain;
+//   anyone with an invitation still sitting in the queue;
+//   anyone invited in the last few minutes.
+async function sendActivationsForPending({ actorId = null } = {}) {
+  const waiting = await prisma.user.findMany({
+    where: { passwordSetAt: null },
+    select: { id: true, email: true },
+    orderBy: { id: 'asc' },
+  });
+  if (!waiting.length) return { queued: 0, skipped: 0, total: 0 };
+
+  const ids = waiting.map((u) => u.id);
+
+  // Still queued from a previous press. payload is text, so this is matched in
+  // JS rather than with a LIKE that would also match id 1 inside id 12.
+  const queuedJobs = await prisma.job.findMany({
+    where: { type: 'SEND_ACTIVATION_EMAIL', status: { in: ['PENDING', 'PROCESSING'] } },
+    select: { payload: true },
+  });
+  const alreadyQueued = new Set();
+  queuedJobs.forEach((j) => {
+    try { alreadyQueued.add(Number(JSON.parse(j.payload).userId)); } catch (err) { /* unreadable payload */ }
+  });
+
+  const recent = await prisma.passwordResetToken.findMany({
+    where: { userId: { in: ids }, usedAt: null, createdAt: { gt: new Date(Date.now() - RECENTLY_INVITED_MS) } },
+    select: { userId: true },
+  });
+  const invitedRecently = new Set(recent.map((t) => t.userId));
+
+  let queued = 0;
+  let skipped = 0;
+  for (const user of waiting) {
+    if (alreadyQueued.has(user.id) || invitedRecently.has(user.id)) { skipped += 1; continue; }
+    // eslint-disable-next-line no-await-in-loop
+    await jobService.enqueue('SEND_ACTIVATION_EMAIL', { userId: user.id });
+    queued += 1;
+  }
+
+  if (queued) {
+    await auditService.log({
+      action: 'ACTIVATION_INVITES_SENT',
+      actorId,
+      metadata: { queued, skipped, total: waiting.length },
+    });
+  }
+
+  return { queued, skipped, total: waiting.length };
+}
+
 // --- signing out everywhere -------------------------------------------------
 
 // express-mysql-session keeps the serialised session in a text column, so there
@@ -328,6 +405,8 @@ module.exports = {
   revokeSessionsFor,
   hashToken,
   queueActivation,
+  pendingActivationCount,
+  sendActivationsForPending,
   TOKEN_TTL_MS,
   ACTIVATION_TTL_MS,
   MIN_PASSWORD_LENGTH,

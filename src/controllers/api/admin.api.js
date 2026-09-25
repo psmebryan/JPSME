@@ -17,6 +17,7 @@ function checkValidation(req, res) {
   return true;
 }
 const userService = require('../../services/user.service');
+const passwordResetService = require('../../services/passwordReset.service');
 const settingsService = require('../../services/settings.service');
 const sponsorService = require('../../services/sponsor.service');
 const paymentService = require('../../services/payment.service');
@@ -410,6 +411,48 @@ const changeUserEmail = asyncHandler(async (req, res) => {
     : 'Email updated and marked as verified. They can sign in with the new address straight away.');
 });
 
+// --- activation invitations --------------------------------------------------
+//
+// Deliberately separate from the import that created the accounts. Five hundred
+// rows must not fire five hundred emails from one button press — the queue
+// drains one every couple of seconds, so that is twenty minutes of sending with
+// no way to stop it, and a mistake in the sheet would already be in five hundred
+// inboxes before anybody noticed.
+
+const activationStatus = asyncHandler(async (req, res) => {
+  const waiting = await passwordResetService.pendingActivationCount();
+  return success(res, { waiting });
+});
+
+const sendActivations = asyncHandler(async (req, res) => {
+  const result = await passwordResetService.sendActivationsForPending({
+    actorId: req.session.user.id,
+  });
+
+  if (!result.total) return success(res, result, 'Nobody is waiting for an activation link.');
+  if (!result.queued) {
+    return success(res, result,
+      `All ${result.total} member(s) waiting were invited recently or are already queued. Nothing sent again.`);
+  }
+  return success(res, result, result.skipped
+    ? `Sending ${result.queued} activation link(s). ${result.skipped} skipped — invited recently or already queued.`
+    : `Sending ${result.queued} activation link(s). They arrive over the next few minutes.`);
+});
+
+// One person, for when somebody says theirs never arrived.
+const resendActivation = asyncHandler(async (req, res) => {
+  const queued = await passwordResetService.queueActivation(req.params.id);
+  // Refuses rather than quietly doing nothing: an admin pressing this on an
+  // account that is already active wants to know that is why nothing happened.
+  if (!queued) {
+    return error(res, 'That account has already been activated, so there is nothing to send.', 400);
+  }
+  return success(res, null, 'Activation link sent. It will arrive in the next minute or two.');
+});
+
 module.exports = {
+  activationStatus,
+  sendActivations,
+  resendActivation,
   setUserPassword,
   changeUserEmail, uploadFavicon, uploadHeroImage, uploadOgImage, listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, getMembershipPaymentRequired, updateMembershipPaymentRequired, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin, getOrganizationTreeLevel, createChildOrganization, deleteOrganizationApi, setOrganizationActiveApi };

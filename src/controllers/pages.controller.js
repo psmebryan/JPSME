@@ -23,6 +23,7 @@ const emailTemplateService = require('../services/emailTemplate.service');
 const broadcastEmailService = require('../services/broadcastEmail.service');
 const auditService = require('../services/audit.service');
 const integrationKeyService = require('../services/integrationKey.service');
+const passwordResetService = require('../services/passwordReset.service');
 const articleService = require('../services/article.service');
 const AppError = require('../utils/AppError');
 const config = require('../config');
@@ -488,7 +489,7 @@ const adminEventsPage = asyncHandler(async (req, res) => {
 });
 
 const adminSettingsPage = asyncHandler(async (req, res) => {
-  const [logoUrl, faviconUrl, heroImageUrl, ogImageUrl, membershipFeeCentavos, paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired] = await Promise.all([
+  const [logoUrl, faviconUrl, heroImageUrl, ogImageUrl, membershipFeeCentavos, paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired, pendingActivations] = await Promise.all([
     settingsService.getLogoUrl(),
     settingsService.getFaviconUrl(),
     settingsService.getHeroImageUrl(),
@@ -497,11 +498,16 @@ const adminSettingsPage = asyncHandler(async (req, res) => {
     settingsService.getPaymentsEnabled(),
     settingsService.getGatewaySurchargePercent(),
     settingsService.getMembershipPaymentRequired(),
+    // How many imported members are still waiting to be invited. Server-rendered
+    // so the number is on screen with the button rather than appearing a moment
+    // later; the page refreshes it on load anyway.
+    passwordResetService.pendingActivationCount(),
   ]);
   renderAdmin(req, res, 'admin/settings', {
     title: 'Site Settings',
     logoUrl, faviconUrl, heroImageUrl, ogImageUrl,
     membershipFeeCentavos, paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired,
+    pendingActivations,
   });
 });
 

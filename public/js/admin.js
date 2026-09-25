@@ -1401,12 +1401,29 @@ function initDataTransfer() {
       rows.push('<ul class="list-disc pl-5 space-y-1 text-red-700">' + data.errors.map(function (e) { return '<li>' + escapeHtml(e) + '</li>'; }).join('') + '</ul>');
     } else {
       rows.push('<p class="font-semibold text-slate-800 mb-2">' + (applied ? 'Imported.' : 'Ready to import.') + '</p>');
+      // New accounts are called out on their own line and in bold. Creating
+      // sixty people and correcting sixty phone numbers are not the same kind
+      // of event, and the person about to press Apply needs to see which one
+      // this is before they press it.
+      var created = s.membersToCreate || 0;
       rows.push('<ul class="list-disc pl-5 space-y-1 text-slate-700">'
+        + (created
+          ? '<li class="font-semibold text-indigo-800">' + created + ' NEW member account(s) to create</li>'
+          : '')
         + '<li>' + s.orgsToCreate + ' organization(s) to create</li>'
         + '<li>' + s.orgsToUpdate + ' organization(s) to update</li>'
         + '<li>' + s.membersToUpdate + ' member(s) to update</li>'
-        + (s.membersSkipped ? '<li>' + s.membersSkipped + ' member row(s) skipped — no account with that email</li>' : '')
+        + (s.membersSkipped ? '<li>' + s.membersSkipped + ' member row(s) skipped</li>' : '')
         + '</ul>');
+      if (created) {
+        rows.push('<p class="mt-2 rounded border border-indigo-200 bg-indigo-50 p-2 text-xs text-indigo-900">'
+          + (applied
+            ? created + ' account(s) created with no password. Nobody has been emailed — use '
+              + '<strong>Send activation links</strong> below when you are ready.'
+            : 'These accounts will be created with no password and nobody will be emailed. '
+              + 'You send the activation links separately, afterwards.')
+          + '</p>');
+      }
       const detail = data.organizations.concat(data.members).slice(0, 40);
       if (detail.length) {
         rows.push('<p class="mt-3 mb-1 text-xs uppercase tracking-wide text-slate-500">Details</p>');
@@ -1442,9 +1459,53 @@ function initDataTransfer() {
 
   previewBtn?.addEventListener('click', () => send('/api/admin/data/import/preview', false));
   applyBtn?.addEventListener('click', () => {
-    if (!confirm('Apply this import? Organizations will be created or moved and member records updated. Nothing is deleted.')) return;
+    if (!confirm('Apply this import? Organizations will be created or moved, member records updated, and new member rows turned into accounts. Nobody is emailed. Nothing is deleted.')) return;
     send('/api/admin/data/import', true);
   });
+
+  // --- activation invitations ------------------------------------------------
+  const activation = module.querySelector('[data-activation]');
+  if (activation) {
+    const countEl = activation.querySelector('[data-activation-count]');
+    const sendBtn = activation.querySelector('[data-send-activations]');
+    const resultEl = activation.querySelector('[data-activation-result]');
+
+    async function refreshCount() {
+      try {
+        const res = await apiFetch('/api/admin/members/activation-status');
+        countEl.textContent = res.data.waiting;
+        sendBtn.disabled = !res.data.waiting;
+      } catch (err) { /* the count is a convenience; the button still works */ }
+    }
+
+    sendBtn?.addEventListener('click', async () => {
+      const waiting = Number(countEl.textContent) || 0;
+      if (!confirm('Email an activation link to ' + waiting + ' member(s)?\n\n'
+        + 'Each one can then choose a password and their school. Anyone invited in the '
+        + 'last few minutes is skipped.')) return;
+
+      sendBtn.disabled = true;
+      try {
+        const res = await apiFetch('/api/admin/members/send-activations', { method: 'POST' });
+        resultEl.textContent = res.message;
+        resultEl.classList.remove('hidden');
+        showToast(res.message);
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        // Re-read rather than assume: the send skips people, so the number left
+        // is the server's to report.
+        await refreshCount();
+      }
+    });
+
+    activation.querySelector('[data-refresh-activations]')?.addEventListener('click', refreshCount);
+
+    // The count is server-rendered, so a page that has been open a while (or an
+    // import applied in another tab) is refreshed on load rather than showing a
+    // stale number beside a live button.
+    refreshCount();
+  }
 }
 
 // --- Membership payment required toggle (admin/settings page) ---

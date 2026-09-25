@@ -80,7 +80,25 @@
 <% if (!(typeof restricted !== 'undefined' && restricted)) { %>
 <div class="max-w-2xl mx-auto mt-6 admin-card p-6" data-creds data-user-id="<%= user.id %>">
   <h2 class="text-sm font-semibold text-slate-900">Sign-in details</h2>
-  <p class="mt-1 text-xs text-slate-500">
+
+  <%# An imported account that has never been activated is a different thing from
+      a member who simply forgot their password, and the controls below mean
+      different things for it — so it says so first, rather than leaving an
+      admin to wonder why setting a password is offered for somebody who has
+      never had one. %>
+  <% if (!user.passwordSetAt) { %>
+    <div class="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+      <p class="text-sm font-semibold text-amber-900">Waiting to be activated</p>
+      <p class="mt-1 text-xs text-amber-800">
+        This account was created from an import. It has no password and
+        <%= user.firstName %> cannot sign in until they open an activation link and choose one,
+        along with their school. Approving them here does not change that.
+      </p>
+      <button type="button" data-resend-activation class="btn-secondary mt-3">Send activation link</button>
+    </div>
+  <% } %>
+
+  <p class="mt-3 text-xs text-slate-500">
     Both of these email <%= user.firstName %> about the change, and sign them out everywhere.
   </p>
 
@@ -156,6 +174,23 @@
   const root = document.querySelector('[data-creds]');
   if (!root) return;
   const userId = root.dataset.userId;
+
+  const resendBtn = root.querySelector('[data-resend-activation]');
+  if (resendBtn) {
+    resendBtn.addEventListener('click', async function () {
+      resendBtn.disabled = true;
+      resendBtn.textContent = 'Sending…';
+      try {
+        const res = await apiFetch(`/api/admin/users/${userId}/resend-activation`, { method: 'POST' });
+        showToast(res.message);
+        resendBtn.textContent = 'Sent';
+      } catch (err) {
+        showToast(err.message, 'error');
+        resendBtn.disabled = false;
+        resendBtn.textContent = 'Send activation link';
+      }
+    });
+  }
 
   root.querySelector('[data-save-email]').addEventListener('click', async function () {
     const input = root.querySelector('[data-new-email]');
