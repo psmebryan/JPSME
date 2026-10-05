@@ -31,10 +31,11 @@ const TOKEN_TTL_MS = 60 * 60 * 1000;
 // it and may not read mail until the weekend. An hour would expire almost all
 // of them, and every expiry is a person who has to ask an admin to send another.
 //
-// Two weeks is the balance: long enough that the link is still good when they
-// get round to it, short enough that a leaked mailbox from last term does not
-// still open an account.
-const ACTIVATION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+// Days, not hours, but kept short: an unused activation link is a standing key
+// to the account. ACTIVATION_LINK_DAYS sets it (default 3). The clock starts
+// when the link is minted — for Mergo that is when the row is prepared, not
+// when Mergo sends it — so launch a Mergo campaign soon after preparing it.
+const ACTIVATION_TTL_MS = config.activationLinkDays * 24 * 60 * 60 * 1000;
 
 const TOKEN_BYTES = 32;
 

@@ -52,7 +52,7 @@ const handlers = {
   },
 
   // The invitation to activate an imported account. Same token machinery as a
-  // reset, minted here for the same reason, but with a fortnight's life — this
+  // reset, minted here for the same reason, but with a life of days rather than an hour — this
   // one lands unannounced in an inbox that may not be read until the weekend.
   //
   // Re-checks passwordSetAt at send time rather than trusting the moment the

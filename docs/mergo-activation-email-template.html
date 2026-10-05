@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mergo activation email - copy into a Gmail draft</title>
+<style>
+  body { margin: 0; background: #f1f5f9; font-family: Arial, Helvetica, sans-serif; color: #1f2937; }
+  .howto { max-width: 680px; margin: 24px auto 0; padding: 16px 20px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; font-size: 14px; line-height: 1.5; }
+  .howto ol { margin: 8px 0 0; padding-left: 20px; }
+  .howto code { background: #fff; border: 1px solid #e5e7eb; border-radius: 4px; padding: 1px 4px; }
+  .mail { max-width: 680px; margin: 16px auto 40px; padding: 24px 28px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; }
+</style>
+</head>
+<body>
+
+<div class="howto">
+  <strong>How to use this (the yellow box is not part of the email):</strong>
+  <ol>
+    <li>In Gmail, press <b>Compose</b>. Subject: <code>Activate your JPSME account</code></li>
+    <li>Click inside the white box below, press <b>Ctrl+A</b> once it is the only thing selected (or drag-select from "Hi" to the last line), then <b>Ctrl+C</b>.</li>
+    <li>Paste into the Gmail draft body with <b>Ctrl+V</b>.</li>
+    <li>In the draft, click the yellow <b>Activate my account</b> button text, press <b>Ctrl+K</b>, and set the web address to exactly <code>{{Activation Link}}</code>. Do the same for the long link line.</li>
+    <li>Leave the draft in Drafts. In Mergo, pick this draft and the <code>Email</code> column, then send a test to yourself first.</li>
+  </ol>
+</div>
+
+<div class="mail" contenteditable="true">
+  <p>Hi {{First Name}},</p>
+  <p>A JPSME administrator has created an account for you, using this email address.</p>
+  <p>Open the link below to finish setting it up. You will choose your own password and pick your school or organization.</p>
+
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
+    <tr>
+      <td bgcolor="#ecb827" style="background:#ecb827;border-radius:8px;">
+        <a href="https://example.com/replace-with-activation-link"
+           style="display:inline-block;padding:12px 24px;color:#131131;font-weight:bold;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:14px;">Activate my account</a>
+      </td>
+    </tr>
+  </table>
+
+  <p style="color:#666;font-size:13px;">Or paste this into your browser:<br>
+  <a href="https://example.com/replace-with-activation-link" style="word-break:break-all;">{{Activation Link}}</a></p>
+
+  <p style="color:#666;font-size:13px;">This link works for 3 days and can be used once.<br>
+  Until you do, the account cannot be signed in to. Nobody &mdash; including the administrator who created it &mdash; knows or can see your password.<br>
+  If you were not expecting this, you can ignore this email and nothing will happen.</p>
+</div>
+
+</body>
+</html>

@@ -77,6 +77,7 @@ Configure these server-side environment values:
 | `MERGO_DAILY_ACTIVATION_CAP` | Optional initial JPSME cap; defaults to `2000` for the stated Mergo plan, and an admin can change it on Activations |
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Existing Sheets service account email |
 | `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | Existing Sheets service account private key |
+| `ACTIVATION_LINK_DAYS` | Optional, 1–14. How many days an activation link works; defaults to `3`. The clock starts when JPSME prepares the row, not when Mergo sends it, so launch the campaign promptly. Keep the Gmail draft's "This link works for N days" wording in step. |
 | `MERGO_ALLOW_LOCAL_LINKS` | Optional, `true` only on a local copy pointed at a **test** sheet. Without it, nothing is written to the campaign sheet unless `APP_URL` is the live `https://` address — links from a local copy point at that computer and its database, and never work for a real member. |
 
 Share the dedicated spreadsheet with the service account as an editor. Keep the

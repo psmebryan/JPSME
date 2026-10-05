@@ -154,7 +154,7 @@ require.cache[settingsPath] = {
 require.cache[resetPath] = {
   id: resetPath, filename: resetPath, loaded: true,
   exports: {
-    ACTIVATION_TTL_MS: 14 * 24 * 60 * 60 * 1000,
+    ACTIVATION_TTL_MS: 3 * 24 * 60 * 60 * 1000,
     async issueResetLink(userId, { ttlMs }) {
       const hash = String(userId).padStart(64, '0');
       memory.tokenRows.set(userId, { usedAt: null, expiresAt: new Date(Date.now() + ttlMs), tokenHash: hash });
