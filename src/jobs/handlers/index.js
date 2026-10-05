@@ -1,6 +1,7 @@
 const prisma = require('../../config/prisma');
 const mailService = require('../../services/mail.service');
 const passwordResetService = require('../../services/passwordReset.service');
+const activationTracking = require('../../services/activationTracking.service');
 const certificateService = require('../../services/certificate.service');
 const emailVerificationService = require('../../services/emailVerification.service');
 
@@ -68,7 +69,13 @@ const handlers = {
     const { url, ttlMs } = await passwordResetService.issueResetLink(user.id, {
       ttlMs: passwordResetService.ACTIVATION_TTL_MS,
     });
-    await mailService.sendActivationEmail(user, url, ttlMs);
+    // The return value is recorded rather than discarded. sendActivationEmail is
+    // best-effort by design — a mail outage must not fail the job and send a
+    // second link on retry — but that meant a send which never left the building
+    // closed as COMPLETED, with the only trace a log line nobody was reading.
+    // The Activations page reads these rows, so a failure is now visible.
+    const ok = await mailService.sendActivationEmail(user, url, ttlMs);
+    await activationTracking.recordSendOutcome(user.id, { ok, channel: 'SITE' });
   },
 
   async SEND_PASSWORD_CHANGED_EMAIL({ userId, byAdmin }) {

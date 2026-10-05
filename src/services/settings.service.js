@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const config = require('../config');
 
 const LOGO_KEY = 'site_logo';
 const DEFAULT_LOGO = '/img/default-logo.svg';
@@ -55,6 +56,7 @@ const MEMBERSHIP_PAYMENT_REQUIRED_KEY = 'membership_payment_required';
 // due to their own internal rounding, which is why that field exists too.
 const GATEWAY_SURCHARGE_PERCENT_KEY = 'gateway_surcharge_percent';
 const DEFAULT_GATEWAY_SURCHARGE_PERCENT = 2.4976;
+const MERGO_ACTIVATION_DAILY_CAP_KEY = 'mergo_activation_daily_cap';
 
 async function getSetting(key, fallback = null) {
   const setting = await prisma.siteSetting.findUnique({ where: { key } });
@@ -159,6 +161,16 @@ async function setGatewaySurchargePercent(percent) {
   return setSetting(GATEWAY_SURCHARGE_PERCENT_KEY, String(percent));
 }
 
+async function getMergoActivationDailyCap() {
+  const configured = await getSetting(MERGO_ACTIVATION_DAILY_CAP_KEY, null);
+  const parsed = Number(configured === null ? config.googleSheets.mergoDailyActivationCap : configured);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 2000;
+}
+
+async function setMergoActivationDailyCap(cap) {
+  return setSetting(MERGO_ACTIVATION_DAILY_CAP_KEY, String(Math.trunc(cap)));
+}
+
 module.exports = {
   getSetting,
   setSetting,
@@ -178,9 +190,12 @@ module.exports = {
   setMembershipPaymentRequired,
   getGatewaySurchargePercent,
   setGatewaySurchargePercent,
+  getMergoActivationDailyCap,
+  setMergoActivationDailyCap,
   LOGO_KEY,
   MEMBERSHIP_FEE_KEY,
   PAYMENTS_ENABLED_KEY,
   MEMBERSHIP_PAYMENT_REQUIRED_KEY,
   GATEWAY_SURCHARGE_PERCENT_KEY,
+  MERGO_ACTIVATION_DAILY_CAP_KEY,
 };

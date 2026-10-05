@@ -104,6 +104,7 @@ async function main() {
 
     const applied = await dataImport.applyImport(buf);
     assertEqual(applied.applied.membersCreated, 2, 'two created');
+    assertEqual(applied.applied.createdUserIds.length, 2, 'created member ids returned for the invite workflow');
     assertEqual(await countMade(), 2, 'and they exist');
   });
 

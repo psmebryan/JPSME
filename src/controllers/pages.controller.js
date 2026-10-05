@@ -462,6 +462,22 @@ const adminUsersPage = asyncHandler(async (req, res) => {
   renderAdmin(req, res, 'admin/users', { title, viewMode, organizations, currentUser });
 });
 
+// The Activations page. Which members have an invitation out, which bounced,
+// whose link expired, and who actually got in.
+//
+// Renders the shell only; the table loads from /api/admin/activations. Same
+// pattern as the users page, and for the same reason — the filters and the
+// resend buttons all act on that list, so it has to be re-fetchable without a
+// full page load.
+const adminActivationsPage = asyncHandler(async (req, res) => {
+  renderAdmin(req, res, 'admin/activations', {
+    title: 'Member Activations',
+    // Read by the page so a deep link like ?state=BOUNCED opens on that filter.
+    initialState: String(req.query.state || 'NEVER_INVITED').trim(),
+    initialSearch: String(req.query.search || '').trim(),
+  });
+});
+
 const adminEventsPage = asyncHandler(async (req, res) => {
   const search = (req.query.search || '').toString().trim();
   const modality = (req.query.modality || '').toString();
@@ -1254,6 +1270,7 @@ module.exports = {
   adminLoginPage,
   adminDashboardPage,
   adminUsersPage,
+  adminActivationsPage,
   adminEventsPage,
   adminCreateEventPage,
   adminEditEventPage,

@@ -92,7 +92,7 @@ async function requestReset(email, { ipAddress = null } = {}) {
 // `ttlMs` lets an activation link outlive a reset link. It is passed in rather
 // than derived from the account here so this function stays a pure minter — the
 // caller already knows which kind of mail it is about to send.
-async function issueResetLink(userId, { ttlMs = TOKEN_TTL_MS } = {}) {
+async function issueResetLink(userId, { ttlMs = TOKEN_TTL_MS, tx = prisma } = {}) {
   const token = generateToken();
   const expiresAt = new Date(Date.now() + ttlMs);
   const tokenHash = hashToken(userId, token);
@@ -100,7 +100,7 @@ async function issueResetLink(userId, { ttlMs = TOKEN_TTL_MS } = {}) {
   // upsert, not create: one live reset per account. A second request replaces
   // the first, which is what stops an older intercepted mail from still
   // working after the real owner asks again.
-  await prisma.passwordResetToken.upsert({
+  await tx.passwordResetToken.upsert({
     where: { userId: Number(userId) },
     create: { userId: Number(userId), tokenHash, expiresAt },
     update: { tokenHash, expiresAt, usedAt: null, createdAt: new Date() },
@@ -110,7 +110,10 @@ async function issueResetLink(userId, { ttlMs = TOKEN_TTL_MS } = {}) {
   // it — without knowing the account there is nothing to hash against. It is
   // not a secret and grants nothing on its own.
   const url = `${appUrl()}/reset-password?uid=${userId}&token=${token}`;
-  return { url, ttlMs };
+  // The digest may be retained beside a Mergo attempt so a successful use can
+  // be attributed to the exact invitation without ever storing the bearer
+  // token itself in the campaign sheet, database history, or audit log.
+  return { url, ttlMs, expiresAt, tokenHash };
 }
 
 // --- using a link -----------------------------------------------------------
@@ -221,7 +224,7 @@ async function completeReset({ userId, token, password, organizationId = null, i
       where: { userId: check.userId, usedAt: null },
       data: { usedAt: now },
     });
-    if (claim.count !== 1) return false;
+    if (claim.count !== 1) return { claimed: false, attemptId: null };
 
     const data = { password: hashed, passwordSetAt: now };
     if (check.isActivation) {
@@ -232,10 +235,23 @@ async function completeReset({ userId, token, password, organizationId = null, i
       data.status = 'APPROVED';
     }
     await tx.user.update({ where: { id: check.userId }, data });
-    return true;
+    let attemptId = null;
+    if (check.isActivation) {
+      const activationHash = hashToken(check.userId, token);
+      const attempt = await tx.activationInvite.findFirst({
+        where: { userId: check.userId, tokenHash: activationHash },
+        select: { attemptId: true },
+      });
+      await tx.activationInvite.updateMany({
+        where: { userId: check.userId, tokenHash: activationHash, activatedAt: null },
+        data: { activatedAt: now },
+      });
+      attemptId = attempt ? attempt.attemptId : null;
+    }
+    return { claimed: true, attemptId };
   });
 
-  if (!claimed) return { ok: false, reason: 'USED', message: REASONS.USED };
+  if (!claimed.claimed) return { ok: false, reason: 'USED', message: REASONS.USED };
 
   await auditService.log({
     // Told apart on purpose: a member resetting a password they had is routine,
@@ -243,7 +259,13 @@ async function completeReset({ userId, token, password, organizationId = null, i
     // imported row becomes a person who can sign in.
     action: check.isActivation ? 'ACCOUNT_ACTIVATED' : 'PASSWORD_RESET_COMPLETED',
     targetUserId: check.userId,
-    metadata: check.isActivation ? { organizationId: chosenOrg } : null,
+    metadata: check.isActivation
+      ? {
+        event: 'ACCOUNT_ACTIVATED_FROM_INVITATION',
+        organizationId: chosenOrg,
+        ...(claimed.attemptId ? { attemptId: claimed.attemptId } : {}),
+      }
+      : null,
     ipAddress,
   });
 
@@ -270,30 +292,66 @@ async function completeReset({ userId, token, password, organizationId = null, i
 
 // --- inviting somebody to activate ------------------------------------------
 
+// Members whose one live link is the link inside a Mergo email that is queued,
+// sent or opened.
+//
+// A site send mints a new link, and that silently breaks the one in the Mergo
+// email — the member opens it and is told it is not valid. So every site resend
+// path skips these members. Matched on the token hash, not merely "has a Mergo
+// attempt": once that email bounces or its link expires, a site send is exactly
+// the right fix, and must not be blocked.
+const MERGO_LINK_PENDING_MESSAGE = 'This member\'s activation email from Mergo is queued or already delivered, '
+  + 'and its link still works. Sending another now would break that link. Wait until it bounces or expires, '
+  + 'or use Retry with Mergo if it failed.';
+
+async function usersWithPendingMergoLink(userIds) {
+  const ids = [...new Set((userIds || []).map(Number))].filter((id) => Number.isInteger(id) && id > 0);
+  if (!ids.length) return new Set();
+
+  const live = await prisma.passwordResetToken.findMany({
+    where: { userId: { in: ids }, usedAt: null, expiresAt: { gt: new Date() } },
+    select: { userId: true, tokenHash: true },
+  });
+  if (!live.length) return new Set();
+
+  const attempts = await prisma.activationInvite.findMany({
+    where: {
+      channel: 'MERGO',
+      tokenHash: { in: live.map((t) => t.tokenHash) },
+      providerStatus: { notIn: ['FAILED', 'BOUNCED'] },
+    },
+    select: { userId: true, tokenHash: true },
+  });
+  const pending = new Set(attempts.map((a) => `${a.userId}:${a.tokenHash}`));
+  return new Set(live.filter((t) => pending.has(`${t.userId}:${t.tokenHash}`)).map((t) => t.userId));
+}
+
 // Queues an activation email for one account.
 //
 // Refuses on an account that has already been activated rather than quietly
 // doing nothing: the caller is either an admin clicking "resend" or a bulk
 // send, and both want to know they aimed at somebody who no longer needs it.
-// Returns false instead of throwing, because a bulk send hitting one already
+// Returns a reason instead of throwing, because a bulk send hitting one already
 // activated member should skip them and carry on, not abort the batch.
 async function queueActivation(userId) {
   const user = await prisma.user.findUnique({
     where: { id: Number(userId) },
     select: { id: true, passwordSetAt: true },
   });
-  if (!user || user.passwordSetAt !== null) return false;
+  if (!user) return { queued: false, reason: 'NOT_FOUND' };
+  if (user.passwordSetAt !== null) return { queued: false, reason: 'ALREADY_ACTIVATED' };
+  if ((await usersWithPendingMergoLink([user.id])).has(user.id)) {
+    return { queued: false, reason: 'MERGO_LINK_PENDING' };
+  }
 
   await jobService.enqueue('SEND_ACTIVATION_EMAIL', { userId: user.id });
-  return true;
+  return { queued: true };
 }
 
 // How recently an invitation counts as "already sent", so pressing the button
 // twice does not mail everybody twice. Long enough to cover a bulk send
 // draining, short enough that a genuine "they say it never arrived" retry ten
 // minutes later still works.
-const RECENTLY_INVITED_MS = 10 * 60 * 1000;
-
 // Everybody an import created who has not activated yet.
 //
 // Counted for the admin screen so "60 members are waiting to be invited" is
@@ -317,7 +375,8 @@ async function pendingActivationCount() {
 //   anyone who has since activated — the handler re-checks at send time too,
 //   since a bulk send takes a while to drain;
 //   anyone with an invitation still sitting in the queue;
-//   anyone invited in the last few minutes.
+//   anyone who still has a live, unused link, including one queued through
+//   Mergo. Replacing it from the site would invalidate the link in that sheet.
 async function sendActivationsForPending({ actorId = null } = {}) {
   const waiting = await prisma.user.findMany({
     where: { passwordSetAt: null },
@@ -339,16 +398,16 @@ async function sendActivationsForPending({ actorId = null } = {}) {
     try { alreadyQueued.add(Number(JSON.parse(j.payload).userId)); } catch (err) { /* unreadable payload */ }
   });
 
-  const recent = await prisma.passwordResetToken.findMany({
-    where: { userId: { in: ids }, usedAt: null, createdAt: { gt: new Date(Date.now() - RECENTLY_INVITED_MS) } },
+  const live = await prisma.passwordResetToken.findMany({
+    where: { userId: { in: ids }, usedAt: null, expiresAt: { gt: new Date() } },
     select: { userId: true },
   });
-  const invitedRecently = new Set(recent.map((t) => t.userId));
+  const hasLiveLink = new Set(live.map((t) => t.userId));
 
   let queued = 0;
   let skipped = 0;
   for (const user of waiting) {
-    if (alreadyQueued.has(user.id) || invitedRecently.has(user.id)) { skipped += 1; continue; }
+    if (alreadyQueued.has(user.id) || hasLiveLink.has(user.id)) { skipped += 1; continue; }
     // eslint-disable-next-line no-await-in-loop
     await jobService.enqueue('SEND_ACTIVATION_EMAIL', { userId: user.id });
     queued += 1;
@@ -405,6 +464,8 @@ module.exports = {
   revokeSessionsFor,
   hashToken,
   queueActivation,
+  usersWithPendingMergoLink,
+  MERGO_LINK_PENDING_MESSAGE,
   pendingActivationCount,
   sendActivationsForPending,
   TOKEN_TTL_MS,

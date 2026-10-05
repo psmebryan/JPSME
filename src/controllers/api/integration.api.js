@@ -56,9 +56,14 @@ const whoami = asyncHandler(async (req, res) => {
 const lookup = asyncHandler(async (req, res) => {
   if (!checkValidation(req, res)) return undefined;
 
+  if (!req.body.qrToken && !req.body.registrationNumber) {
+    return error(res, 'Send either qrToken or registrationNumber', 422);
+  }
+
   const result = await checkinService.lookupByIntegration({
     integrationKey: req.integrationKey,
-    rawScan: req.body.qrToken,
+    rawScan: req.body.qrToken || null,
+    registrationNumber: req.body.qrToken ? null : req.body.registrationNumber,
   });
   return success(res, result, result.message || 'Found');
 });

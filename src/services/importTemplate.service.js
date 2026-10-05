@@ -98,7 +98,7 @@ async function buildTemplate() {
 
   note(guide, 'Adding members to JPSME', { bold: true, size: 16, color: 'FF1E1B4B' });
   note(guide, '');
-  note(guide, 'Fill in the Members sheet, one row per person, then upload this file in Admin → Settings → Data export & import.');
+  note(guide, 'Fill in the Members sheet, one row per person, then upload it in Admin → Invite Members.');
   note(guide, '');
 
   note(guide, 'What each row needs', { bold: true, size: 13, color: 'FF1E1B4B' });
@@ -115,8 +115,10 @@ async function buildTemplate() {
   note(guide, '1. Press "Check what would change" first. Nothing is written until you press Apply.');
   note(guide, '2. If anything is wrong, you get a list naming the exact row number in this file. Fix those rows and try again.');
   note(guide, '3. One bad row means NOTHING is imported — not even the good rows. So the list is the whole job, not a first instalment.');
-  note(guide, '4. Accounts are created with no password, and NOBODY is emailed yet.');
-  note(guide, '5. When you are happy with what was created, press "Send activation links".');
+  note(guide, '4. New accounts are created with no password. JPSME automatically creates their activation links and adds them to the managed Mergo campaign sheet.');
+  note(guide, '5. In Mergo, use the Email column and the exact Gmail draft markers {{First Name}} and {{Activation Link}}. Launch the campaign to send; an enabled For each new row schedule can send automatically.');
+  note(guide, 'Do not add activation-link columns to this Excel import workbook. JPSME generates those links and writes them to the separate Mergo campaign sheet.');
+  note(guide, 'For local testing, localhost activation links work only in a browser on the same computer running JPSME.');
   note(guide, '');
   note(guide, 'Each member then gets an email, chooses their own password and their own school, and can sign in.');
   note(guide, 'Nobody — not even an administrator — ever sees their password.');

@@ -642,6 +642,48 @@ async function main() {
     assertEqual(station.undone, 1, 'the reversal is counted separately');
     assertEqual(station.refused, 0, 'and never as somebody being turned away');
   });
+
+  // --- integration lookup ---------------------------------------------------
+
+  await test('an integration lookup returns the attendee details for its own event and admits nobody', async () => {
+    const event = await makeEvent();
+    const { member, registration } = await makeTicketedRegistration(event);
+    const key = { eventId: event.id, label: 'Natcon lane' };
+
+    const found = await checkinService.lookupByIntegration({ integrationKey: key, rawScan: `PSME-EVENT:${registration.qrToken}` });
+    assertEqual(found.result, 'SUCCESS', 'a valid ticket looks up as admissible');
+    assert(found.attendee, 'attendee details are returned');
+    assertEqual(found.attendee.email, member.email, 'including the email the other system stores');
+    assertEqual(found.attendee.registrationNumber, registration.registrationNumber, 'and the printed number');
+
+    const after = await prisma.eventRegistration.findUnique({ where: { id: registration.id } });
+    assertEqual(after.checkedInAt, null, 'a lookup admits nobody');
+    assertEqual(await prisma.eventCheckIn.count({ where: { eventId: event.id } }), 0, 'and logs no scan');
+  });
+
+  await test('an integration lookup accepts the printed registration number in place of the code', async () => {
+    const event = await makeEvent();
+    const { registration } = await makeTicketedRegistration(event);
+    const key = { eventId: event.id, label: 'Natcon lane' };
+
+    const found = await checkinService.lookupByIntegration({
+      integrationKey: key, registrationNumber: registration.registrationNumber.toLowerCase(),
+    });
+    assertEqual(found.result, 'SUCCESS', 'typed in lower case, it still resolves');
+    assertEqual(found.attendee.registrationId, registration.id, 'to the right person');
+  });
+
+  await test("an integration key cannot read the contact details of another event's registrant", async () => {
+    const event = await makeEvent();
+    const other = await makeEvent();
+    const { registration } = await makeTicketedRegistration(other);
+
+    const found = await checkinService.lookupByIntegration({
+      integrationKey: { eventId: event.id, label: 'Natcon lane' }, rawScan: registration.qrToken,
+    });
+    assertEqual(found.result, 'WRONG_EVENT', 'it is refused as the wrong event');
+    assertEqual(found.attendee, null, 'with no email, school or ids attached');
+  });
 }
 
 main()

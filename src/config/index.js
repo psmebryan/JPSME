@@ -15,12 +15,16 @@ require('dotenv').config();
 // would silently break all of that the moment process.env changes after
 // startup.
 //
-// SESSION_STORE / STORAGE_DRIVER / JOB_DRIVER / EMAIL_PROVIDER / PAYMENT_PROVIDER
-// each name the *only* driver currently supported — they exist so that adding
-// a second driver later (e.g. STORAGE_DRIVER=s3) is a change to one function
-// per service instead of a repo-wide search-and-replace, not because a second
+// SESSION_STORE / STORAGE_DRIVER / JOB_DRIVER / PAYMENT_PROVIDER each name the
+// *only* driver currently supported — they exist so that adding a second
+// driver later (e.g. STORAGE_DRIVER=s3) is a change to one function per
+// service instead of a repo-wide search-and-replace, not because a second
 // driver is implemented today. oneOf() below enforces that: setting an
 // unsupported value throws immediately rather than being silently ignored.
+//
+// EMAIL_PROVIDER is the exception — it really does have two: 'brevo' and
+// 'smtp'. See src/config/mailer.js for what each one means and why the Google
+// Workspace mailbox uses 'smtp'.
 
 function oneOf(name, allowed, fallback) {
   const value = process.env[name] || fallback;
@@ -245,7 +249,14 @@ const config = {
   },
 
   email: {
-    get provider() { return oneOf('EMAIL_PROVIDER', ['brevo'], 'brevo'); },
+    // 'smtp' sends through a real SMTP server — for this deployment, the
+    // Google Workspace mailbox. 'brevo' is the older API transport, kept so a
+    // deployment mid-switch can go back in one variable.
+    //
+    // The default stays 'brevo' deliberately: an existing .env that sets a
+    // Brevo key and no EMAIL_PROVIDER must keep behaving exactly as it did,
+    // rather than silently changing transport on upgrade.
+    get provider() { return oneOf('EMAIL_PROVIDER', ['brevo', 'smtp'], 'brevo'); },
     get brevoApiKey() { return process.env.BREVO_API_KEY; },
     get brevoSender() { return process.env.BREVO_SENDER; },
     get brevoWebhookSecret() { return process.env.BREVO_WEBHOOK_SECRET; },
@@ -276,6 +287,16 @@ const config = {
 
   googleSheets: {
     get sheetId() { return process.env.GOOGLE_SHEETS_ID; },
+    get mergoActivationSheetId() { return process.env.MERGO_ACTIVATION_SHEET_ID; },
+    get mergoActivationTab() { return process.env.MERGO_ACTIVATION_TAB || 'JPSME Activations'; },
+    get mergoDailyActivationCap() {
+      const parsed = Number(process.env.MERGO_DAILY_ACTIVATION_CAP);
+      return Number.isInteger(parsed) && parsed > 0 ? parsed : 2000;
+    },
+    // Lets a local copy write localhost activation links into the campaign
+    // sheet. Only for a TEST sheet: links minted here point at this machine and
+    // at this machine's database, so they never work for a real member.
+    get mergoAllowLocalLinks() { return envFlag('MERGO_ALLOW_LOCAL_LINKS'); },
     get serviceAccountEmail() { return process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL; },
     get serviceAccountPrivateKey() { return process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY; },
   },

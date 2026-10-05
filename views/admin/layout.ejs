@@ -70,6 +70,10 @@
           <div id="user-submenu" class="mt-1 space-y-0.5 hidden">
             <a href="/admin/users/all" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Users</a>
             <a href="/admin/users/approvals" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">User Approvals</a>
+            <%# Named Activations, not Invitations: /admin/invitations already
+                exists for event invitations, and two nav entries called the
+                same thing is how an admin ends up on the wrong page. %>
+            <a href="/admin/activations" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Activations</a>
           </div>
         </div>
       <% } %>
