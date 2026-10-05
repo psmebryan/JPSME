@@ -2,83 +2,46 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Mergo activation email - copy into a Gmail draft</title>
+<title>Mergo activation email - Gmail draft</title>
 <style>
   body { margin: 0; background: #f1f5f9; font-family: Arial, Helvetica, sans-serif; color: #1f2937; }
-  .howto { max-width: 680px; margin: 24px auto 0; padding: 16px 20px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; font-size: 14px; line-height: 1.5; }
-  .howto ol { margin: 8px 0 0; padding-left: 20px; }
-  .howto code { background: #fff; border: 1px solid #e5e7eb; border-radius: 4px; padding: 1px 4px; }
-  .copy { margin-top: 12px; padding: 10px 18px; font-size: 15px; font-weight: bold; color: #fff; background: #4338ca; border: 0; border-radius: 8px; cursor: pointer; }
-  .copied { margin-left: 10px; color: #15803d; font-weight: bold; }
-  .mail { max-width: 680px; margin: 16px auto 40px; padding: 24px 28px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; }
+  .box { max-width: 680px; margin: 24px auto; padding: 18px 22px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 14px; line-height: 1.55; }
+  .howto { background: #fffbeb; border-color: #fcd34d; }
+  code { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 4px; padding: 1px 4px; }
+  pre { white-space: pre-wrap; font: 14px/1.55 Arial, Helvetica, sans-serif; margin: 0; }
 </style>
 </head>
 <body>
 
-<!--
-  OPEN THIS FILE IN CHROME, NOT IN A CODE EDITOR.
-  Double-click it in File Explorer. Copying this code from VS Code pastes the
-  code itself into Gmail, where it shows up in the email as text.
--->
-
-<div class="howto">
-  <strong>How to use this (this yellow box is not part of the email):</strong>
+<div class="box howto">
+  <strong>How the Mergo activation email is set up</strong>
   <ol>
-    <li>In Gmail (the account that runs Mergo), press <b>Compose</b>. Subject: <code>Activate your JPSME account</code>. Leave <b>To</b> empty.</li>
-    <li>Click the blue <b>Copy email for Gmail</b> button below.</li>
-    <li>Click inside the empty Gmail draft body and press <b>Ctrl+V</b>. You should see the yellow button &mdash; not code.</li>
-    <li>Check the links: click the button text in the draft and press <b>Ctrl+K</b>. The web address must be exactly <code>{{Activation Link}}</code>. Fix it if it is anything else. Do the same for the long link line.</li>
-    <li>Close the draft (it saves itself). In Mergo, pick this draft and the <code>Email</code> column, then send a test to yourself first.</li>
+    <li>JPSME fills the campaign sheet. Each row has an <code>Activation Link</code> (the plain link) and an
+      <code>Activation Button</code> (a Sheets formula, <code>=HYPERLINK(link, IMAGE(button picture))</code>, that Mergo
+      sends as a clickable yellow button).</li>
+    <li>In Gmail (the account that runs Mergo), press <b>Compose</b>. Subject: <code>Activate your JPSME account</code>.
+      Leave <b>To</b> empty.</li>
+    <li>Paste the text in the white box below <b>as ordinary text</b>. Do not use Gmail's link button (Ctrl+K) at all:
+      Gmail will not accept a Mergo marker as a web address, and does not need to &mdash; the markers are replaced when Mergo sends.</li>
+    <li>Close the draft. In Mergo, pick this draft and the <code>Email</code> column, and send a test to yourself first.</li>
   </ol>
-  <button type="button" class="copy" id="copy">Copy email for Gmail</button><span class="copied" id="copied" hidden></span>
+  Rows added before the button column existed have no button; their email still carries the plain link.
 </div>
 
-<div class="mail" id="mail">
-  <p>Hi {{First Name}},</p>
-  <p>A JPSME administrator has created an account for you, using this email address.</p>
-  <p>Open the link below to finish setting it up. You will choose your own password and pick your school or organization.</p>
+<div class="box"><pre>Hi {{First Name}},
 
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
-    <tr>
-      <td bgcolor="#ecb827" style="background:#ecb827;border-radius:8px;">
-        <a href="{{Activation Link}}"
-           style="display:inline-block;padding:12px 24px;color:#131131;font-weight:bold;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:14px;">Activate my account</a>
-      </td>
-    </tr>
-  </table>
+A JPSME administrator has created an account for you, using this email address.
 
-  <p style="color:#666;font-size:13px;">Or paste this into your browser:<br>
-  <a href="{{Activation Link}}" style="word-break:break-all;">{{Activation Link}}</a></p>
+Click the button below to finish setting it up. You will choose your own password and pick your school or organization.
 
-  <p style="color:#666;font-size:13px;">This link works for 3 days and can be used once.<br>
-  Until you do, the account cannot be signed in to. Nobody &mdash; including the administrator who created it &mdash; knows or can see your password.<br>
-  If you were not expecting this, you can ignore this email and nothing will happen.</p>
-</div>
+{{Activation Button}}
 
-<script>
-  // Puts the email on the clipboard as formatted HTML, written exactly as
-  // above. Copying a mouse selection instead lets the browser rewrite
-  // href="{{Activation Link}}" into a file:/// address before Gmail sees it.
-  document.getElementById('copy').addEventListener('click', function () {
-    var mail = document.getElementById('mail');
-    var html = mail.innerHTML;
-    var text = mail.innerText;
-    function onCopy(e) {
-      e.clipboardData.setData('text/html', html);
-      e.clipboardData.setData('text/plain', text);
-      e.preventDefault();
-    }
-    document.addEventListener('copy', onCopy);
-    var ok = false;
-    try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
-    document.removeEventListener('copy', onCopy);
-    var note = document.getElementById('copied');
-    note.textContent = ok
-      ? 'Copied — now paste it into the Gmail draft.'
-      : 'Could not copy. Select the white box with the mouse and press Ctrl+C instead.';
-    note.hidden = false;
-  });
-</script>
+If the button does not work, paste this link into your browser:
+{{Activation Link}}
+
+This link works for 3 days and can be used once.
+Until you do, the account cannot be signed in to. Nobody, including the administrator who created it, knows or can see your password.
+If you were not expecting this, you can ignore this email and nothing will happen.</pre></div>
 
 </body>
 </html>

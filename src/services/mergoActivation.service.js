@@ -10,6 +10,14 @@ const OWNED_COLUMNS = [
   'Attempt ID', 'User ID', 'First Name', 'Last Name', 'Email',
   'Activation Link', 'Campaign', 'Created At', 'Expires At',
 ];
+// Written as a Sheets formula rather than as a value. Gmail's link box will not
+// take a Mergo marker, so a clickable button cannot be built in the draft;
+// Mergo instead turns a =HYPERLINK(url, IMAGE(...)) cell into a linked image,
+// and the draft just carries {{Activation Button}}. See help.mergo.app,
+// "Insert Dynamic Links in your Emails".
+const FORMULA_COLUMNS = ['Activation Button'];
+const ALL_COLUMNS = OWNED_COLUMNS.concat(FORMULA_COLUMNS);
+const BUTTON_IMAGE_PATH = '/img/mergo-activate-button.png';
 const ACTIVE_PROVIDER_STATUSES = ['PREPARED', 'QUEUED', 'SENT', 'OPENED'];
 
 let sheetsClient = null;
@@ -95,18 +103,18 @@ async function ensureHeaders(sheets, title) {
   if (!current.length) {
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `${quoted}!A1:I1`,
+      range: `${quoted}!A1:${columnLetter(ALL_COLUMNS.length)}1`,
       valueInputOption: 'RAW',
-      requestBody: { values: [OWNED_COLUMNS] },
+      requestBody: { values: [ALL_COLUMNS] },
     });
-    return OWNED_COLUMNS.slice();
+    return ALL_COLUMNS.slice();
   }
 
   const normalized = current.map((v) => String(v || '').trim().toLowerCase());
   const headers = current.slice();
   // Add only missing JPSME-owned headers, one cell at a time. This does not
   // rewrite or shift Mergo's reserved tracking columns.
-  for (const name of OWNED_COLUMNS) {
+  for (const name of ALL_COLUMNS) {
     if (!normalized.includes(name.toLowerCase())) {
       const col = headers.length + 1;
       await sheets.spreadsheets.values.update({
@@ -324,6 +332,15 @@ async function prepareOne(user, { retryOfAttemptId = null, campaignId } = {}) {
   };
 }
 
+// A linked button image, as Mergo reads it: =HYPERLINK(url, IMAGE(url)).
+// The image is served by this site, so it is public wherever APP_URL is.
+// Quotes are doubled because that is how a Sheets formula escapes them.
+function buttonFormula(activationLink) {
+  const q = (value) => `"${String(value).replace(/"/g, '""')}"`;
+  const imageUrl = `${String(config.appUrl || '').replace(/\/+$/, '')}${BUTTON_IMAGE_PATH}`;
+  return `=HYPERLINK(${q(activationLink)}, IMAGE(${q(imageUrl)}))`;
+}
+
 async function writeRows(rows) {
   if (!rows.length) return { written: 0, failed: [] };
   if (!isConfigured()) throw new Error('Mergo activation Google Sheet is not configured.');
@@ -407,6 +424,28 @@ async function writeRows(rows) {
       } catch (repairError) {
         throw new Error(`Google Sheets batch write failed (${firstError.message}); recovery failed (${repairError.message}).`);
       }
+    }
+  }
+
+  // The button cell, written separately because it is the one cell that must be
+  // read as a formula. Everything above stays RAW, so a name or address that
+  // happens to start with "=" can never be evaluated as one.
+  //
+  // Best effort: the plain Activation Link column is already in place and works
+  // on its own, so a failure here costs the button, not the invitation.
+  const buttonCol = columns.get('activation button');
+  if (buttonCol !== undefined) {
+    const formulas = rows.map((data) => ({
+      range: `${quoteTab(title)}!${columnLetter(buttonCol + 1)}${positions.get(data.attemptId)}`,
+      values: [[buttonFormula(data.activationLink)]],
+    }));
+    try {
+      await sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: config.googleSheets.mergoActivationSheetId,
+        requestBody: { valueInputOption: 'USER_ENTERED', data: formulas },
+      });
+    } catch (err) {
+      logger.warn('Mergo activation: button cells could not be written', { reason: err.message });
     }
   }
 
@@ -682,6 +721,8 @@ async function setDailyCap(cap, { actorId = null } = {}) {
 
 module.exports = {
   OWNED_COLUMNS,
+  FORMULA_COLUMNS,
+  buttonFormula,
   ACTIVE_PROVIDER_STATUSES,
   isConfigured,
   sheetUrl,
