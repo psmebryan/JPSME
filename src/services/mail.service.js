@@ -121,7 +121,7 @@ async function sendVerificationEmail(user, code, ttlMs) {
 // No password is mentioned as existing, because none does: the link is the only
 // way in until they choose one.
 async function sendActivationEmail(user, url, ttlMs) {
-  const days = Math.max(1, Math.round((Number(ttlMs) || 14 * 24 * 60 * 60 * 1000) / 86400000));
+  const days = Math.max(1, Math.round((Number(ttlMs) || 3 * 24 * 60 * 60 * 1000) / 86400000));
   const lifetime = `This link works for ${days} day${days === 1 ? '' : 's'} and can be used once.`;
 
   try {

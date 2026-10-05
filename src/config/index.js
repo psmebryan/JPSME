@@ -158,6 +158,12 @@ const config = {
   get isProduction() { return process.env.NODE_ENV === 'production'; },
   get port() { return Number(process.env.PORT) || 3000; },
   get appUrl() { return process.env.APP_URL || `http://localhost:${config.port}`; },
+  // How many days an activation link works. 1-14, default 3. Out-of-range or
+  // non-numeric values fall back to the default rather than to "never expires".
+  get activationLinkDays() {
+    const parsed = Number(process.env.ACTIVATION_LINK_DAYS);
+    return Number.isInteger(parsed) && parsed >= 1 && parsed <= 14 ? parsed : 3;
+  },
   get trustProxy() { return envFlag('TRUST_PROXY'); },
   get clusterWorkers() { return Math.max(1, Number(process.env.CLUSTER_WORKERS) || 1); },
 

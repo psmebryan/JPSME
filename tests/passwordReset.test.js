@@ -383,10 +383,29 @@ test('an activation link outlives a reset link by a long way', () => {
   // A reset is answered in minutes by somebody who just failed to sign in. An
   // activation lands unannounced and may not be read until the weekend; an hour
   // would expire almost all of them.
-  assert(service.ACTIVATION_TTL_MS > service.TOKEN_TTL_MS * 24,
-    `activation ${service.ACTIVATION_TTL_MS}ms should be far longer than reset ${service.TOKEN_TTL_MS}ms`);
-  assert(service.ACTIVATION_TTL_MS <= 30 * 24 * 60 * 60 * 1000,
-    'but still expires — a leaked mailbox from last term must not still open an account');
+  assert(service.ACTIVATION_TTL_MS >= service.TOKEN_TTL_MS * 24,
+    `activation ${service.ACTIVATION_TTL_MS}ms should last at least a day, unlike reset ${service.TOKEN_TTL_MS}ms`);
+  assert(service.ACTIVATION_TTL_MS <= 14 * 24 * 60 * 60 * 1000,
+    'but still expires — an unused activation link is a standing key to the account');
+});
+
+test('activation links last 3 days unless ACTIVATION_LINK_DAYS says otherwise', () => {
+  // eslint-disable-next-line global-require
+  const config = require('../src/config');
+  const saved = process.env.ACTIVATION_LINK_DAYS;
+  try {
+    delete process.env.ACTIVATION_LINK_DAYS;
+    assert(config.activationLinkDays === 3, 'defaults to 3 days');
+    process.env.ACTIVATION_LINK_DAYS = '1';
+    assert(config.activationLinkDays === 1, 'can be set to 1 day');
+    for (const bad of ['0', '15', 'abc', '2.5']) {
+      process.env.ACTIVATION_LINK_DAYS = bad;
+      assert(config.activationLinkDays === 3, `"${bad}" falls back to the default`);
+    }
+  } finally {
+    if (saved === undefined) delete process.env.ACTIVATION_LINK_DAYS;
+    else process.env.ACTIVATION_LINK_DAYS = saved;
+  }
 });
 
 test('whether a link is an activation comes from the account, not the link', () => {

@@ -248,7 +248,7 @@ p('You will need:', { bold: true, color: INK });
 });
 space(10);
 
-note('The link expires', 'An activation link works for 14 days and can only be used once. '
+note('The link expires', 'An activation link works for 3 days and can only be used once. '
   + 'After that it stops working and you will need a new one. Nothing is lost — ask for another.');
 
 // =============================================================================
