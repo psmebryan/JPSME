@@ -1499,6 +1499,7 @@ function initDataTransfer() {
         if (mergo && mergo.failed && Array.isArray(mergo.outcomes)) {
           var labels = {
             MERGO_SHEETS_NOT_CONFIGURED: 'Mergo sheet not configured',
+            APP_URL_NOT_PUBLIC: 'not sent to Mergo because APP_URL is not the live https address (links would not work for members)',
             DAILY_CAP: 'daily preparation limit reached',
             ACTIVE_LINK_EXISTS: 'already have a live activation link',
             ACTIVE_ATTEMPT_EXISTS: 'already queued in Mergo',
