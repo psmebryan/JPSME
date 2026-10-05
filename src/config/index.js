@@ -292,9 +292,11 @@ const config = {
   },
 
   googleSheets: {
-    get sheetId() { return process.env.GOOGLE_SHEETS_ID; },
-    get mergoActivationSheetId() { return process.env.MERGO_ACTIVATION_SHEET_ID; },
-    get mergoActivationTab() { return process.env.MERGO_ACTIVATION_TAB || 'JPSME Activations'; },
+    // Trimmed: an ID copied out of a table or chat easily brings a tab or space
+    // along, and Google then answers "file does not exist" for a sheet that does.
+    get sheetId() { return (process.env.GOOGLE_SHEETS_ID || '').trim() || undefined; },
+    get mergoActivationSheetId() { return (process.env.MERGO_ACTIVATION_SHEET_ID || '').trim() || undefined; },
+    get mergoActivationTab() { return (process.env.MERGO_ACTIVATION_TAB || '').trim() || 'JPSME Activations'; },
     get mergoDailyActivationCap() {
       const parsed = Number(process.env.MERGO_DAILY_ACTIVATION_CAP);
       return Number.isInteger(parsed) && parsed > 0 ? parsed : 2000;

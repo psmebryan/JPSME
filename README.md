@@ -84,7 +84,7 @@ Share the dedicated spreadsheet with the service account as an editor. Keep the
 spreadsheet private to authorized staff: it contains live bearer activation
 links. The backend creates the worksheet headers and writes JPSME-owned columns;
 it leaves Mergo's `Merge Status` column alone. In Mergo, choose the `Email`
-column and use `{{First Name}}` and `{{Activation Link}}` in the Gmail draft.
+column and use `{{First Name}}`, `{{Activation Button}}` and `{{Activation Link}}` in the Gmail draft, typed as ordinary text (Gmail's link box will not take a marker). `Activation Button` is a `=HYPERLINK(link, IMAGE(...))` formula JPSME writes for each row, which Mergo sends as a clickable button image served from `/img/mergo-activate-button.png`. See `docs/mergo-activation-email-template.html`.
 When an import creates member accounts, JPSME prepares their activation links
 and adds those rows to the campaign sheet automatically. Launch the campaign
 through Mergo, or enable its **For each new row** schedule (which can send as

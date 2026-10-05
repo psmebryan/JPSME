@@ -18,6 +18,7 @@ const googlePath = require.resolve('googleapis');
 
 const memory = { users: [], attempts: [], tokenRows: new Map(), jobs: [], sheet: [] };
 let failNextBatch = false;
+const batches = [];
 let failEveryBatch = false;
 let failAfterBatchCells = 0;
 
@@ -110,7 +111,7 @@ const fakeSheets = {
       },
       async update({ range, requestBody }) {
         const match = /!([A-Z]+)(\d+)/.exec(range);
-        if (range.endsWith('!A1:I1')) { memory.sheet[0] = requestBody.values[0].slice(); return { data: {} }; }
+        if (/!A1:[A-Z]+1$/.test(range)) { memory.sheet[0] = requestBody.values[0].slice(); return { data: {} }; }
         const col = columnNumber(match[1]) - 1;
         const row = Number(match[2]) - 1;
         while (memory.sheet.length <= row) memory.sheet.push([]);
@@ -118,6 +119,7 @@ const fakeSheets = {
         return { data: {} };
       },
       async batchUpdate({ requestBody }) {
+        batches.push({ mode: requestBody.valueInputOption, values: requestBody.data.map((d) => d.values[0][0]) });
         const data = requestBody.data;
         const limit = failAfterBatchCells > 0 ? Math.min(failAfterBatchCells, data.length) : data.length;
         for (const item of data.slice(0, limit)) {
@@ -213,9 +215,23 @@ async function main() {
   assert.strictEqual(duplicate.outcomes[0].reason, 'ACTIVE_ATTEMPT_EXISTS', 'repeat selection does not mint another row');
   assert.strictEqual(memory.attempts.length, 1);
 
+  // The button Mergo turns into a linked image: {{Activation Button}} in the draft.
+  const buttonCol = memory.sheet[0].indexOf('Activation Button');
+  assert(buttonCol >= 0, 'the sheet gets an Activation Button column');
+  const button = memory.sheet[1][buttonCol];
+  assert.match(button, /^=HYPERLINK\("https:\/\/jpsme\.example\/reset-password\?uid=1&token=SECRET_TOKEN", IMAGE\("https:\/\/jpsme\.example\/img\/mergo-activate-button\.png"\)\)$/);
+  assert(batches.some((b) => b.mode === 'RAW') && batches.some((b) => b.mode === 'USER_ENTERED'), 'data and formula are written separately');
+  assert(batches.filter((b) => b.mode === 'USER_ENTERED').every((b) => b.values.every((v) => /^=HYPERLINK\(/.test(v))),
+    'only the button cell is written as a formula');
+  assert(batches.filter((b) => b.mode === 'RAW').every((b) => b.values.every((v) => !/^=HYPERLINK\(/.test(String(v)))),
+    'member data is never evaluated as a formula');
+  assert.strictEqual(service.buttonFormula('https://x/a?b="c"'), '=HYPERLINK("https://x/a?b=""c""", IMAGE("https://jpsme.example/img/mergo-activate-button.png"))',
+    'quotes inside the link cannot break out of the formula');
+
   // Mergo adds/owns its own column. Sync reads that column without rewriting it.
   memory.sheet[0].push('Merge Status');
-  memory.sheet[1].push('OPENED');
+  const mergoCol = memory.sheet[0].length - 1;
+  memory.sheet[1][mergoCol] = 'OPENED';
   const attemptId = memory.attempts[0].attemptId;
   const opened = await service.syncStatuses();
   assert.strictEqual(opened.synced, 1);
@@ -223,22 +239,22 @@ async function main() {
   assert(memory.attempts[0].openedAt, 'open is recorded as a tracking signal');
   const openedAgain = await service.syncStatuses();
   assert.strictEqual(openedAgain.unchanged, 1, 'repeated sync is idempotent');
-  assert.strictEqual(memory.sheet[1][9], 'OPENED', 'sync leaves the Mergo-owned value untouched');
+  assert.strictEqual(memory.sheet[1][mergoCol], 'OPENED', 'sync leaves the Mergo-owned value untouched');
 
-  memory.sheet[1][9] = 'Bounced (550 rejected)';
+  memory.sheet[1][mergoCol] = 'Bounced (550 rejected)';
   await service.syncStatuses();
   assert.strictEqual(memory.attempts[0].providerStatus, 'BOUNCED');
-  memory.sheet[1][9] = 'Sent';
+  memory.sheet[1][mergoCol] = 'Sent';
   await service.syncStatuses();
   assert.strictEqual(memory.attempts[0].providerStatus, 'BOUNCED', 'a stale sent status cannot downgrade a bounce');
   memory.sheet.push(memory.sheet[1].slice());
   const duplicateRow = await service.syncStatuses();
   assert.strictEqual(duplicateRow.duplicates, 1, 'duplicate sheet attempt IDs are reported and ignored');
   memory.sheet.pop();
-  memory.sheet[1][9] = 'not-a-status';
+  memory.sheet[1][mergoCol] = 'not-a-status';
   const unknown = await service.syncStatuses();
   assert(unknown.errors.some((entry) => entry.includes('unsupported Mergo status')));
-  memory.sheet[1][9] = 'Bounced (550 rejected)';
+  memory.sheet[1][mergoCol] = 'Bounced (550 rejected)';
 
   const retry = await service.retryAttempt(attemptId);
   assert.strictEqual(retry.ok, true);
@@ -298,6 +314,19 @@ async function main() {
   assert.strictEqual((await service.prepareSelected([1])).ok, true, 'the explicit test-sheet override still works');
   delete process.env.MERGO_ALLOW_LOCAL_LINKS;
   process.env.APP_URL = 'https://jpsme.example';
+
+  // An ID pasted out of a table brings a tab character along; Google then says
+  // the file does not exist. The settings are trimmed so that cannot happen.
+  // eslint-disable-next-line global-require
+  const config = require('../src/config');
+  const savedId = process.env.MERGO_ACTIVATION_SHEET_ID;
+  const savedTab = process.env.MERGO_ACTIVATION_TAB;
+  process.env.MERGO_ACTIVATION_SHEET_ID = '\t1ZUxY3j8WsJ5WA7iXv-QEo8rT56b_MReBx730KM3ZLHo ';
+  process.env.MERGO_ACTIVATION_TAB = ' JPSME Activations\t';
+  assert.strictEqual(config.googleSheets.mergoActivationSheetId, '1ZUxY3j8WsJ5WA7iXv-QEo8rT56b_MReBx730KM3ZLHo');
+  assert.strictEqual(config.googleSheets.mergoActivationTab, 'JPSME Activations');
+  process.env.MERGO_ACTIVATION_SHEET_ID = savedId;
+  process.env.MERGO_ACTIVATION_TAB = savedTab;
 
   console.log('Mergo activation integration tests passed');
 }
