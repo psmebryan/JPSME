@@ -16,6 +16,18 @@ const challengeService = require('../../services/challenge.service');
 
 const router = Router();
 
+// Machine-to-machine, authenticated by a bearer integration key rather than by
+// a session — see integration.routes.js for why it carries no CSRF check and
+// no event id.
+//
+// Mounted BEFORE the baseline limiter, deliberately. That limiter counts per
+// IP, and an integration is one server fronting every scanner at a venue: thirty
+// gun scanners behind it arrive as a single address, and 900 per 15 minutes is
+// about one scan a second shared between all of them — exhausted in the first
+// minutes of the rush. The integration routes carry their own limits instead,
+// keyed on the integration key, plus an IP limit on failed authentication.
+router.use('/integration', integrationRoutes);
+
 // General abuse backstop for the whole API surface. Individual routes (login,
 // certificate generation, event registration) layer stricter limiters on top
 // of this where the endpoint is more expensive or more attractive to abuse.
@@ -78,9 +90,5 @@ router.use('/payments', paymentRoutes);
 router.use('/webhooks', webhookRoutes);
 router.use('/articles', articleRoutes);
 router.use('/organizations', organizationRoutes);
-// Machine-to-machine, authenticated by a bearer integration key rather than by
-// a session — see integration.routes.js for why it carries no CSRF check and
-// no event id.
-router.use('/integration', integrationRoutes);
 
 module.exports = router;

@@ -280,6 +280,17 @@ test('listing has its own rate limit, separate from the door', () => {
   assert(scanRoute && /scanLimiter/.test(scanRoute[0]), 'while the door keeps the scan limiter');
 });
 
+test('the per-IP API limit does not throttle an integration fronting many scanners', () => {
+  // Thirty gun scanners behind one server are one IP. If the site-wide per-IP
+  // limiter runs first, they share ~1 scan a second and the door stalls.
+  const index = stripComments(readSrc('src', 'routes', 'api', 'index.js'));
+  const mount = index.indexOf("router.use('/integration'");
+  const baseline = index.indexOf('router.use(baselineApiLimiter)');
+  assert(mount !== -1 && baseline !== -1, 'both are mounted');
+  assert(mount < baseline, 'the integration routes are mounted ahead of the per-IP limiter');
+  assert(/skipSuccessfulRequests:\s*true/.test(ROUTES), 'and carry their own limit on failed requests instead');
+});
+
 // --- cross-origin access -----------------------------------------------------
 
 test('the integration routes allow cross-origin callers', () => {

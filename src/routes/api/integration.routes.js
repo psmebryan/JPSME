@@ -68,6 +68,22 @@ function cors(req, res, next) {
 
 router.use(cors);
 
+// The abuse backstop these routes have in place of the site-wide per-IP limiter
+// (which they are mounted ahead of — see api/index.js). It counts only FAILED
+// requests per IP: a bad or revoked key, a malformed request. A working
+// integration's scans all return 200 — refusals included — so a busy venue never
+// touches this, while something hammering the endpoint with made-up keys does.
+const failedRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { success: false, message: 'Too many failed requests. Please try again later.' },
+});
+
+router.use(failedRequestLimiter);
+
 
 // Same reasoning as the staff scan limiter: sized to stop a runaway client
 // loop, not to police real scanning. A convention door moves several hundred
@@ -78,9 +94,15 @@ router.use(cors);
 // Keyed on the integration key rather than the IP. A venue commonly NATs every
 // device behind one address, so per-IP limiting would let one busy system
 // starve another; and a key is the thing actually being rate limited.
+//
+// 6000 per 5 minutes is 20 a second. One key can front thirty gun scanners at
+// once, and a practised operator with a gun admits somebody every few seconds:
+// thirty lanes at one scan every three seconds is 3000 in the window, so this
+// leaves headroom for the double-reads and retries a real rush produces while
+// still stopping a client stuck in a loop.
 const scanLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
-  max: 1500,
+  max: 6000,
   standardHeaders: true,
   legacyHeaders: false,
   // The fallback goes through ipKeyGenerator rather than using req.ip raw.
@@ -125,8 +147,17 @@ const scanValidators = [
 // global one: it is called once during setup, not at the door.
 router.get('/whoami', integrationAuth, integrationApi.whoami);
 
-// Identify without admitting. Writes nothing.
-router.post('/lookup', integrationAuth, scanLimiter, scanValidators, integrationApi.lookup);
+// Identify without admitting. Writes nothing. Takes the scanned code, or the
+// registration number printed on the ticket when the code will not read.
+router.post(
+  '/lookup',
+  integrationAuth, scanLimiter,
+  [
+    body('qrToken').optional({ checkFalsy: true }).isString().isLength({ max: 512 }),
+    body('registrationNumber').optional({ checkFalsy: true }).trim().isLength({ max: 64 }),
+  ],
+  integrationApi.lookup
+);
 
 // Admit. Records the attendance in this database.
 router.post('/checkin', integrationAuth, scanLimiter, scanValidators, integrationApi.checkin);

@@ -391,12 +391,30 @@ async function applyVerdict({
 // Identify somebody without admitting them. Writes nothing at all — no
 // admission, and no row in the door log — for the same reason lookupByScan
 // writes nothing: a lookup is not an event at the door.
-async function lookupByIntegration({ integrationKey, rawScan }) {
+//
+// Accepts either the scanned QR or the registration number printed beside it,
+// for a ticket whose code will not read. That is no wider than
+// checkInManuallyByIntegration, which already admits by registration number.
+//
+// `attendee` carries the contact details the other system has to store to
+// record the attendance on its side (its meal entitlement is keyed on email).
+// It is only filled in for a registration that belongs to THIS key's event: a
+// key for one event is not a way to read the people registered for another.
+async function lookupByIntegration({ integrationKey, rawScan = null, registrationNumber = null }) {
   const event = await prisma.event.findUnique({ where: { id: integrationKey.eventId } });
   if (!event) throw new AppError('Event not found', 404);
 
-  const { registration } = await qrService.validateQrToken(rawScan);
+  let registration = null;
+  if (rawScan) {
+    ({ registration } = await qrService.validateQrToken(rawScan));
+  } else if (registrationNumber) {
+    registration = await prisma.eventRegistration.findUnique({
+      where: { registrationNumber: String(registrationNumber).trim().toUpperCase() },
+      include: { user: { select: { id: true, status: true } } },
+    });
+  }
   const verdict = verdictFor(registration, event.id);
+  const ownEvent = registration && registration.eventId === event.id;
 
   return {
     ok: verdict === 'SUCCESS',
@@ -405,6 +423,16 @@ async function lookupByIntegration({ integrationKey, rawScan }) {
     participant: registration ? participantView(registration) : null,
     registrationId: registration ? registration.id : null,
     checkedInAt: registration ? registration.checkedInAt : null,
+    attendee: ownEvent ? {
+      registrationId: registration.id,
+      registrationNumber: registration.registrationNumber,
+      userId: registration.userId,
+      eventId: registration.eventId,
+      fullName: registration.fullName,
+      email: registration.email,
+      school: registration.school || null,
+      status: registration.status,
+    } : null,
   };
 }
 
