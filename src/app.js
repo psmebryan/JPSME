@@ -65,7 +65,9 @@ app.get('/health/dependencies', (req, res) => {
     status: 'ok',
     dependencies: {
       database: !!config.database.url,
-      email: config.email.provider === 'brevo' ? !!config.email.brevoApiKey : true,
+      email: config.email.provider === 'smtp'
+        ? !!(config.email.smtp.host && config.email.smtp.user && config.email.smtp.pass)
+        : !!config.email.brevoApiKey,
       payment: config.payment.provider === 'paymongo' ? !!config.payment.paymongoSecretKey : true,
       googleSheets: !!(config.googleSheets.sheetId && config.googleSheets.serviceAccountEmail && config.googleSheets.serviceAccountPrivateKey),
     },

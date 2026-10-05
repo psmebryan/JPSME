@@ -23,16 +23,31 @@ function parseAddress(address) {
 }
 
 // Brevo's API takes attachments as base64 content (or a public URL), not a
-// local filesystem path — nodemailer's convention here is { filename, path }.
-// This is the one real translation step; everything else is a 1:1 field
-// rename.
+// local filesystem path. This is the one real translation step; everything
+// else is a 1:1 field rename.
+//
+// It has to accept BOTH of nodemailer's conventions, and for a long time it
+// only accepted one. This read `fs.readFile(a.path)` unconditionally — but
+// every attachment this app actually builds carries bytes, not a path:
+// mail.service.js's attachmentFor reads from storage (which may be the
+// database, where there is no path to give), and ticket.service.js renders the
+// e-ticket PDF in memory. So `a.path` was always undefined, fs.readFile threw
+// a TypeError, and because every send in mail.service.js is deliberately
+// best-effort, that throw was swallowed and logged as a generic send failure.
+//
+// The effect: on Brevo, every email carrying an attachment silently failed —
+// including the event registration confirmation with the QR e-ticket attached.
+// Mail with no attachment was unaffected, which is why this could sit unnoticed.
 async function buildBrevoAttachments(attachments) {
   if (!attachments || !attachments.length) return undefined;
   const built = await Promise.all(
-    attachments.map(async (a) => ({
-      name: a.filename,
-      content: (await fs.readFile(a.path)).toString('base64'),
-    }))
+    attachments.map(async (a) => {
+      // Bytes first: it is what this app produces, and it needs no filesystem.
+      const bytes = a.content !== undefined && a.content !== null
+        ? Buffer.from(a.content)
+        : await fs.readFile(a.path);
+      return { name: a.filename, content: bytes.toString('base64') };
+    })
   );
   return built;
 }
@@ -99,26 +114,73 @@ function buildBrevoTransport() {
   };
 }
 
-// Falls back to logging emails to the console when neither Brevo nor SMTP is
-// configured, so registration works out of the box on a fresh local XAMPP
-// setup with zero email provider set up yet.
+// A real SMTP server, which for this deployment is the Google Workspace
+// mailbox that sends as studentnatcon@psmeinc.org.ph.
+//
+//   SMTP_HOST=smtp.gmail.com
+//   SMTP_PORT=587
+//   SMTP_USER=studentnatcon@psmeinc.org.ph
+//   SMTP_PASS=<16-character Google App Password, not the mailbox password>
+//
+// Two things about that choice are deliberate.
+//
+// smtp.gmail.com, not smtp-relay.gmail.com. The relay is the higher-volume
+// option, but it authorises senders by IP address, and this app is hosted
+// somewhere with no stable outbound IP — the address changes underneath us, so
+// any IP allowlist is guaranteed to lock us out eventually. Password auth
+// travels with the request instead and does not care what IP it came from.
+//
+// An App Password, not the account password. Google refuses plain password
+// auth on SMTP outright; an App Password is the supported way in, it requires
+// 2-Step Verification on the mailbox, and it can be revoked on its own without
+// touching the mailbox itself.
+//
+// Nodemailer takes attachments as { filename, content } (bytes) or
+// { filename, path }, and needs no translation for either — unlike the Brevo
+// branch above, which had to grow one.
+function buildSmtpTransport() {
+  return nodemailer.createTransport({
+    host: config.email.smtp.host,
+    port: config.email.smtp.port,
+    // Port 587 is STARTTLS, which means the connection opens in the clear and
+    // is upgraded — so `secure` is false there and true only on 465. Setting
+    // secure:true on 587 does not make it safer, it makes it hang.
+    secure: config.email.smtp.secure,
+    auth: config.email.smtp.user
+      ? { user: config.email.smtp.user, pass: config.email.smtp.pass }
+      : undefined,
+  });
+}
+
+// Falls back to logging emails to the console when nothing is configured, so
+// registration works out of the box on a fresh local XAMPP setup with no email
+// provider set up at all.
 function buildTransport() {
-  // Brevo API takes priority when configured — this is the intended path now
-  // that a Brevo key exists; SMTP stays available underneath purely as a
-  // fallback for environments that haven't set BREVO_API_KEY, not removed.
+  // EMAIL_PROVIDER decides, and it is checked before any credential is looked
+  // at. Picking the transport by "which key happens to be set" is how a
+  // deployment ends up sending through a provider nobody chose: leaving an old
+  // BREVO_API_KEY in .env while adding SMTP credentials would silently keep
+  // every email on Brevo, and the only symptom is mail arriving from the wrong
+  // place.
+  if (config.email.provider === 'smtp') {
+    if (!config.email.smtp.host) {
+      // Loud, at boot, rather than a send failure per email later. There is no
+      // sensible fallback here — quietly using Brevo instead would be exactly
+      // the surprise the explicit switch exists to prevent.
+      throw new Error('EMAIL_PROVIDER=smtp but SMTP_HOST is not set. Set SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS, or change EMAIL_PROVIDER.');
+    }
+    return buildSmtpTransport();
+  }
+
   if (config.email.brevoApiKey) {
     return buildBrevoTransport();
   }
 
+  // Provider is 'brevo' with no key. SMTP credentials still win over doing
+  // nothing — this is the pre-existing fallback and some environments rely on
+  // it — but the provider switch above is the supported way to ask for SMTP.
   if (config.email.smtp.host) {
-    return nodemailer.createTransport({
-      host: config.email.smtp.host,
-      port: config.email.smtp.port,
-      secure: config.email.smtp.secure,
-      auth: config.email.smtp.user
-        ? { user: config.email.smtp.user, pass: config.email.smtp.pass }
-        : undefined,
-    });
+    return buildSmtpTransport();
   }
 
   return {

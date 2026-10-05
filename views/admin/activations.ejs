@@ -1,0 +1,683 @@
+<%#
+  Member activations: who has an invitation out, what bounced, whose link
+  expired, and who actually got in.
+
+  The states are derived server-side (activationTracking.service.js) rather than
+  stored, so nothing here can disagree with the database. This page only renders
+  them and offers the two things an admin can do about each one: resend, or fix
+  the address first and then resend.
+
+  Mergo sends are prepared in the managed Google Sheet and synced by Attempt ID. Account activation remains a JPSME database event.
+
+  No style attributes anywhere: styleSrc carries a nonce and no 'unsafe-inline',
+  so a style attribute is dropped silently.
+%>
+<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+  <div>
+    <h1 class="admin-h1">Invite Members</h1>
+    <p class="text-sm text-gray-500 mt-1">Import your member list, prepare activation emails for Mergo, then check delivery and registration here.</p>
+  </div>
+  <div class="flex items-center gap-2">
+    <button type="button" id="refresh" class="btn-secondary text-sm">Refresh</button>
+  </div>
+</div>
+
+<%#
+  Step 1, moved here from Admin → Settings along with the send below.
+
+  Numbered because this genuinely is a sequence and the order carries
+  information the reader needs: an account created by step 1 cannot be signed in
+  to until step 2 emails its link, and step 3 is the only way to find out whether
+  that email arrived. Splitting step 1 onto a settings page meant starting a job
+  somewhere that could not show you how it went.
+
+  The wrapper keeps the id data-transfer-module and every control keeps its id,
+  because admin.js's initDataTransfer binds by those ids — the markup moved, the
+  behaviour did not, so there was no need to rewrite working import logic.
+%>
+<div id="data-transfer-module" class="admin-card p-5 mb-6">
+  <div class="flex items-baseline gap-2">
+    <span class="font-tech text-xs font-bold text-gray-400">1</span>
+    <h2 class="font-semibold">Import members from a spreadsheet</h2>
+  </div>
+
+  <p class="mt-2 text-sm text-gray-500">Choose the JPSME member workbook. Review the preview, then import. New members will be selected for the invitation step automatically.</p>
+
+  <div class="mt-3 flex flex-wrap gap-2">
+    <%# The template, not the export: the export carries every member's contact
+        details and the whole payment ledger, which is not something to hand a
+        chapter officer collecting twelve names. %>
+    <a href="/api/admin/data/import-template" class="btn-secondary text-sm">Download member template</a>
+  </div>
+  <p class="mt-2 text-xs text-gray-500">
+    The template is the same Members sheet with nothing in it, and it explains the rules on a second
+    tab. To edit members who are already here, export from
+    <a href="/admin/settings" class="text-indigo-600 hover:underline">Settings</a> instead.
+  </p>
+
+  <div class="mt-4 pt-4 border-t border-gray-200">
+    <label class="form-label" for="import-file">Import a workbook</label>
+    <input type="file" id="import-file" accept=".xlsx"
+           class="form-input file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm">
+    <p class="mt-1 text-xs text-gray-500">
+      New accounts are created with <strong>no password</strong> and added to the Mergo sheet
+      automatically. Mergo sends when you launch its campaign, unless its new-row schedule is enabled.
+    </p>
+
+    <div class="mt-3 flex flex-wrap items-center gap-2">
+      <button type="button" id="import-preview-btn" class="btn-secondary" disabled>Preview</button>
+      <button type="button" id="import-apply-btn" class="btn-primary hidden">Import members</button>
+    </div>
+
+    <div id="import-report" class="hidden mt-4 rounded-md border border-gray-200 bg-gray-50 p-4 text-sm max-h-72 overflow-y-auto"></div>
+  </div>
+</div>
+
+<%#
+  Step 2. Moved here from Admin → Settings.
+
+  It is kept distinct from the targeted resends below, because it is the safe
+  one: sendActivationsForPending skips anyone invited in the last ten minutes and
+  anyone still sitting in the queue, so pressing it twice cannot double-send or
+  invalidate a link somebody is holding. The resends deliberately DO replace
+  links, which is why they are separate and confirmed.
+%>
+<div class="admin-card p-5 mb-6" id="mergo-campaign">
+  <div class="flex flex-wrap items-start justify-between gap-4">
+    <div>
+      <div class="flex items-baseline gap-2"><span class="font-tech text-xs font-bold text-gray-400">2</span><h2 class="font-semibold">Add existing members to Mergo</h2></div>
+      <p class="text-sm text-gray-500 mt-1">New accounts are added to Mergo automatically during import. Use this action only for existing members you want to add manually, then launch the campaign.</p>
+      <p class="text-xs text-gray-500 mt-1">A live activation link is kept safe and skipped. Mergo status shows email activity; Activated means the member completed registration.</p>
+      <p id="mergo-config-status" class="text-sm mt-2"></p>
+      <a id="mergo-open-sheet" class="hidden text-sm text-indigo-700 hover:underline" target="_blank" rel="noopener noreferrer">Open managed campaign sheet</a>
+    </div>
+    <div class="flex flex-wrap items-end gap-2">
+      <button type="button" id="mergo-sync" class="btn-secondary text-sm">Refresh email status</button>
+    </div>
+  </div>
+  <div class="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-3">
+    <p id="mergo-usage" class="text-sm text-gray-600">Loading daily usage&hellip;</p>
+    <button type="button" id="mergo-prepare" class="btn-primary" disabled><span id="mergo-prepare-label">Add selected to Mergo</span> (<span id="mergo-selected-count">0</span>)</button>
+  </div>
+  <details class="mt-3 text-sm text-gray-600">
+    <summary class="cursor-pointer">Campaign settings</summary>
+    <div class="mt-2 flex flex-wrap items-end gap-2">
+      <div><label for="mergo-cap" class="block text-xs font-medium mb-1">Daily preparation limit</label><input id="mergo-cap" type="number" min="1" max="10000" class="w-28 border border-gray-300 rounded-md px-2 py-2 text-sm"></div>
+      <button type="button" id="mergo-cap-save" class="btn-secondary text-sm">Save limit</button>
+      <span>Default: 2,000 per day. This is a JPSME limit, not Mergo's live quota.</span>
+    </div>
+  </details>
+  <div id="mergo-summary" class="grid grid-cols-2 gap-2 mt-3 text-xs sm:grid-cols-4 lg:grid-cols-8"></div>
+  <p id="mergo-result" class="hidden mt-3 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm"></p>
+</div>
+
+<div id="attempt-history" class="admin-card p-5 mb-8 hidden">
+  <div class="flex items-center justify-between gap-3">
+    <h2 class="font-semibold">Activation attempt history <span id="history-member" class="text-gray-500 font-normal"></span></h2>
+    <button type="button" id="history-close" class="btn-secondary text-sm">Close</button>
+  </div>
+  <div id="history-rows" class="mt-3 space-y-2"></div>
+</div>
+
+<div class="flex items-baseline gap-2 mb-3">
+  <span class="font-tech text-xs font-bold text-gray-400">3</span>
+  <h2 class="font-semibold">Email and registration status</h2>
+</div>
+<p class="text-sm text-gray-500 mb-3">Statuses refresh while this page is open. Mergo's open tracking is a signal; registration is confirmed only when the member sets a password.</p>
+
+<%#
+  Counts first, and each one is a filter. They are computed over everything
+  matching the current search rather than over the visible page — a tally that
+  changes when you turn the page is worse than no tally at all.
+%>
+<div id="tallies" class="grid grid-cols-2 gap-3 mb-6 sm:grid-cols-3 lg:grid-cols-6"></div>
+
+<div class="admin-card p-4 mb-6">
+  <div class="flex flex-wrap items-end gap-3">
+    <div class="grow">
+      <label class="block text-sm font-medium mb-1" for="search">Search</label>
+      <input id="search" type="search" placeholder="Name or email&hellip;"
+             value="<%= locals.initialSearch || '' %>"
+             class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1" for="state">Showing</label>
+      <select id="state" class="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <option value="">Everyone</option>
+        <option value="NEVER_INVITED">Not invited yet</option>
+        <option value="INVITED">Invited</option>
+        <option value="EXPIRED">Link expired</option>
+        <option value="BOUNCED">Bounced</option>
+        <option value="SEND_FAILED">Send failed</option>
+        <option value="ACTIVATED">Activated</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1" for="email-status">Email status</label>
+      <select id="email-status" class="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <option value="">Any email status</option>
+        <option value="PREPARED">Prepared</option>
+        <option value="QUEUED">Queued for Mergo</option>
+        <option value="SENT">Sent</option>
+        <option value="OPENED">Opened</option>
+        <option value="FAILED">Failed</option>
+        <option value="BOUNCED">Bounced</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="admin-card p-5 mb-8">
+  <div class="admin-table-wrap">
+    <table class="admin-table">
+      <thead class="admin-table-head">
+        <tr>
+          <th><input type="checkbox" id="select-page" aria-label="Select eligible members on this page"></th>
+          <th>Member</th>
+          <th>State</th>
+          <th>Email status</th>
+          <th>Invited</th>
+          <th>Link expires</th>
+          <th>Attempts</th>
+          <th>Detail</th>
+          <th class="text-right">Action</th>
+        </tr>
+      </thead>
+      <tbody id="rows">
+        <tr><td colspan="9" class="text-sm text-gray-500 py-6 text-center">Loading&hellip;</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="flex items-center justify-between mt-4">
+    <p class="text-sm text-gray-500" id="summary"></p>
+    <div class="flex items-center gap-2">
+      <button type="button" id="prev" class="btn-secondary text-sm" disabled>Previous</button>
+      <button type="button" id="next" class="btn-secondary text-sm" disabled>Next</button>
+    </div>
+  </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+// apiFetch and showToast live in /js/api.js, which the admin layout loads at the
+// END of <body> — after this script. Nothing here may touch them during parse.
+function onReady(fn) {
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
+  else fn();
+}
+
+onReady(function () {
+  const rowsEl = document.getElementById('rows');
+  const talliesEl = document.getElementById('tallies');
+  const summaryEl = document.getElementById('summary');
+  const searchEl = document.getElementById('search');
+  const stateEl = document.getElementById('state');
+  const emailStatusEl = document.getElementById('email-status');
+  const prevBtn = document.getElementById('prev');
+  const nextBtn = document.getElementById('next');
+  const selectPageEl = document.getElementById('select-page');
+  const prepareBtn = document.getElementById('mergo-prepare');
+  const selectedCountEl = document.getElementById('mergo-selected-count');
+  const selectedUsers = new Set();
+  let mergoConfigured = false;
+
+  stateEl.value = <%- JSON.stringify(locals.initialState || '') %>;
+
+  let page = 1;
+  let pages = 1;
+
+  // Badge colour by state. Amber rather than red for an expired link: it is a
+  // routine thing that needs one click, not a fault.
+  const BADGE = {
+    ACTIVATED: 'badge-green',
+    INVITED: 'badge-blue',
+    EXPIRED: 'badge-amber',
+    BOUNCED: 'badge-red',
+    SEND_FAILED: 'badge-red',
+    NEVER_INVITED: 'badge-slate',
+  };
+  const TALLY_ORDER = ['NEVER_INVITED', 'INVITED', 'EXPIRED', 'BOUNCED', 'SEND_FAILED', 'ACTIVATED'];
+  const TALLY_LABEL = {
+    NEVER_INVITED: 'Not invited', INVITED: 'Invited', EXPIRED: 'Expired',
+    BOUNCED: 'Bounced', SEND_FAILED: 'Send failed', ACTIVATED: 'Activated',
+  };
+  const EMAIL_LABEL = {
+    PREPARED: 'Prepared', QUEUED: 'Queued', SENT: 'Sent', OPENED: 'Opened',
+    FAILED: 'Failed', BOUNCED: 'Bounced',
+  };
+  const EMAIL_BADGE = {
+    PREPARED: 'badge-slate', QUEUED: 'badge-blue', SENT: 'badge-blue',
+    OPENED: 'badge-green', FAILED: 'badge-red', BOUNCED: 'badge-red',
+  };
+
+  function esc(value) {
+    return String(value === null || value === undefined ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function fmt(value) {
+    if (!value) return '<span class="text-gray-400">&mdash;</span>';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '<span class="text-gray-400">&mdash;</span>';
+    return esc(d.toLocaleDateString()) + ' <span class="text-gray-400">' + esc(d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) + '</span>';
+  }
+
+  // An expiry that has passed reads as a warning rather than a date, because a
+  // date alone needs the reader to do the comparison.
+  function expiry(row) {
+    if (row.state === 'ACTIVATED') return '<span class="text-gray-400">&mdash;</span>';
+    if (!row.linkExpiresAt) return '<span class="text-gray-400">no link</span>';
+    const d = new Date(row.linkExpiresAt);
+    if (d.getTime() <= Date.now()) return '<span class="text-amber-700 font-medium">expired</span>';
+    const days = Math.ceil((d.getTime() - Date.now()) / 86400000);
+    return esc(d.toLocaleDateString()) + ' <span class="text-gray-400">(' + days + 'd)</span>';
+  }
+
+  function detail(row) {
+    if (row.failureReason) return '<span class="text-red-700">' + esc(row.failureReason) + '</span>';
+    if (row.state === 'ACTIVATED') return '<span class="text-gray-500">joined ' + esc(new Date(row.activatedAt).toLocaleDateString()) + '</span>';
+    if (row.openedAt) return '<span class="text-gray-500">opened ' + esc(new Date(row.openedAt).toLocaleDateString()) + '</span>';
+    if (row.channel) return '<span class="text-gray-400">via ' + esc(row.channel === 'MERGO' ? 'Mergo' : 'the site') + '</span>';
+    return '<span class="text-gray-400">&mdash;</span>';
+  }
+
+  function updateSelection() {
+    selectedCountEl.textContent = selectedUsers.size;
+    prepareBtn.disabled = !mergoConfigured || selectedUsers.size === 0;
+  }
+
+  function updateUsage(usage) {
+    if (!usage) return;
+    document.getElementById('mergo-cap').value = usage.cap;
+    document.getElementById('mergo-usage').textContent = usage.preparedToday + ' / ' + usage.cap
+      + ' activation emails prepared today; ' + usage.remaining + ' remaining in the JPSME cap.';
+    const status = document.getElementById('mergo-config-status');
+    const openSheet = document.getElementById('mergo-open-sheet');
+    mergoConfigured = Boolean(usage.configured);
+    status.textContent = usage.configured
+      ? 'Managed campaign sheet connected.'
+      : 'Google Sheet is not configured yet; campaign preparation is disabled.';
+    status.className = usage.configured ? 'text-sm mt-2 text-green-700' : 'text-sm mt-2 text-amber-700';
+    if (Object.prototype.hasOwnProperty.call(usage, 'sheetUrl')) {
+      if (usage.sheetUrl) {
+        openSheet.href = usage.sheetUrl;
+        openSheet.classList.remove('hidden');
+      } else {
+        openSheet.classList.add('hidden');
+        openSheet.removeAttribute('href');
+      }
+    }
+    if (usage.summary) {
+      const counts = usage.summary;
+      const cards = [
+        ['Attempts', counts.totalAttempts], ['Prepared', counts.prepared],
+        ['Queued', counts.queued], ['Sent', counts.sent], ['Opened', counts.opened],
+        ['Failed', counts.failed], ['Bounced', counts.bounced], ['Activated', counts.activated],
+      ];
+      document.getElementById('mergo-summary').innerHTML = cards.map(function (item) {
+        return '<div class="rounded border border-gray-200 bg-gray-50 p-2"><span class="block text-lg font-semibold">'
+          + Number(item[1] || 0) + '</span><span class="text-gray-500">' + esc(item[0]) + '</span></div>';
+      }).join('') + '<p class="col-span-2 text-gray-500 sm:col-span-4 lg:col-span-8">Account state: '
+        + Number(counts.activatedAccounts || 0) + ' activated; ' + Number(counts.pendingAccounts || 0)
+        + ' pending activation. Mergo email status does not change account state.</p>';
+    }
+    prepareBtn.disabled = !usage.configured || selectedUsers.size === 0;
+  }
+
+  function render(data) {
+    talliesEl.innerHTML = TALLY_ORDER.map(function (key) {
+      const active = stateEl.value === key;
+      return '<button type="button" data-tally="' + key + '" class="admin-card p-3 text-left'
+        + (active ? ' ring-2 ring-indigo-500' : '') + '">'
+        + '<span class="block text-2xl font-bold">' + (data.counts[key] || 0) + '</span>'
+        + '<span class="block text-xs text-gray-500 mt-0.5">' + TALLY_LABEL[key] + '</span>'
+        + '</button>';
+    }).join('');
+
+    if (!data.rows.length) {
+      rowsEl.innerHTML = '<tr><td colspan="9" class="text-sm text-gray-500 py-6 text-center">Nobody matches that.</td></tr>';
+    } else {
+      rowsEl.innerHTML = data.rows.map(function (row) {
+        const name = esc((row.firstName || '') + ' ' + (row.lastName || '')).trim();
+        const checked = selectedUsers.has(row.id) ? ' checked' : '';
+        const emailStatus = row.emailStatus
+          ? '<span class="' + (EMAIL_BADGE[row.emailStatus] || 'badge-slate') + '">' + esc(EMAIL_LABEL[row.emailStatus] || row.emailStatus) + '</span>'
+            + (row.emailStatus === 'OPENED' ? '<span class="block text-xs text-gray-400">tracking signal only</span>' : '')
+          : '<span class="text-gray-400">&mdash;</span>';
+        return '<tr>'
+          + '<td>' + (row.eligibleForMergo
+            ? '<input type="checkbox" data-select-user="' + row.id + '" aria-label="Select ' + esc(name) + '"' + checked + '>'
+            : '<span class="text-gray-300">&mdash;</span>') + '</td>'
+          + '<td><a class="font-medium text-indigo-700 hover:underline" href="/admin/users/' + row.id + '/edit">' + (name || '(no name)') + '</a>'
+          + '<span class="block text-xs text-gray-500">' + esc(row.email) + '</span>'
+          + (row.organization ? '<span class="block text-xs text-gray-400">' + esc(row.organization) + '</span>' : '')
+          + '</td>'
+          + '<td><span class="' + (BADGE[row.state] || 'badge-slate') + '">' + esc(row.stateLabel) + '</span></td>'
+          + '<td class="text-sm">' + emailStatus + '</td>'
+          + '<td class="text-sm">' + fmt(row.invitedAt) + '</td>'
+          + '<td class="text-sm">' + expiry(row) + '</td>'
+          + '<td class="text-sm"><button type="button" data-history="' + row.id + '" data-member-name="' + esc(name) + '" class="text-indigo-700 hover:underline">'
+          + (row.attempts || 0) + '</button></td>'
+          + '<td class="text-sm">' + detail(row) + '</td>'
+          + '<td class="text-right">'
+          + (row.state === 'NEVER_INVITED' && row.eligibleForMergo
+            ? '<button type="button" data-select-mergo="' + row.id + '" class="btn-secondary text-xs">Select for Mergo</button>'
+            : row.channel === 'MERGO' && row.attemptId
+              && (row.emailStatus === 'FAILED' || row.emailStatus === 'BOUNCED' || row.state === 'EXPIRED')
+            ? '<button type="button" data-retry-mergo="' + esc(row.attemptId) + '" class="btn-secondary text-xs">Retry with Mergo</button>'
+            : '<span class="text-xs text-gray-400">&mdash;</span>')
+          + '</td></tr>';
+      }).join('');
+    }
+
+    const selectable = data.rows.filter(function (row) { return row.eligibleForMergo; });
+    selectPageEl.checked = selectable.length > 0 && selectable.every(function (row) { return selectedUsers.has(row.id); });
+    selectPageEl.indeterminate = selectable.some(function (row) { return selectedUsers.has(row.id); }) && !selectPageEl.checked;
+    updateUsage(data.mergo);
+    updateSelection();
+
+    pages = data.pages;
+    summaryEl.textContent = data.total
+      ? 'Showing ' + data.rows.length + ' of ' + data.total + ' — page ' + data.page + ' of ' + data.pages
+      : '';
+    prevBtn.disabled = data.page <= 1;
+    nextBtn.disabled = data.page >= data.pages;
+  }
+
+  async function load() {
+    try {
+      const params = new URLSearchParams({ page: String(page) });
+      if (searchEl.value.trim()) params.set('search', searchEl.value.trim());
+      if (stateEl.value) params.set('state', stateEl.value);
+      if (emailStatusEl.value) params.set('emailStatus', emailStatusEl.value);
+      const res = await apiFetch('/api/admin/activations?' + params.toString());
+      render(res.data);
+    } catch (err) {
+      rowsEl.innerHTML = '<tr><td colspan="9" class="text-sm text-red-700 py-6 text-center">' + esc(err.message) + '</td></tr>';
+    }
+  }
+
+  async function refreshMergoUsage() {
+    try {
+      const res = await apiFetch('/api/admin/activations/mergo/usage');
+      updateUsage(res.data);
+    } catch (err) {
+      document.getElementById('mergo-config-status').textContent = err.message;
+    }
+  }
+
+  document.addEventListener('jpsme:members-imported', async function (event) {
+    const newIds = (event.detail && event.detail.applied && event.detail.applied.createdUserIds) || [];
+    selectedUsers.clear();
+    searchEl.value = '';
+    emailStatusEl.value = '';
+    stateEl.value = '';
+    page = 1;
+    updateSelection();
+    await load();
+    refreshMergoUsage();
+    if (newIds.length) document.getElementById('mergo-campaign').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+
+  prepareBtn.addEventListener('click', async function () {
+    const ids = Array.from(selectedUsers);
+    if (!ids.length) return;
+    if (!window.confirm('Add ' + ids.length + ' selected member(s) to the Mergo campaign? Members with an existing live activation link will be skipped.')) return;
+    prepareBtn.disabled = true;
+    const label = document.getElementById('mergo-prepare-label');
+    const previousLabel = label.textContent;
+    label.textContent = 'Preparing…';
+    try {
+      const outcomes = [];
+      for (let offset = 0; offset < ids.length; offset += 500) {
+        const batch = ids.slice(offset, offset + 500);
+        const res = await apiFetch('/api/admin/activations/mergo/prepare', {
+          method: 'POST', body: JSON.stringify({ userIds: batch }),
+        });
+        (res.data.outcomes || []).forEach(function (outcome) {
+          outcomes.push(outcome);
+          if (outcome.ok) selectedUsers.delete(outcome.userId);
+        });
+      }
+      const failures = outcomes.filter(function (outcome) { return !outcome.ok; });
+      const reasons = {};
+      failures.forEach(function (outcome) { reasons[outcome.reason || 'FAILED'] = (reasons[outcome.reason || 'FAILED'] || 0) + 1; });
+      const reasonLabels = {
+        ACTIVE_LINK_EXISTS: 'already have a working activation link',
+        ACTIVE_ATTEMPT_EXISTS: 'already queued in Mergo',
+        SITE_EMAIL_QUEUED: 'already queued for JPSME email',
+        ALREADY_ACTIVATED: 'already registered',
+        INVALID_EMAIL: 'need a valid email address',
+        SHEET_WRITE_FAILED: 'could not be added to the campaign sheet',
+        PREPARATION_FAILED: 'could not be prepared',
+      };
+      const detail = Object.keys(reasons).map(function (reason) {
+        return (reasonLabels[reason] || reason.replace(/_/g, ' ').toLowerCase()) + ': ' + reasons[reason];
+      }).join('; ');
+      const prepared = outcomes.filter(function (outcome) { return outcome.ok; }).length;
+      const fullMessage = prepared + ' member(s) added to Mergo.'
+        + (prepared ? ' Launch the campaign in Mergo, unless its new-row schedule is enabled.' : '')
+        + (detail ? ' Skipped: ' + detail + '.' : '');
+      showToast(fullMessage, outcomes.some(function (outcome) { return outcome.ok; }) ? 'success' : 'error');
+      const result = document.getElementById('mergo-result');
+      result.textContent = fullMessage;
+      result.classList.remove('hidden');
+      stateEl.value = '';
+      page = 1;
+      load();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      label.textContent = previousLabel;
+      updateSelection();
+      refreshMergoUsage();
+    }
+  });
+
+  let syncInFlight = false;
+  async function syncMergoStatus({ quiet = false } = {}) {
+    if (!mergoConfigured || syncInFlight) return;
+    syncInFlight = true;
+    const btn = document.getElementById('mergo-sync');
+    const previousLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Refreshing...';
+    try {
+      const res = await apiFetch('/api/admin/activations/mergo/sync', { method: 'POST' });
+      if (!quiet) showToast(res.message, 'success');
+      await load();
+    } catch (err) {
+      if (!quiet) showToast(err.message, 'error');
+    } finally {
+      syncInFlight = false;
+      btn.disabled = false;
+      btn.textContent = previousLabel;
+    }
+  }
+  document.getElementById('mergo-sync').addEventListener('click', function () { syncMergoStatus(); });
+  window.setInterval(function () {
+    if (document.visibilityState === 'visible') syncMergoStatus({ quiet: true });
+  }, 5 * 60 * 1000);
+
+  document.getElementById('mergo-cap-save').addEventListener('click', async function (e) {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const res = await apiFetch('/api/admin/activations/mergo/cap', {
+        method: 'PUT', body: JSON.stringify({ cap: Number(document.getElementById('mergo-cap').value) }),
+      });
+      updateUsage({ ...res.data, configured: mergoConfigured });
+      showToast(res.message, 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  rowsEl.addEventListener('click', async function (e) {
+    const selectBtn = e.target.closest('[data-select-mergo]');
+    if (selectBtn) {
+      const input = rowsEl.querySelector('[data-select-user="' + selectBtn.dataset.selectMergo + '"]');
+      if (input) {
+        input.checked = true;
+        selectedUsers.add(Number(selectBtn.dataset.selectMergo));
+        updateSelection();
+      }
+      return;
+    }
+    const btn = e.target.closest('[data-retry-mergo]');
+    if (!btn) return;
+    if (!window.confirm('Create a new activation attempt and link for this member? The old attempt will stay in history.')) return;
+    btn.disabled = true;
+    try {
+      const res = await apiFetch('/api/admin/activations/attempts/' + encodeURIComponent(btn.dataset.retryMergo) + '/retry', { method: 'POST' });
+      showToast(res.message, 'success');
+      load();
+      refreshMergoUsage();
+    } catch (err) {
+      showToast(err.message, 'error');
+      btn.disabled = false;
+    }
+  });
+
+  rowsEl.addEventListener('click', async function (e) {
+    const btn = e.target.closest('[data-history]');
+    if (!btn) return;
+    const panel = document.getElementById('attempt-history');
+    const historyRows = document.getElementById('history-rows');
+    document.getElementById('history-member').textContent = btn.dataset.memberName
+      ? '— ' + btn.dataset.memberName : '';
+    panel.classList.remove('hidden');
+    historyRows.textContent = 'Loading…';
+    try {
+      const res = await apiFetch('/api/admin/activations/' + btn.dataset.history + '/history');
+      const attempts = res.data.attempts || [];
+      historyRows.innerHTML = attempts.length ? attempts.map(function (attempt) {
+        const state = attempt.providerStatus || attempt.status;
+        return '<div class="rounded border border-gray-200 p-3 text-sm">'
+          + '<div class="flex flex-wrap justify-between gap-2"><strong>' + esc(state) + '</strong><span>' + fmt(attempt.createdAt) + '</span></div>'
+          + '<p class="text-xs text-gray-500 mt-1">Attempt ' + esc(attempt.attemptId || ('#' + attempt.id))
+          + (attempt.retryOfAttemptId ? ' · retry of ' + esc(attempt.retryOfAttemptId) : '')
+          + (attempt.campaignId ? ' · ' + esc(attempt.campaignId) : '') + '</p>'
+          + (attempt.failureReason ? '<p class="text-red-700 mt-1">' + esc(attempt.failureReason) + '</p>' : '')
+          + '<p class="text-xs text-gray-500 mt-1">Sent ' + fmt(attempt.sentAt) + ' · Opened ' + fmt(attempt.openedAt)
+          + ' · Activated ' + fmt(attempt.activatedAt) + '</p></div>';
+      }).join('') : '<p class="text-sm text-gray-500">No attempts recorded.</p>';
+      panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (err) {
+      historyRows.textContent = err.message;
+    }
+  });
+  document.getElementById('history-close').addEventListener('click', function () {
+    document.getElementById('attempt-history').classList.add('hidden');
+  });
+
+  // Debounced, because this reads every member on each call.
+  let searchTimer = null;
+  searchEl.addEventListener('input', function () {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () { page = 1; load(); }, 300);
+  });
+  stateEl.addEventListener('change', function () { page = 1; load(); });
+  emailStatusEl.addEventListener('change', function () { page = 1; load(); });
+  selectPageEl.addEventListener('change', function () {
+    rowsEl.querySelectorAll('[data-select-user]').forEach(function (input) {
+      const id = Number(input.dataset.selectUser);
+      if (selectPageEl.checked) selectedUsers.add(id);
+      else selectedUsers.delete(id);
+      input.checked = selectPageEl.checked;
+    });
+    updateSelection();
+  });
+  rowsEl.addEventListener('change', function (e) {
+    const input = e.target.closest('[data-select-user]');
+    if (!input) return;
+    const id = Number(input.dataset.selectUser);
+    if (input.checked) selectedUsers.add(id);
+    else selectedUsers.delete(id);
+    updateSelection();
+  });
+  document.getElementById('refresh').addEventListener('click', load);
+  prevBtn.addEventListener('click', function () { if (page > 1) { page -= 1; load(); } });
+  nextBtn.addEventListener('click', function () { if (page < pages) { page += 1; load(); } });
+
+  talliesEl.addEventListener('click', function (e) {
+    const btn = e.target.closest('[data-tally]');
+    if (!btn) return;
+    // Clicking the active tally clears the filter, so the card works as a toggle.
+    stateEl.value = stateEl.value === btn.dataset.tally ? '' : btn.dataset.tally;
+    page = 1;
+    load();
+  });
+
+  rowsEl.addEventListener('click', async function (e) {
+    const btn = e.target.closest('[data-resend]');
+    if (!btn) return;
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = 'Sending…';
+    try {
+      const res = await apiFetch('/api/admin/activations/' + btn.dataset.resend + '/resend', { method: 'POST' });
+      showToast(res.message, 'success');
+      load();
+    } catch (err) {
+      showToast(err.message, 'error');
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  });
+
+  // --- send activation links (moved here from Admin → Settings) --------------
+
+  const sendPendingBtn = document.getElementById('send-pending');
+  const waitingEl = document.querySelector('[data-waiting]');
+  const sendResultEl = document.querySelector('[data-send-result]');
+
+  // The count comes from the server rather than being summed from the tallies.
+  // They answer different questions: NEVER_INVITED counts people with no link at
+  // all, while this counts everyone who has not activated — which includes those
+  // holding an expired one. Summing the tallies here would disagree with what the
+  // button actually does.
+  async function refreshWaiting() {
+    try {
+      const res = await apiFetch('/api/admin/members/activation-status');
+      waitingEl.textContent = res.data.waiting;
+      sendPendingBtn.disabled = !res.data.waiting;
+    } catch (err) {
+      // A missing count must not disable the button — the server decides who to
+      // send to, and this number is only here to say whether it is worth pressing.
+      waitingEl.textContent = '?';
+      sendPendingBtn.disabled = false;
+    }
+  }
+
+  sendPendingBtn?.addEventListener('click', async function () {
+    const waiting = waitingEl.textContent;
+    if (!window.confirm('Email an activation link to ' + waiting + ' member(s)?\n\n'
+      + 'Each can then choose a password and their school. Anyone with a live link or already queued '
+      + 'is skipped.')) return;
+
+    sendPendingBtn.disabled = true;
+    const label = sendPendingBtn.textContent;
+    sendPendingBtn.textContent = 'Queueing…';
+    try {
+      const res = await apiFetch('/api/admin/members/send-activations', { method: 'POST' });
+      sendResultEl.textContent = res.message;
+      sendResultEl.classList.remove('hidden');
+      showToast(res.message, 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      sendPendingBtn.textContent = label;
+      // Re-read rather than assume: the send skips people, so how many are left
+      // is the server's to report. The table is reloaded too, since states change.
+      await refreshWaiting();
+      load();
+    }
+  });
+
+  load();
+  refreshMergoUsage();
+});
+</script>

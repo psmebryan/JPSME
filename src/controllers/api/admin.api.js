@@ -159,6 +159,40 @@ const deleteUser = asyncHandler(async (req, res) => {
   return success(res, { result }, 'User deleted');
 });
 
+const bulkDeleteUsers = asyncHandler(async (req, res) => {
+  const rawIds = req.body && req.body.ids;
+  if (!Array.isArray(rawIds) || rawIds.length < 1 || rawIds.length > 200
+      || rawIds.some((id) => !Number.isSafeInteger(Number(id)) || Number(id) < 1)) {
+    return error(res, 'Select between 1 and 200 valid users to delete.', 400);
+  }
+
+  const ids = [...new Set(rawIds.map(Number))];
+  const deletedIds = [];
+  const failed = [];
+  for (const id of ids) {
+    try {
+      if (req.orgScope) {
+        const target = await userService.getById(id);
+        const targetOrgId = target.organizationId ?? (target.organization && target.organization.id);
+        if (!req.orgScope.descendantIds.includes(Number(targetOrgId))) {
+          failed.push({ id, message: 'Access denied.' });
+          continue;
+        }
+      }
+      await userService.deleteUser(id);
+      deletedIds.push(id);
+    } catch (err) {
+      failed.push({
+        id,
+        message: err.statusCode ? err.message : 'Could not delete this account because related records may prevent deletion.',
+      });
+    }
+  }
+
+  return success(res, { deletedIds, failed },
+    `${deletedIds.length} user(s) deleted${failed.length ? `; ${failed.length} could not be deleted` : ''}.`);
+});
+
 const uploadLogo = asyncHandler(async (req, res) => {
   if (!req.file) return error(res, 'No logo file uploaded', 400);
 
@@ -432,19 +466,23 @@ const sendActivations = asyncHandler(async (req, res) => {
   if (!result.total) return success(res, result, 'Nobody is waiting for an activation link.');
   if (!result.queued) {
     return success(res, result,
-      `All ${result.total} member(s) waiting were invited recently or are already queued. Nothing sent again.`);
+      `All ${result.total} member(s) waiting already have a live activation link or are queued. Nothing sent again.`);
   }
   return success(res, result, result.skipped
-    ? `Sending ${result.queued} activation link(s). ${result.skipped} skipped — invited recently or already queued.`
+    ? `Sending ${result.queued} activation link(s). ${result.skipped} skipped — they already have a live link or are already queued.`
     : `Sending ${result.queued} activation link(s). They arrive over the next few minutes.`);
 });
 
 // One person, for when somebody says theirs never arrived.
 const resendActivation = asyncHandler(async (req, res) => {
-  const queued = await passwordResetService.queueActivation(req.params.id);
+  const result = await passwordResetService.queueActivation(req.params.id);
   // Refuses rather than quietly doing nothing: an admin pressing this on an
   // account that is already active wants to know that is why nothing happened.
-  if (!queued) {
+  if (!result.queued) {
+    if (result.reason === 'NOT_FOUND') return error(res, 'No such member.', 404);
+    if (result.reason === 'MERGO_LINK_PENDING') {
+      return error(res, passwordResetService.MERGO_LINK_PENDING_MESSAGE, 409);
+    }
     return error(res, 'That account has already been activated, so there is nothing to send.', 400);
   }
   return success(res, null, 'Activation link sent. It will arrive in the next minute or two.');
@@ -455,4 +493,4 @@ module.exports = {
   sendActivations,
   resendActivation,
   setUserPassword,
-  changeUserEmail, uploadFavicon, uploadHeroImage, uploadOgImage, listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, getMembershipPaymentRequired, updateMembershipPaymentRequired, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin, getOrganizationTreeLevel, createChildOrganization, deleteOrganizationApi, setOrganizationActiveApi };
+  changeUserEmail, uploadFavicon, uploadHeroImage, uploadOgImage, listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, bulkDeleteUsers, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, getMembershipPaymentRequired, updateMembershipPaymentRequired, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin, getOrganizationTreeLevel, createChildOrganization, deleteOrganizationApi, setOrganizationActiveApi };

@@ -29,7 +29,11 @@ function openSubmenuForPath(path) {
   if (path.startsWith('/admin/organizations') || path.startsWith('/admin/organization-members') || path.startsWith('/admin/organization-admins')) {
     openChapterSubmenu(true);
   }
-  if (path.startsWith('/admin/users')) {
+  // /admin/activations belongs to this group but does not share its prefix, so
+  // it has to be named. Without it, opening the Activations page left the group
+  // collapsed and the link unhighlighted — the page was reachable but looked
+  // like it did not exist in the sidebar at all.
+  if (path.startsWith('/admin/users') || path.startsWith('/admin/activations')) {
     openUserSubmenu(true);
   }
   if (path.startsWith('/admin/certificates') || path.startsWith('/admin/event-certificates') || /^\/admin\/events\/\d+\/certificate$/.test(path)) {

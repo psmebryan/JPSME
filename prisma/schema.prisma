@@ -281,6 +281,16 @@ enum AuditAction {
   // people's inboxes — the one step of the whole flow that is visible outside
   // the building, and the one worth being able to date afterwards.
   ACTIVATION_INVITES_SENT
+  // One person's link sent again, from the Activations page. Separate from the
+  // bulk action because the reason is different and worth keeping: a resend is
+  // somebody saying "mine never arrived", and a pattern of them against one
+  // address is the signal that the address is wrong rather than the mail.
+  ACTIVATION_INVITE_RESENT
+  // Delivery outcomes read back in from a Mergo merge. Recorded because it is
+  // the only path by which a bounce enters this system at all — nothing here
+  // observes one directly — so "when did we last learn anything about
+  // deliverability" has no other answer.
+  ACTIVATION_DELIVERY_IMPORTED
 }
 
 model User {
@@ -364,6 +374,10 @@ model User {
   registrations          EventRegistration[]
   emailVerificationToken EmailVerificationToken?
   passwordResetToken     PasswordResetToken?
+  // Every attempt to invite this member, oldest first — not one current status.
+  // A resend is a new row, so "we tried three times and two bounced" stays
+  // answerable, which a single mutable status column cannot express.
+  activationInvites      ActivationInvite[]
 
   organizationAdmin  OrganizationAdmin?
   orgAdminAuditsOld  OrganizationAdminAudit[] @relation("old_org_user")
@@ -420,10 +434,10 @@ model User {
 //   risk is replay: a link sitting in an inbox, or in a mail server's logs,
 //   must not open a second time.
 model PasswordResetToken {
-  id     Int    @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   // One live reset per account: requesting a second link invalidates the first,
   // so a stolen older mail cannot be used once the real owner asks again.
-  userId Int    @unique
+  userId    Int       @unique
   // sha256 of "<userId>:<token>". The token itself is in the emailed link and
   // is stored nowhere.
   tokenHash String
@@ -1444,4 +1458,68 @@ model EmailBroadcast {
   creator User @relation(fields: [createdBy], references: [id], onDelete: Cascade)
 
   @@map("email_broadcasts")
+}
+
+// One attempt to get an activation link into one member's hands.
+//
+// A row per attempt rather than a status column on User, because the useful
+// questions are historical: was this address tried before, did the last try
+// bounce, how many times have we chased this person. A single mutable column
+// answers none of them.
+//
+// Deliberately NOT where the link itself lives — that stays in
+// PasswordResetToken, one live token per account, and this table only records
+// what happened to the message carrying it. Keeping them apart is what lets a
+// resend create a fifth row here while there is still exactly one usable link.
+//
+// status reuses InvitationStatus (PENDING/SENT/DELIVERED/BOUNCED/FAILED) rather
+// than introducing a parallel enum. Two reasons: the meanings are identical to
+// an event invitation's, and this server runs a non-strict sql_mode where a
+// value missing from an enum is silently stored as '' — so every enum avoided
+// is a class of bug avoided.
+model ActivationInvite {
+  id     Int @id @default(autoincrement())
+  userId Int
+
+  // Stable identity for the individual message attempt. Nullable only for
+  // rows created before the Mergo integration; every new attempt supplies it.
+  attemptId        String?   @unique @db.VarChar(40)
+  email            String?   @db.VarChar(255)
+  tokenHash        String?   @db.VarChar(64)
+  campaignId       String?   @db.VarChar(100)
+  sheetRow         Int?
+  retryOfAttemptId String?   @db.VarChar(40)
+  providerStatus   String    @default("PREPARED") @db.VarChar(24)
+  failedAt         DateTime?
+  activatedAt      DateTime?
+  lastSyncedAt     DateTime?
+
+  // How it was sent. A string, not an enum, for the sql_mode reason above and
+  // because more channels are plausible than are worth migrating for.
+  //   SITE  - the app sent it itself, over SMTP, from a queued job
+  //   MERGO - a person merged it from the exported spreadsheet
+  channel String @default("SITE") @db.VarChar(16)
+
+  status InvitationStatus @default(PENDING)
+
+  // Whatever the provider or the merge said. Free text because it is a human's
+  // explanation, not something to branch on.
+  failureReason String? @db.VarChar(255)
+
+  // Accepted by the transport. Not "delivered" — SMTP accepting a message says
+  // only that Google took custody of it, which is why BOUNCED can follow SENT.
+  sentAt    DateTime?
+  openedAt  DateTime?
+  bouncedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // The page reads "the latest attempt per member", which is this index.
+  @@index([userId, createdAt])
+  // And the filters read "everyone whose last attempt bounced".
+  @@index([status])
+  @@map("activation_invites")
 }

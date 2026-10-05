@@ -10,7 +10,33 @@
     </div>
   <% } %>
 
-  <h1 class="text-3xl font-bold mt-3 mb-2"><%= event.title %></h1>
+  <%# The event's own picture. The list page and the home page cards have always
+      drawn it; this page — the one somebody lands on to decide whether to
+      register — never did, so an organiser who uploaded artwork saw it
+      everywhere except where it mattered.
+
+      Same component as the home page cards, so one uploaded image is framed
+      identically wherever it appears: a fixed 16:10 window, so a tall poster
+      and a wide banner both sit in the same shape rather than shoving the page
+      around by however many pixels the upload happened to be.
+
+      No image is a normal state, not a broken one — an event is usually created
+      before its artwork exists. The fallback is the drafting ground and the
+      seal, so it still reads as this organisation's event rather than as a
+      missing file. %>
+  <div class="jp-event-media mt-4 rounded-xl">
+    <% if (event.imageUrl) { %>
+      <img src="<%= event.imageUrl %>" alt="" class="jp-event-img">
+    <% } else { %>
+      <span class="jp-blueprint absolute inset-0 opacity-[0.22] mix-blend-screen"></span>
+      <span class="absolute inset-0 flex items-center justify-center">
+        <img src="<%= locals.logoUrl || '/img/default-logo.svg' %>" alt=""
+             class="h-20 w-20 object-contain opacity-80 sm:h-24 sm:w-24">
+      </span>
+    <% } %>
+  </div>
+
+  <h1 class="text-3xl font-bold mt-5 mb-2"><%= event.title %></h1>
   <p class="text-gray-500 mb-1"><%= new Date(event.startDate).toLocaleString() %></p>
   <% if (event.location) { %><p class="text-gray-500 mb-4"><%= event.location %></p><% } %>
   <% if (event.description) { %>

@@ -93,6 +93,9 @@ router.get('/admin/users', ensureMainAdminOnly, (req, res) => res.redirect('/adm
 router.get('/admin/users/all', ensureMainAdminOnly, pages.adminUsersPage);
 router.get('/admin/users/approvals', ensureMainAdminOnly, pages.adminUsersPage);
 router.get('/admin/users/:id/edit', ensureMainAdminOnly, pages.adminEditUserPage);
+// Beside the user pages rather than under /admin/invitations, which already
+// belongs to event invitations and would read as the same feature.
+router.get('/admin/activations', ensureMainAdminOnly, pages.adminActivationsPage);
 
 // Main admin only — chapter/region/area CRUD (not to be confused with
 // /admin/chapter-members above, which chapter admins can also reach)

@@ -97,7 +97,30 @@ function check() {
       'Every incoming webhook will be rejected as unsigned, so no payment can ever confirm the fast way.');
   }
 
-  if (!config.email.brevoApiKey && !config.email.smtp.host) {
+  // Checked per provider, because "some email variable is set" is not the same
+  // as "the provider we selected can actually send". EMAIL_PROVIDER=smtp with a
+  // host but no credentials is the likely half-finished state during the switch
+  // to the Google Workspace mailbox, and it fails at the first send, not at boot.
+  if (config.email.provider === 'smtp') {
+    if (!config.email.smtp.host) {
+      add(problems, 'EMAIL_PROVIDER=smtp but SMTP_HOST is not set',
+        'The app refuses to start an SMTP transport with nowhere to send. Set SMTP_HOST, or change EMAIL_PROVIDER.');
+    } else if (!config.email.smtp.user || !config.email.smtp.pass) {
+      add(problems, 'SMTP is selected but has no credentials',
+        'SMTP_USER and SMTP_PASS are both needed. Google rejects unauthenticated mail outright, so every '
+        + 'verification code, reset link and e-ticket would fail to send. For a Google Workspace mailbox the '
+        + 'password is a 16-character App Password, not the account password.');
+    }
+    if (config.email.smtp.port === 465 && !config.email.smtp.secure) {
+      add(warnings, 'SMTP_PORT=465 without SMTP_SECURE=true',
+        'Port 465 expects TLS from the first byte. Set SMTP_SECURE=true, or use port 587 for STARTTLS.');
+    }
+    if (config.email.smtp.port === 587 && config.email.smtp.secure) {
+      add(warnings, 'SMTP_PORT=587 with SMTP_SECURE=true',
+        'Port 587 upgrades an ordinary connection with STARTTLS. Forcing TLS from the first byte usually '
+        + 'hangs until the send times out. Leave SMTP_SECURE unset on 587.');
+    }
+  } else if (!config.email.brevoApiKey && !config.email.smtp.host) {
     add(problems, 'No email transport configured',
       'Verification codes, confirmation emails and e-tickets all depend on it. Nobody could finish signing up.');
   }

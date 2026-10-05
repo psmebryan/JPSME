@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const { param, body, query } = require('express-validator');
+const { param, body, query, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
 const adminApi = require('../../controllers/api/admin.api');
 const certificateApi = require('../../controllers/api/certificate.api');
@@ -8,6 +8,7 @@ const adminEmailApi = require('../../controllers/api/adminEmail.api');
 const adminBroadcastApi = require('../../controllers/api/adminBroadcast.api');
 const invitationApi = require('../../controllers/api/invitation.api');
 const dataTransferApi = require('../../controllers/api/dataTransfer.api');
+const activationsApi = require('../../controllers/api/activations.api');
 const jobApi = require('../../controllers/api/job.api');
 const { apiAdmin, apiAdminOrChapterAdmin } = require('../../middleware/auth.middleware');
 const { verifyCsrfToken } = require('../../middleware/csrf.middleware');
@@ -56,10 +57,34 @@ const broadcastLimiter = rateLimit({
   message: { success: false, message: 'Too many broadcasts sent this hour. Please try again later.' },
 });
 
+const mergoCampaignLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many activation campaign changes this hour.' },
+});
+const mergoSyncLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many Mergo status syncs. Please try again shortly.' },
+});
+
 const router = Router();
+
+function checkRouteInput(req, res, next) {
+  const result = validationResult(req);
+  if (!result.isEmpty()) {
+    return res.status(400).json({ success: false, message: 'Invalid request data.', errors: result.array() });
+  }
+  return next();
+}
 
 // Allow ADMIN and CHAPTER_ADMIN (scoped) for chapter member endpoints
 router.get('/organization-members', apiAdminOrChapterAdmin, adminApi.listOrganizationMembers);
+router.post('/users/bulk-delete', apiAdminOrChapterAdmin, verifyCsrfToken, adminApi.bulkDeleteUsers);
 router.put('/users/:id', apiAdminOrChapterAdmin, verifyCsrfToken, adminApi.updateUser);
 router.delete('/users/:id', apiAdminOrChapterAdmin, verifyCsrfToken, adminApi.deleteUser);
 
@@ -120,6 +145,36 @@ router.post(
 router.get('/members/activation-status', adminApi.activationStatus);
 router.post('/members/send-activations', verifyCsrfToken, adminApi.sendActivations);
 router.post('/users/:id/resend-activation', verifyCsrfToken, param('id').isInt(), adminApi.resendActivation);
+
+// The Activations page: who was invited, what bounced, whose link expired, and
+// who got in. See src/services/activationTracking.service.js for why the states
+// are derived rather than stored.
+router.get('/activations', activationsApi.list);
+router.get('/activations/:userId/history', param('userId').isInt({ min: 1 }), checkRouteInput, activationsApi.attemptHistory);
+router.post('/activations/:id/resend', verifyCsrfToken, param('id').isInt(), activationsApi.resendOne);
+router.post('/activations/resend-state', verifyCsrfToken, activationsApi.resendState);
+router.get('/activations/mergo/usage', activationsApi.mergoUsage);
+router.post(
+  '/activations/mergo/prepare',
+  verifyCsrfToken,
+  mergoCampaignLimiter,
+  body('userIds').isArray({ min: 1, max: 500 }).withMessage('Select between 1 and 500 members.'),
+  body('userIds.*').isInt({ min: 1 }).withMessage('Invalid member id.'),
+  checkRouteInput,
+  activationsApi.prepareMergo
+);
+router.post('/activations/mergo/sync', verifyCsrfToken, mergoSyncLimiter, activationsApi.syncMergo);
+router.put(
+  '/activations/mergo/cap',
+  verifyCsrfToken,
+  mergoCampaignLimiter,
+  body('cap').isInt({ min: 1, max: 10000 }).withMessage('Invalid activation cap.'),
+  checkRouteInput,
+  activationsApi.setMergoCap
+);
+router.post('/activations/attempts/:attemptId/retry', verifyCsrfToken, mergoCampaignLimiter, activationsApi.retryMergo);
+// Reuses the member import's upload middleware — same file type, same size cap.
+router.post('/activations/import-delivery', verifyCsrfToken, uploadDataWorkbook.single('workbook'), activationsApi.importDelivery);
 
 router.put(
   '/users/:id/email',

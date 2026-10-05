@@ -1,5 +1,11 @@
 node_modules/
 .env
+# Every sibling too, not just the exact name. A .env.backup, .env.local or
+# .env.save carries the same database password, mail credentials and session
+# secret as .env does, and the bare rule above ignores none of them — so one
+# `git add -A` after a moment of tidying would commit the lot.
+.env.*
+!.env.example
 *-service-account*.json
 jpsme-excel-report-*.json
 .claude/settings.local.json
@@ -22,6 +28,14 @@ org-backup*.json
 # of date against whatever it was generated from.
 JPSME-2.0-Blueprint.pdf
 JPSME-Organization-*.pdf
+
+# The Mergo invite sheet (scripts/build-mergo-export.js). Not merely generated —
+# every row carries a live, single-use activation link, so the file lets whoever
+# holds it set a password on any account listed in it. It lands in docs/ next to
+# things that ARE committed, which is exactly how one `git add -A` would publish
+# a set of working credentials to the repository.
+jpsme-mergo-invites*.xlsx
+docs/jpsme-mergo-invites*.xlsx
 
 # Local test-data seeder. Creates accounts with a shared, hardcoded password,
 # which is fine on a development machine and not something to publish. Kept out

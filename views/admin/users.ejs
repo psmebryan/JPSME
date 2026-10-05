@@ -70,9 +70,25 @@
     </form>
   <% } %>
 
+  <% if (viewMode === 'list') { %>
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4">
+      <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+        <input type="checkbox" id="users-select-page" aria-label="Select deletable users on this page">
+        Select page
+      </label>
+      <div class="flex flex-wrap items-center gap-3">
+        <span class="text-sm text-slate-600"><strong id="users-selected-count">0</strong> selected</span>
+        <button type="button" id="delete-selected-users" class="btn-secondary text-sm text-red-700" disabled>
+          Delete selected
+        </button>
+      </div>
+    </div>
+  <% } %>
+
   <div class="overflow-x-auto">
     <table id="users-table" class="admin-table">
       <colgroup>
+        <% if (viewMode === 'list') { %><col class="w-10"><% } %>
         <col>
         <col>
         <col>
@@ -85,6 +101,7 @@
       </colgroup>
       <thead class="admin-table-head">
         <tr>
+          <% if (viewMode === 'list') { %><th class="admin-th" aria-label="Select user"></th><% } %>
           <th class="admin-th">Name</th>
           <th class="admin-th">Email</th>
           <th class="admin-th">Payment Ref</th>

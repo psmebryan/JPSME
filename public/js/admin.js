@@ -829,6 +829,7 @@ function initUserApprovals() {
       if (!confirm('Delete this user?')) return;
       try {
         await apiFetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+        table.__forgetSelectedUser?.(id);
         showToast('User deleted');
         if (table.__reloadMembers) {
           await table.__reloadMembers();
@@ -921,11 +922,13 @@ function rowMenuHtml(items) {
     </div>`;
 }
 
-function memberRowHtml(u) {
+function memberRowHtml(u, selectedUserIds) {
   const canEdit = (window.currentAdmin && window.currentAdmin.role === 'ADMIN') || (window.currentAdmin && window.currentAdmin.role === 'CHAPTER_ADMIN' && u.organization && Number(u.organization.id) === Number(window.currentAdmin.organizationId));
+  const canBulkDelete = canEdit && u.role !== 'ADMIN';
   const assignAllowed = (window.currentAdmin && window.currentAdmin.role === 'ADMIN');
   return `
     <tr data-user-id="${u.id}" class="admin-tr align-top">
+      <td class="admin-td">${canBulkDelete ? `<input type="checkbox" data-select-user="${u.id}" aria-label="Select ${escapeHtml(u.firstName)} ${escapeHtml(u.lastName)} for deletion" ${selectedUserIds.has(Number(u.id)) ? 'checked' : ''}>` : ''}</td>
       <td class="admin-td">${escapeHtml(u.firstName)} ${escapeHtml(u.lastName)}</td>
       <td class="admin-td max-w-[220px] truncate" title="${escapeHtml(u.email)}">${escapeHtml(u.email)}</td>
       <td class="admin-td">${membershipPaymentReference(u)}</td>
@@ -977,6 +980,20 @@ function initMembersFilterAndPagination(table) {
   const pagination = document.getElementById('members-pagination');
   const summary = document.getElementById('members-result-summary');
   const clearBtn = document.getElementById('members-clear-filters');
+  const selectPage = document.getElementById('users-select-page');
+  const selectedCount = document.getElementById('users-selected-count');
+  const deleteSelectedBtn = document.getElementById('delete-selected-users');
+  const selectedUserIds = new Set();
+
+  function refreshBulkSelection() {
+    selectedCount.textContent = String(selectedUserIds.size);
+    deleteSelectedBtn.disabled = selectedUserIds.size === 0 || selectedUserIds.size > 200;
+    deleteSelectedBtn.title = selectedUserIds.size > 200 ? 'Select no more than 200 users at a time.' : '';
+    const currentPageBoxes = Array.from(tbody.querySelectorAll('[data-select-user]'));
+    const checkedOnPage = currentPageBoxes.filter((box) => box.checked).length;
+    selectPage.checked = currentPageBoxes.length > 0 && checkedOnPage === currentPageBoxes.length;
+    selectPage.indeterminate = checkedOnPage > 0 && checkedOnPage < currentPageBoxes.length;
+  }
 
   // Filters live in the URL as well as the form. Reloading, sharing or
   // going back therefore keeps the view you were looking at, and — the
@@ -1014,9 +1031,10 @@ function initMembersFilterAndPagination(table) {
     try {
       const res = await apiFetch(`/api/admin/members?${params.toString()}`);
       const { users, total, totalPages, page: currentPage } = res.data;
-      tbody.innerHTML = users.map(memberRowHtml).join('');
+      tbody.innerHTML = users.map((user) => memberRowHtml(user, selectedUserIds)).join('');
       maybeShowEmptyState(table);
       renderMembersPagination(pagination, currentPage, totalPages);
+      refreshBulkSelection();
 
       if (summary) {
         if (!total && applied.length) {
@@ -1048,6 +1066,56 @@ function initMembersFilterAndPagination(table) {
     loadMembers(1);
   });
 
+  selectPage?.addEventListener('change', () => {
+    tbody.querySelectorAll('[data-select-user]').forEach((box) => {
+      box.checked = selectPage.checked;
+      const id = Number(box.dataset.selectUser);
+      if (box.checked) selectedUserIds.add(id);
+      else selectedUserIds.delete(id);
+    });
+    refreshBulkSelection();
+  });
+
+  tbody.addEventListener('change', (event) => {
+    const box = event.target.closest('[data-select-user]');
+    if (!box) return;
+    const id = Number(box.dataset.selectUser);
+    if (box.checked) selectedUserIds.add(id);
+    else selectedUserIds.delete(id);
+    refreshBulkSelection();
+  });
+
+  deleteSelectedBtn?.addEventListener('click', async () => {
+    const ids = Array.from(selectedUserIds);
+    if (!ids.length || ids.length > 200) return;
+    if (!window.confirm(`Permanently delete these ${ids.length} selected user account(s)? Unchecked users will not be deleted.`)) return;
+
+    deleteSelectedBtn.disabled = true;
+    const label = deleteSelectedBtn.textContent;
+    deleteSelectedBtn.textContent = 'Deleting…';
+    try {
+      const res = await apiFetch('/api/admin/users/bulk-delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      });
+      const deletedIds = res.data.deletedIds || [];
+      deletedIds.forEach((id) => selectedUserIds.delete(Number(id)));
+      await loadMembers(Number(pagination?.dataset.page) || 1);
+      const failures = res.data.failed || [];
+      if (failures.length) {
+        const details = failures.slice(0, 5).map((failure) => `#${failure.id}: ${failure.message}`).join('; ');
+        showToast(`${deletedIds.length} deleted; ${failures.length} could not be deleted. ${details}`, 'error');
+      } else {
+        showToast(`${deletedIds.length} selected user(s) deleted.`);
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+      refreshBulkSelection();
+    } finally {
+      deleteSelectedBtn.textContent = label;
+    }
+  });
+
   readFiltersFromUrl();
 
   pagination?.addEventListener('click', (e) => {
@@ -1060,6 +1128,10 @@ function initMembersFilterAndPagination(table) {
   // the current page instead of just removing the row — otherwise the page
   // is left one short of pageSize until the admin manually changes pages.
   table.__reloadMembers = () => loadMembers(Number(pagination?.dataset.page) || 1);
+  table.__forgetSelectedUser = (id) => {
+    selectedUserIds.delete(Number(id));
+    refreshBulkSelection();
+  };
 
   loadMembers(1);
 }
@@ -1370,9 +1442,15 @@ function initRowActionMenus() {
   window.addEventListener('resize', close);
 }
 
-// --- Data export / import (admin/settings page) ---
+// --- Member import (admin/activations page) ---
 // Preview always runs before apply. An import that edits the organization tree
 // and member records is not something to trigger blind from a file picker.
+//
+// This used to live on admin/settings. The markup moved to the Activations page
+// so that importing, inviting and tracking sit together; the ids did not change,
+// which is why this function did not have to. Settings keeps only the whole-
+// database export, under a different wrapper id so these handlers no longer bind
+// to a page with no import controls on it.
 function initDataTransfer() {
   const module = document.getElementById('data-transfer-module');
   if (!module) return;
@@ -1416,12 +1494,38 @@ function initDataTransfer() {
         + (s.membersSkipped ? '<li>' + s.membersSkipped + ' member row(s) skipped</li>' : '')
         + '</ul>');
       if (created) {
+        var mergo = applied && data.mergoPreparation;
+        var mergoIssues = '';
+        if (mergo && mergo.failed && Array.isArray(mergo.outcomes)) {
+          var labels = {
+            MERGO_SHEETS_NOT_CONFIGURED: 'Mergo sheet not configured',
+            DAILY_CAP: 'daily preparation limit reached',
+            ACTIVE_LINK_EXISTS: 'already have a live activation link',
+            ACTIVE_ATTEMPT_EXISTS: 'already queued in Mergo',
+            SITE_EMAIL_QUEUED: 'already queued for site email',
+            ALREADY_ACTIVATED: 'already registered',
+            INVALID_EMAIL: 'invalid email address',
+            SHEET_WRITE_FAILED: 'could not write to the Mergo sheet',
+            PREPARATION_FAILED: 'preparation failed',
+          };
+          var reasons = {};
+          mergo.outcomes.filter(function (outcome) { return !outcome.ok; }).forEach(function (outcome) {
+            var reason = outcome.reason || 'PREPARATION_FAILED';
+            reasons[labels[reason] || reason.replace(/_/g, ' ').toLowerCase()] = (reasons[labels[reason] || reason.replace(/_/g, ' ').toLowerCase()] || 0) + 1;
+          });
+          mergoIssues = Object.keys(reasons).map(function (reason) { return reason + ': ' + reasons[reason]; }).join('; ');
+        }
+        var mergoNote = !applied
+          ? 'New accounts will be added to the Mergo campaign sheet automatically after import.'
+          : (mergo
+            ? mergo.prepared + ' added to the Mergo campaign sheet'
+              + (mergo.failed ? '; ' + mergo.failed + ' need attention (' + mergoIssues + ')' : '') + '.'
+            : 'Mergo preparation did not run; check the campaign connection.');
         rows.push('<p class="mt-2 rounded border border-indigo-200 bg-indigo-50 p-2 text-xs text-indigo-900">'
           + (applied
-            ? created + ' account(s) created with no password. Nobody has been emailed — use '
-              + '<strong>Send activation links</strong> below when you are ready.'
-            : 'These accounts will be created with no password and nobody will be emailed. '
-              + 'You send the activation links separately, afterwards.')
+            ? created + ' account(s) created with no password. ' + mergoNote
+              + ' Mergo sends after you launch the campaign, unless its new-row schedule is enabled.'
+            : 'These accounts will be created with no password. ' + mergoNote)
           + '</p>');
       }
       const detail = data.organizations.concat(data.members).slice(0, 40);
@@ -1446,7 +1550,13 @@ function initDataTransfer() {
       // FormData, so no JSON content-type — apiFetch adds the CSRF header.
       const res = await apiFetch(url, { method: 'POST', body });
       renderReport(res.data, applied);
-      if (applied) showToast(res.message);
+      if (applied) {
+        const prepFailed = res.data.mergoPreparation && res.data.mergoPreparation.failed;
+        showToast(res.message, prepFailed ? 'error' : 'success');
+        // The import has already written new activation rows to Mergo. Tell the
+        // activations table to reload so it shows their latest statuses.
+        document.dispatchEvent(new CustomEvent('jpsme:members-imported', { detail: res.data }));
+      }
     } catch (err) {
       report.innerHTML = '<p class="text-red-700">' + escapeHtml(err.message) + '</p>';
       report.classList.remove('hidden');
@@ -1463,48 +1573,18 @@ function initDataTransfer() {
     send('/api/admin/data/import', true);
   });
 
-  // --- activation invitations ------------------------------------------------
-  const activation = module.querySelector('[data-activation]');
-  if (activation) {
-    const countEl = activation.querySelector('[data-activation-count]');
-    const sendBtn = activation.querySelector('[data-send-activations]');
-    const resultEl = activation.querySelector('[data-activation-result]');
-
-    async function refreshCount() {
-      try {
-        const res = await apiFetch('/api/admin/members/activation-status');
-        countEl.textContent = res.data.waiting;
-        sendBtn.disabled = !res.data.waiting;
-      } catch (err) { /* the count is a convenience; the button still works */ }
-    }
-
-    sendBtn?.addEventListener('click', async () => {
-      const waiting = Number(countEl.textContent) || 0;
-      if (!confirm('Email an activation link to ' + waiting + ' member(s)?\n\n'
-        + 'Each one can then choose a password and their school. Anyone invited in the '
-        + 'last few minutes is skipped.')) return;
-
-      sendBtn.disabled = true;
-      try {
-        const res = await apiFetch('/api/admin/members/send-activations', { method: 'POST' });
-        resultEl.textContent = res.message;
-        resultEl.classList.remove('hidden');
-        showToast(res.message);
-      } catch (err) {
-        showToast(err.message, 'error');
-      } finally {
-        // Re-read rather than assume: the send skips people, so the number left
-        // is the server's to report.
-        await refreshCount();
-      }
-    });
-
-    activation.querySelector('[data-refresh-activations]')?.addEventListener('click', refreshCount);
-
-    // The count is server-rendered, so a page that has been open a while (or an
-    // import applied in another tab) is refreshed on load rather than showing a
-    // stale number beside a live button.
-    refreshCount();
+  // --- how many are waiting to be invited ------------------------------------
+  //
+  // The send itself moved to the Activations page; what stays here is the count,
+  // because it is the one number that tells you whether an import did anything.
+  // Re-read on load rather than trusted from the server-rendered value: a
+  // settings page left open, or an import applied in another tab, would
+  // otherwise show a stale figure beside a link inviting you to act on it.
+  const pendingEl = module.querySelector('[data-pending-activations]');
+  if (pendingEl) {
+    apiFetch('/api/admin/members/activation-status')
+      .then((res) => { pendingEl.textContent = res.data.waiting; })
+      .catch(() => { /* the count is a convenience; the link still works */ });
   }
 }
 

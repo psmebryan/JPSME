@@ -356,7 +356,7 @@ async function applyImport(buffer) {
     throw new AppError(`Import refused — ${plan.errors.length} problem(s) found. Nothing was changed.`, 400);
   }
 
-  const applied = { created: 0, updated: 0, membersCreated: 0, membersUpdated: 0 };
+  const applied = { created: 0, updated: 0, membersCreated: 0, membersUpdated: 0, createdUserIds: [] };
 
   // Shallowest first, so a row whose parent is also new in this sheet finds it
   // already created.
@@ -402,7 +402,7 @@ async function applyImport(buffer) {
   // is edited in Excel by whoever was handed it.
   for (const item of plan.members.filter((m) => m.action === 'create')) {
     // eslint-disable-next-line no-await-in-loop
-    await prisma.user.create({
+    const createdUser = await prisma.user.create({
       data: {
         ...item.create,
         firstName: normalizeName(item.create.firstName),
@@ -425,6 +425,7 @@ async function applyImport(buffer) {
       },
     });
     applied.membersCreated += 1;
+    applied.createdUserIds.push(createdUser.id);
   }
 
   return { ...plan, applied };
