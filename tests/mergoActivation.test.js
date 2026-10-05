@@ -299,6 +299,19 @@ async function main() {
   delete process.env.MERGO_ALLOW_LOCAL_LINKS;
   process.env.APP_URL = 'https://jpsme.example';
 
+  // An ID pasted out of a table brings a tab character along; Google then says
+  // the file does not exist. The settings are trimmed so that cannot happen.
+  // eslint-disable-next-line global-require
+  const config = require('../src/config');
+  const savedId = process.env.MERGO_ACTIVATION_SHEET_ID;
+  const savedTab = process.env.MERGO_ACTIVATION_TAB;
+  process.env.MERGO_ACTIVATION_SHEET_ID = '\t1ZUxY3j8WsJ5WA7iXv-QEo8rT56b_MReBx730KM3ZLHo ';
+  process.env.MERGO_ACTIVATION_TAB = ' JPSME Activations\t';
+  assert.strictEqual(config.googleSheets.mergoActivationSheetId, '1ZUxY3j8WsJ5WA7iXv-QEo8rT56b_MReBx730KM3ZLHo');
+  assert.strictEqual(config.googleSheets.mergoActivationTab, 'JPSME Activations');
+  process.env.MERGO_ACTIVATION_SHEET_ID = savedId;
+  process.env.MERGO_ACTIVATION_TAB = savedTab;
+
   console.log('Mergo activation integration tests passed');
 }
 
