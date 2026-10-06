@@ -295,6 +295,30 @@ async function main() {
     await prisma.job.delete({ where: { id: job.id } });
   });
 
+  await test('Send activation links counts and emails members only, and respects the per-press cap', async () => {
+    // eslint-disable-next-line global-require
+    const passwordReset = require('../src/services/passwordReset.service');
+    const before = await passwordReset.pendingActivationCount();
+    const admin = await prisma.user.create({
+      data: {
+        firstName: 'Act', lastName: 'NoPassAdmin', email: `noadmin.${TAG}@example.test`,
+        password: 'x', passwordSetAt: null, status: 'APPROVED', role: 'ADMIN',
+      },
+      select: { id: true },
+    });
+    await makeMember('CapCheck');
+    assert.strictEqual(await passwordReset.pendingActivationCount(), before + 1, 'the member counts; the admin does not');
+
+    // limit 0: nothing is queued, so this touches no real member in the dev
+    // database, yet the result still shows who would have been sent to.
+    const jobsBefore = await prisma.job.count({ where: { type: 'SEND_ACTIVATION_EMAIL' } });
+    const result = await passwordReset.sendActivationsForPending({ limit: 0 });
+    assert.strictEqual(result.queued, 0);
+    assert(result.remaining >= 1, 'the waiting member is reported as remaining for the next press');
+    assert.strictEqual(await prisma.job.count({ where: { type: 'SEND_ACTIVATION_EMAIL' } }), jobsBefore, 'nothing was queued');
+    await prisma.user.delete({ where: { id: admin.id } });
+  });
+
   console.log('\nreading Mergo results back in\n');
 
   await test('a dry run writes nothing at all', async () => {

@@ -5,6 +5,7 @@ const dataImportService = require('../../services/dataImport.service');
 const importTemplateService = require('../../services/importTemplate.service');
 const mergoActivationService = require('../../services/mergoActivation.service');
 const logger = require('../../utils/logger');
+const config = require('../../config');
 
 // MAIN_ADMIN only — enforced at the route layer. The export contains every
 // member's contact details and the full payment ledger, so it is not something
@@ -34,7 +35,8 @@ const importTemplate = asyncHandler(async (req, res) => {
 const previewImport = asyncHandler(async (req, res) => {
   if (!req.file) return error(res, 'Choose an .xlsx workbook to import', 400);
   const plan = await dataImportService.analyze(req.file.buffer);
-  return success(res, plan);
+  // Carried so the preview can say what will happen to new accounts.
+  return success(res, { ...plan, activationChannel: config.activationEmailChannel });
 });
 
 const runImport = asyncHandler(async (req, res) => {
@@ -44,10 +46,15 @@ const runImport = asyncHandler(async (req, res) => {
   const createdUserIds = applied.createdUserIds || [];
   let mergoPreparation = null;
 
-  // New member accounts go straight to the managed campaign sheet. This only
-  // prepares their activation rows; Mergo sends when the campaign is launched,
-  // unless its own "For each new row" schedule is enabled.
-  if (createdUserIds.length) {
+  result.activationChannel = config.activationEmailChannel;
+
+  // With the Mergo channel, new member accounts go straight to the managed
+  // campaign sheet. This only prepares their activation rows; Mergo sends when
+  // the campaign is launched, unless its "For each new row" schedule is enabled.
+  //
+  // With the site channel (the default) nobody is emailed here: the admin
+  // presses "Send activation links" when ready, and the site sends them.
+  if (createdUserIds.length && config.activationEmailChannel === 'mergo') {
     const outcomes = [];
     const campaignIds = new Set();
     for (let offset = 0; offset < createdUserIds.length; offset += 500) {
@@ -76,13 +83,16 @@ const runImport = asyncHandler(async (req, res) => {
   }
 
   const importMessage = `Imported: ${applied.created} organization(s) created, ${applied.updated} updated, ${applied.membersUpdated} member(s) updated.`;
+  const siteMessage = createdUserIds.length && config.activationEmailChannel === 'site'
+    ? ` ${createdUserIds.length} new member(s) created. Nobody has been emailed yet — press "Send activation links" when you are ready.`
+    : '';
   const mergoMessage = mergoPreparation
     ? ` ${mergoPreparation.prepared} new member(s) added to Mergo${mergoPreparation.failed ? `; ${mergoPreparation.failed} need attention` : ''}.`
     : '';
   return success(
     res,
     result,
-    importMessage + mergoMessage
+    importMessage + siteMessage + mergoMessage
   );
 });
 

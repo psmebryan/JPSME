@@ -1522,11 +1522,18 @@ function initDataTransfer() {
             ? mergo.prepared + ' added to the Mergo campaign sheet'
               + (mergo.failed ? '; ' + mergo.failed + ' need attention (' + mergoIssues + ')' : '') + '.'
             : 'Mergo preparation did not run; check the campaign connection.');
+        // The site channel (ACTIVATION_EMAIL_CHANNEL=site, the default) emails
+        // nobody on import; the admin sends links in step 2 when ready.
+        var siteNote = 'Nobody is emailed yet — press "Send activation links" in step 2 when you are ready.';
         rows.push('<p class="mt-2 rounded border border-indigo-200 bg-indigo-50 p-2 text-xs text-indigo-900">'
-          + (applied
-            ? created + ' account(s) created with no password. ' + mergoNote
-              + ' Mergo sends after you launch the campaign, unless its new-row schedule is enabled.'
-            : 'These accounts will be created with no password. ' + mergoNote)
+          + (data.activationChannel === 'mergo'
+            ? (applied
+              ? created + ' account(s) created with no password. ' + mergoNote
+                + ' Mergo sends after you launch the campaign, unless its new-row schedule is enabled.'
+              : 'These accounts will be created with no password. ' + mergoNote)
+            : (applied
+              ? created + ' account(s) created with no password. ' + siteNote
+              : 'These accounts will be created with no password. ' + siteNote))
           + '</p>');
       }
       const detail = data.organizations.concat(data.members).slice(0, 40);

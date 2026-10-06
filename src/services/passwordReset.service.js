@@ -359,7 +359,7 @@ async function queueActivation(userId) {
 // visible without running the send — the number is the whole reason somebody
 // presses the button.
 async function pendingActivationCount() {
-  return prisma.user.count({ where: { passwordSetAt: null } });
+  return prisma.user.count({ where: { passwordSetAt: null, role: 'USER' } });
 }
 
 // Sends activation links to everyone still waiting for one.
@@ -378,9 +378,16 @@ async function pendingActivationCount() {
 //   anyone with an invitation still sitting in the queue;
 //   anyone who still has a live, unused link, including one queued through
 //   Mergo. Replacing it from the site would invalidate the link in that sheet.
-async function sendActivationsForPending({ actorId = null } = {}) {
+//
+// Capped per press (ACTIVATION_SEND_BATCH_LIMIT, default 250): every site email
+// shares one daily provider quota, and a press that queued thousands would spend
+// the day's verification codes and password resets on invitations. `remaining`
+// tells the admin how many are left for the next press.
+async function sendActivationsForPending({ actorId = null, limit = config.activationSendBatchLimit } = {}) {
   const waiting = await prisma.user.findMany({
-    where: { passwordSetAt: null },
+    // Members only. An admin account without a password is not somebody to
+    // email an invitation to.
+    where: { passwordSetAt: null, role: 'USER' },
     select: { id: true, email: true },
     orderBy: { id: 'asc' },
   });
@@ -407,8 +414,10 @@ async function sendActivationsForPending({ actorId = null } = {}) {
 
   let queued = 0;
   let skipped = 0;
+  let remaining = 0;
   for (const user of waiting) {
     if (alreadyQueued.has(user.id) || hasLiveLink.has(user.id)) { skipped += 1; continue; }
+    if (queued >= limit) { remaining += 1; continue; }
     // eslint-disable-next-line no-await-in-loop
     await jobService.enqueue('SEND_ACTIVATION_EMAIL', { userId: user.id });
     queued += 1;
@@ -418,11 +427,11 @@ async function sendActivationsForPending({ actorId = null } = {}) {
     await auditService.log({
       action: 'ACTIVATION_INVITES_SENT',
       actorId,
-      metadata: { queued, skipped, total: waiting.length },
+      metadata: { queued, skipped, remaining, total: waiting.length },
     });
   }
 
-  return { queued, skipped, total: waiting.length };
+  return { queued, skipped, remaining, limit, total: waiting.length };
 }
 
 // --- signing out everywhere -------------------------------------------------

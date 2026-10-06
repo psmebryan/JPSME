@@ -7,6 +7,15 @@ const storageService = require('./storage.service');
 const { substituteTokens, formatDate, fullName } = require('../utils/templateTokens');
 const logger = require('../utils/logger');
 
+// A name is typed by a member or comes from an imported sheet, so it is escaped
+// before it goes into an email's HTML. Without this, a name like
+// "<a href=...>" would render as a link in the email.
+function escapeHtml(value) {
+  return String(value === null || value === undefined ? '' : value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 // Every send in this file is best-effort: a provider failure must never undo
 // the thing that triggered it, or a Brevo outage would start failing
 // registrations and approvals that already committed.
@@ -87,7 +96,7 @@ async function sendVerificationEmail(user, code, ttlMs) {
         + `${lifetime}\n\n`
         + `If you did not create a JPSME account, you can ignore this email.`,
       html: `
-        <p>Hi ${user.firstName},</p>
+        <p>Hi ${escapeHtml(user.firstName)},</p>
         <p>Thanks for registering with JPSME. Your verification code is:</p>
         <p style="font-size:32px;font-weight:bold;letter-spacing:8px;font-family:monospace;margin:24px 0;">${code}</p>
         <p>Enter it on the <a href="${url}">verification page</a> to confirm your email address.</p>
@@ -138,7 +147,7 @@ async function sendActivationEmail(user, url, ttlMs) {
         + `administrator who created it, knows or can see your password.\n\n`
         + `If you were not expecting this, you can ignore this email and nothing will happen.`,
       html: `
-        <p>Hi ${user.firstName},</p>
+        <p>Hi ${escapeHtml(user.firstName)},</p>
         <p>A JPSME administrator has created an account for you, using this email address.</p>
         <p>Open the link below to finish setting it up. You will choose your own password and
         pick your school or organization.</p>
@@ -177,7 +186,7 @@ async function sendPasswordResetEmail(user, url, ttlMs) {
         + `If this was not you, you can ignore this email — your password has not changed, `
         + `and nobody can use this link without opening it from your inbox.`,
       html: `
-        <p>Hi ${user.firstName},</p>
+        <p>Hi ${escapeHtml(user.firstName)},</p>
         <p>Somebody asked to reset the password for your JPSME account.</p>
         <p style="margin:24px 0;">
           <a href="${url}" style="background:#ecb827;color:#131131;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Choose a new password</a>
@@ -216,7 +225,7 @@ async function sendPasswordChangedEmail(user, { byAdmin = false } = {}) {
       text: `Hi ${user.firstName},\n\n${how}\n\n`
         + `You have been signed out everywhere and will need to sign in again.\n\n${next}`,
       html: `
-        <p>Hi ${user.firstName},</p>
+        <p>Hi ${escapeHtml(user.firstName)},</p>
         <p>${how}</p>
         <p>You have been signed out everywhere and will need to sign in again.</p>
         <p style="color:#666;font-size:13px;">${next}</p>
@@ -248,7 +257,7 @@ async function sendEmailChangedNotice(user, previousEmail, newEmail) {
         + `If you did not ask for this, contact your chapter administrator straight away — `
         + `this message was sent to your old address because it may be the only one you can still read.`,
       html: `
-        <p>Hi ${user.firstName},</p>
+        <p>Hi ${escapeHtml(user.firstName)},</p>
         <p>A JPSME administrator changed the email address on your account from
         <strong>${previousEmail}</strong> to <strong>${newEmail}</strong>.</p>
         <p>Future sign-ins and password resets will use the new address.</p>

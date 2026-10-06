@@ -11,11 +11,17 @@
 
   No style attributes anywhere: styleSrc carries a nonce and no 'unsafe-inline',
   so a style attribute is dropped silently.
+
+  Step 2 depends on ACTIVATION_EMAIL_CHANNEL: "site" shows Send activation links
+  (the site emails them); "mergo" shows the Mergo campaign card.
 %>
+<% const channel = locals.activationChannel === 'mergo' ? 'mergo' : 'site'; %>
 <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
   <div>
     <h1 class="admin-h1">Invite Members</h1>
-    <p class="text-sm text-gray-500 mt-1">Import your member list, prepare activation emails for Mergo, then check delivery and registration here.</p>
+    <p class="text-sm text-gray-500 mt-1"><%= channel === 'mergo'
+      ? 'Import your member list, prepare activation emails for Mergo, then check delivery and registration here.'
+      : 'Import your member list, send their activation emails, then check delivery and registration here.' %></p>
   </div>
   <div class="flex items-center gap-2">
     <button type="button" id="refresh" class="btn-secondary text-sm">Refresh</button>
@@ -41,7 +47,7 @@
     <h2 class="font-semibold">Import members from a spreadsheet</h2>
   </div>
 
-  <p class="mt-2 text-sm text-gray-500">Choose the JPSME member workbook. Review the preview, then import. New members will be selected for the invitation step automatically.</p>
+  <p class="mt-2 text-sm text-gray-500">Choose the JPSME member workbook. Review the preview, then import.<%= channel === 'mergo' ? ' New members will be selected for the invitation step automatically.' : ' Nobody is emailed until you press Send activation links in step 2.' %></p>
 
   <div class="mt-3 flex flex-wrap gap-2">
     <%# The template, not the export: the export carries every member's contact
@@ -60,8 +66,12 @@
     <input type="file" id="import-file" accept=".xlsx"
            class="form-input file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm">
     <p class="mt-1 text-xs text-gray-500">
-      New accounts are created with <strong>no password</strong> and added to the Mergo sheet
-      automatically. Mergo sends when you launch its campaign, unless its new-row schedule is enabled.
+      <% if (channel === 'mergo') { %>
+        New accounts are created with <strong>no password</strong> and added to the Mergo sheet
+        automatically. Mergo sends when you launch its campaign, unless its new-row schedule is enabled.
+      <% } else { %>
+        New accounts are created with <strong>no password</strong>. Nobody is emailed by the import.
+      <% } %>
     </p>
 
     <div class="mt-3 flex flex-wrap items-center gap-2">
@@ -81,8 +91,32 @@
   anyone still sitting in the queue, so pressing it twice cannot double-send or
   invalidate a link somebody is holding. The resends deliberately DO replace
   links, which is why they are separate and confirmed.
+
+  Only one of the two step-2 cards is shown. The Mergo card stays in the page
+  when hidden because its script still binds to it.
 %>
-<div class="admin-card p-5 mb-6" id="mergo-campaign">
+<div class="admin-card p-5 mb-6<%= channel === 'mergo' ? ' hidden' : '' %>" id="send-panel">
+  <div class="flex flex-wrap items-start justify-between gap-4">
+    <div>
+      <div class="flex items-baseline gap-2"><span class="font-tech text-xs font-bold text-gray-400">2</span><h2 class="font-semibold">Send activation links</h2></div>
+      <p class="text-sm text-gray-500 mt-1">
+        Emails every member who has not activated yet. Each gets a link to choose a password and their school,
+        valid for <%= locals.activationLinkDays || 3 %> day(s).
+      </p>
+      <p class="text-xs text-gray-500 mt-1">
+        Safe to press again: anyone who already has a working link, or is already queued, is skipped.
+        Each press sends at most <%= locals.activationSendBatchLimit || 250 %>, to stay inside the daily email limit.
+      </p>
+    </div>
+    <div class="text-right">
+      <p class="text-sm text-gray-600"><strong data-waiting>&hellip;</strong> waiting to activate</p>
+      <button type="button" id="send-pending" class="btn-primary mt-2" disabled>Send activation links</button>
+    </div>
+  </div>
+  <p data-send-result class="hidden mt-3 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm"></p>
+</div>
+
+<div class="admin-card p-5 mb-6<%= channel === 'mergo' ? '' : ' hidden' %>" id="mergo-campaign">
   <div class="flex flex-wrap items-start justify-between gap-4">
     <div>
       <div class="flex items-baseline gap-2"><span class="font-tech text-xs font-bold text-gray-400">2</span><h2 class="font-semibold">Add existing members to Mergo</h2></div>
@@ -219,6 +253,31 @@ onReady(function () {
   const selectedCountEl = document.getElementById('mergo-selected-count');
   const selectedUsers = new Set();
   let mergoConfigured = false;
+  // Which step 2 this page runs — see ACTIVATION_EMAIL_CHANNEL.
+  const CHANNEL = <%- JSON.stringify(channel) %>;
+
+  // The one action a row offers.
+  //   site:  "Send link" — the site emails a fresh link. Not offered while a
+  //          link is still out (INVITED); the server also refuses a member whose
+  //          working link is in a Mergo email.
+  //   mergo: select for the campaign, or retry a failed/bounced/expired attempt.
+  function rowAction(row) {
+    if (CHANNEL === 'site') {
+      if (row.resendable && row.state !== 'INVITED') {
+        return '<button type="button" data-resend="' + row.id + '" class="btn-secondary text-xs">'
+          + (row.state === 'NEVER_INVITED' ? 'Send link' : 'Send new link') + '</button>';
+      }
+      return '<span class="text-xs text-gray-400">&mdash;</span>';
+    }
+    if (row.state === 'NEVER_INVITED' && row.eligibleForMergo) {
+      return '<button type="button" data-select-mergo="' + row.id + '" class="btn-secondary text-xs">Select for Mergo</button>';
+    }
+    if (row.channel === 'MERGO' && row.attemptId
+      && (row.emailStatus === 'FAILED' || row.emailStatus === 'BOUNCED' || row.state === 'EXPIRED')) {
+      return '<button type="button" data-retry-mergo="' + esc(row.attemptId) + '" class="btn-secondary text-xs">Retry with Mergo</button>';
+    }
+    return '<span class="text-xs text-gray-400">&mdash;</span>';
+  }
 
   stateEl.value = <%- JSON.stringify(locals.initialState || '') %>;
 
@@ -345,7 +404,7 @@ onReady(function () {
             + (row.emailStatus === 'OPENED' ? '<span class="block text-xs text-gray-400">tracking signal only</span>' : '')
           : '<span class="text-gray-400">&mdash;</span>';
         return '<tr>'
-          + '<td>' + (row.eligibleForMergo
+          + '<td>' + (CHANNEL === 'mergo' && row.eligibleForMergo
             ? '<input type="checkbox" data-select-user="' + row.id + '" aria-label="Select ' + esc(name) + '"' + checked + '>'
             : '<span class="text-gray-300">&mdash;</span>') + '</td>'
           + '<td><a class="font-medium text-indigo-700 hover:underline" href="/admin/users/' + row.id + '/edit">' + (name || '(no name)') + '</a>'
@@ -359,18 +418,11 @@ onReady(function () {
           + '<td class="text-sm"><button type="button" data-history="' + row.id + '" data-member-name="' + esc(name) + '" class="text-indigo-700 hover:underline">'
           + (row.attempts || 0) + '</button></td>'
           + '<td class="text-sm">' + detail(row) + '</td>'
-          + '<td class="text-right">'
-          + (row.state === 'NEVER_INVITED' && row.eligibleForMergo
-            ? '<button type="button" data-select-mergo="' + row.id + '" class="btn-secondary text-xs">Select for Mergo</button>'
-            : row.channel === 'MERGO' && row.attemptId
-              && (row.emailStatus === 'FAILED' || row.emailStatus === 'BOUNCED' || row.state === 'EXPIRED')
-            ? '<button type="button" data-retry-mergo="' + esc(row.attemptId) + '" class="btn-secondary text-xs">Retry with Mergo</button>'
-            : '<span class="text-xs text-gray-400">&mdash;</span>')
-          + '</td></tr>';
+          + '<td class="text-right">' + rowAction(row) + '</td></tr>';
       }).join('');
     }
 
-    const selectable = data.rows.filter(function (row) { return row.eligibleForMergo; });
+    const selectable = data.rows.filter(function (row) { return CHANNEL === 'mergo' && row.eligibleForMergo; });
     selectPageEl.checked = selectable.length > 0 && selectable.every(function (row) { return selectedUsers.has(row.id); });
     selectPageEl.indeterminate = selectable.some(function (row) { return selectedUsers.has(row.id); }) && !selectPageEl.checked;
     updateUsage(data.mergo);
@@ -415,8 +467,12 @@ onReady(function () {
     page = 1;
     updateSelection();
     await load();
-    refreshMergoUsage();
-    if (newIds.length) document.getElementById('mergo-campaign').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (CHANNEL === 'mergo') refreshMergoUsage();
+    else refreshWaiting();
+    if (newIds.length) {
+      document.getElementById(CHANNEL === 'mergo' ? 'mergo-campaign' : 'send-panel')
+        .scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   });
 
   prepareBtn.addEventListener('click', async function () {
@@ -496,7 +552,7 @@ onReady(function () {
   }
   document.getElementById('mergo-sync').addEventListener('click', function () { syncMergoStatus(); });
   window.setInterval(function () {
-    if (document.visibilityState === 'visible') syncMergoStatus({ quiet: true });
+    if (CHANNEL === 'mergo' && document.visibilityState === 'visible') syncMergoStatus({ quiet: true });
   }, 5 * 60 * 1000);
 
   document.getElementById('mergo-cap-save').addEventListener('click', async function (e) {
@@ -678,6 +734,9 @@ onReady(function () {
   });
 
   load();
+  // The usage call also fills in the Mergo card's state, so it runs either way;
+  // the waiting count only matters when this page sends the emails itself.
   refreshMergoUsage();
+  if (CHANNEL === 'site') refreshWaiting();
 });
 </script>
