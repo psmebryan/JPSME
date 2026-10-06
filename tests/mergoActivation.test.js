@@ -219,13 +219,13 @@ async function main() {
   const buttonCol = memory.sheet[0].indexOf('Activation Button');
   assert(buttonCol >= 0, 'the sheet gets an Activation Button column');
   const button = memory.sheet[1][buttonCol];
-  assert.match(button, /^=HYPERLINK\("https:\/\/jpsme\.example\/reset-password\?uid=1&token=SECRET_TOKEN", IMAGE\("https:\/\/jpsme\.example\/img\/mergo-activate-button\.png"\)\)$/);
+  assert.match(button, /^=HYPERLINK\("https:\/\/jpsme\.example\/reset-password\?uid=1&token=SECRET_TOKEN", IMAGE\("https:\/\/jpsme\.example\/img\/mergo-activate-button-sm\.png"\)\)$/);
   assert(batches.some((b) => b.mode === 'RAW') && batches.some((b) => b.mode === 'USER_ENTERED'), 'data and formula are written separately');
   assert(batches.filter((b) => b.mode === 'USER_ENTERED').every((b) => b.values.every((v) => /^=HYPERLINK\(/.test(v))),
     'only the button cell is written as a formula');
   assert(batches.filter((b) => b.mode === 'RAW').every((b) => b.values.every((v) => !/^=HYPERLINK\(/.test(String(v)))),
     'member data is never evaluated as a formula');
-  assert.strictEqual(service.buttonFormula('https://x/a?b="c"'), '=HYPERLINK("https://x/a?b=""c""", IMAGE("https://jpsme.example/img/mergo-activate-button.png"))',
+  assert.strictEqual(service.buttonFormula('https://x/a?b="c"'), '=HYPERLINK("https://x/a?b=""c""", IMAGE("https://jpsme.example/img/mergo-activate-button-sm.png"))',
     'quotes inside the link cannot break out of the formula');
 
   // Mergo adds/owns its own column. Sync reads that column without rewriting it.
