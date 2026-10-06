@@ -3,6 +3,8 @@ const { success, error } = require('../../utils/apiResponse');
 const activationTracking = require('../../services/activationTracking.service');
 const mergoActivation = require('../../services/mergoActivation.service');
 const passwordResetService = require('../../services/passwordReset.service');
+const emailAuditService = require('../../services/emailAudit.service');
+const logger = require('../../utils/logger');
 
 // The Activations page's data and its three actions.
 //
@@ -175,4 +177,27 @@ const importDelivery = asyncHandler(async (req, res) => {
     : `Recorded ${result.matched} delivery outcome(s): ${detail}.`);
 });
 
-module.exports = { list, attemptHistory, resendOne, resendState, importDelivery, prepareMergo, syncMergo, retryMergo, mergoUsage, setMergoCap };
+// Read-only: who the Gmail address bug affected, and any duplicate accounts it
+// left behind. Changes nothing.
+const emailCheck = asyncHandler(async (req, res) => {
+  const report = await emailAuditService.gmailIdentityReport();
+  const message = report.duplicates.length
+    ? `${report.duplicates.length} Gmail inbox(es) have more than one account.`
+    : 'No duplicate Gmail accounts found.';
+  return success(res, report, message);
+});
+
+// Deletes only never-activated, unused duplicates whose inbox also has an
+// activated account. Logged with who pressed it and what was removed.
+const emailCleanup = asyncHandler(async (req, res) => {
+  const result = await emailAuditService.removeUnusedDuplicates();
+  logger.info('email-check: removed unused duplicate accounts', {
+    actorId: req.session.user.id,
+    removed: result.removed,
+    skipped: result.skipped,
+  });
+  return success(res, result, `Removed ${result.removed.length} unused duplicate account(s)`
+    + (result.skipped.length ? `; ${result.skipped.length} left alone.` : '.'));
+});
+
+module.exports = { list, attemptHistory, resendOne, resendState, importDelivery, prepareMergo, syncMergo, retryMergo, mergoUsage, setMergoCap, emailCheck, emailCleanup };

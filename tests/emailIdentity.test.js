@@ -43,7 +43,7 @@ function fakePrisma(users) {
       },
       async findMany({ where }) {
         const endings = where.OR.map((c) => c.email.endsWith);
-        return users.filter((u) => endings.some((e) => u.email.endsWith(e))).map((u) => ({ id: u.id, email: u.email }));
+        return users.filter((u) => endings.some((e) => u.email.endsWith(e))).map((u) => ({ id: u.id, email: u.email, passwordSetAt: u.passwordSetAt || null }));
       },
     },
   };
@@ -88,6 +88,18 @@ async function main() {
     const twins = fakePrisma([{ id: 7, email: 'j.doe@gmail.com' }, { id: 8, email: 'jdoe+x@gmail.com' }]);
     assertEqual(await findUserByEmail(twins, 'jd.oe@gmail.com'), null, 'ambiguous is not found, never the wrong account');
     assertEqual((await findUserByEmail(twins, 'j.doe@gmail.com')).id, 7, 'an exact match still wins');
+  });
+
+  await test('a member with a signed-up account and an imported duplicate reaches the one they use', async () => {
+    // What the bug actually left behind: signed up as juandelacruz (activated),
+    // then imported as juan.dela.cruz (never activated).
+    const pair = fakePrisma([
+      { id: 20, email: 'juandelacruz@gmail.com', passwordSetAt: new Date() },
+      { id: 21, email: 'juan.dela.cruz@gmail.com', passwordSetAt: null },
+    ]);
+    assertEqual((await findUserByEmail(pair, 'juan.dela.cruz@gmail.com')).id, 20,
+      'the dotted spelling reaches the activated account, not the empty import');
+    assertEqual((await findUserByEmail(pair, 'juandelacruz@gmail.com')).id, 20, 'and so does the dotless one');
   });
 
   await test('the auth forms no longer strip dots from Gmail addresses', () => {

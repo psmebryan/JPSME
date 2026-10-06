@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const ExcelJS = require('exceljs');
 const prisma = require('./../config/prisma');
 const AppError = require('./../utils/AppError');
+const { canonicalEmail } = require('./../utils/emailIdentity');
 const organizationService = require('./organization.service');
 
 // Names are stored upper-cased throughout this app (see auth.service's
@@ -196,10 +197,34 @@ async function analyze(buffer) {
       });
       const byEmail = new Map(found.map((u) => [u.email.toLowerCase(), u]));
 
+      // Gmail delivers "juan.dela.cruz" and "juandelacruz" to one inbox, so a row
+      // must find the existing member whichever spelling their account was stored
+      // under. Matching exactly is what created a second, empty account for every
+      // member who had signed up before being imported. Where an inbox already has
+      // several accounts, the activated one is the member's.
+      const byInbox = new Map();
+      if (emails.some((e) => canonicalEmail(e).endsWith('@gmail.com'))) {
+        const gmailUsers = await prisma.user.findMany({
+          where: { OR: [{ email: { endsWith: '@gmail.com' } }, { email: { endsWith: '@googlemail.com' } }] },
+          include: { organization: true },
+        });
+        const groups = new Map();
+        for (const u of gmailUsers) {
+          const key = canonicalEmail(u.email);
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(u);
+        }
+        for (const [key, list] of groups) {
+          const activated = list.filter((u) => u.passwordSetAt);
+          const pick = list.length === 1 ? list[0] : (activated.length === 1 ? activated[0] : null);
+          if (pick) byInbox.set(key, pick);
+        }
+      }
+
       // Which row first claimed each address, so a duplicate can name the row it
       // collides with rather than just saying "duplicate". Two rows with the same
       // address is a copy-paste mistake, not two members, and the fix needs both
-      // line numbers.
+      // line numbers. Keyed by inbox, so two Gmail spellings of one address count.
       const seenAt = new Map();
 
       for (let r = 2; r <= memberSheet.rowCount; r += 1) {
@@ -207,13 +232,17 @@ async function analyze(buffer) {
         const email = cell(row, h.email).toLowerCase();
         if (!email) continue;
 
-        if (seenAt.has(email)) {
-          errors.push(`Members row ${r}: email "${email}" also appears on row ${seenAt.get(email)}.`);
+        const inbox = canonicalEmail(email);
+        if (seenAt.has(inbox)) {
+          const firstRow = seenAt.get(inbox);
+          const firstEmail = cell(memberSheet.getRow(firstRow), h.email).toLowerCase();
+          errors.push(`Members row ${r}: email "${email}" also appears on row ${firstRow}`
+            + (firstEmail !== email ? ` (as "${firstEmail}", the same Gmail inbox).` : '.'));
           continue;
         }
-        seenAt.set(email, r);
+        seenAt.set(inbox, r);
 
-        const user = byEmail.get(email);
+        const user = byEmail.get(email) || byInbox.get(inbox);
         if (!user) {
           // --- a new account ---------------------------------------------------
           //

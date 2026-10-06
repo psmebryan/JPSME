@@ -145,6 +145,23 @@
   <p id="mergo-result" class="hidden mt-3 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm"></p>
 </div>
 
+<%# Read-only check for the Gmail address bug: login and password reset could not
+    find imported members whose Gmail address has a dot or +tag. See
+    services/emailAudit.service.js. %>
+<div class="admin-card p-5 mb-6" id="email-check-panel">
+  <div class="flex flex-wrap items-start justify-between gap-4">
+    <div>
+      <h2 class="font-semibold">Gmail login check</h2>
+      <p class="text-sm text-gray-500 mt-1">
+        Finds members whose Gmail address has a dot or a "+", who could not log in or reset their password
+        before the fix, and any member with two accounts on the same Gmail inbox. It only reads; nothing is changed.
+      </p>
+    </div>
+    <button type="button" id="email-check" class="btn-secondary text-sm">Run check</button>
+  </div>
+  <div id="email-check-result" class="hidden mt-3 text-sm"></div>
+</div>
+
 <div id="attempt-history" class="admin-card p-5 mb-8 hidden">
   <div class="flex items-center justify-between gap-3">
     <h2 class="font-semibold">Activation attempt history <span id="history-member" class="text-gray-500 font-normal"></span></h2>
@@ -730,6 +747,78 @@ onReady(function () {
       // is the server's to report. The table is reloaded too, since states change.
       await refreshWaiting();
       load();
+    }
+  });
+
+  // --- Gmail login check (read-only) -----------------------------------------
+  document.getElementById('email-check').addEventListener('click', async function (e) {
+    const btn = e.currentTarget;
+    const out = document.getElementById('email-check-result');
+    btn.disabled = true;
+    btn.textContent = 'Checking…';
+    try {
+      const res = await apiFetch('/api/admin/activations/email-check');
+      const r = res.data;
+      let html = '<p>' + Number(r.gmailMembers) + ' members use Gmail; <strong>' + Number(r.affected)
+        + '</strong> have a dot or "+" in their address (these could not log in or reset their password before the fix).</p>';
+      if (!r.duplicates.length) {
+        html += '<p class="mt-2 text-green-700 font-medium">No duplicate accounts. Nothing to clean up.</p>';
+      } else {
+        html += '<p class="mt-2 text-amber-700 font-medium">' + r.duplicates.length
+          + ' inbox(es) have more than one account. Keep the one with registrations or payments; '
+          + 'ask before deleting any.</p>'
+          + '<div class="admin-table-wrap mt-2"><table class="admin-table"><thead class="admin-table-head"><tr>'
+          + '<th class="admin-th">Inbox</th><th class="admin-th">Account</th><th class="admin-th">Activated</th>'
+          + '<th class="admin-th">Registrations</th><th class="admin-th">Payments</th><th class="admin-th">Created</th>'
+          + '</tr></thead><tbody class="admin-tbody">'
+          + r.duplicates.map(function (d) {
+            return d.accounts.map(function (a, i) {
+              return '<tr class="admin-tr">'
+                + '<td class="admin-td">' + (i === 0 ? esc(d.inbox) : '') + '</td>'
+                + '<td class="admin-td"><a class="text-indigo-700 hover:underline" href="/admin/users/' + Number(a.id) + '/edit">#'
+                + Number(a.id) + ' ' + esc(a.email) + '</a><span class="block text-xs text-gray-500">' + esc(a.name) + '</span></td>'
+                + '<td class="admin-td">' + (a.activated ? 'Yes' : 'No') + '</td>'
+                + '<td class="admin-td">' + Number(a.registrations) + '</td>'
+                + '<td class="admin-td">' + Number(a.payments) + '</td>'
+                + '<td class="admin-td">' + fmt(a.createdAt)
+                + (a.removable ? '<span class="block text-xs font-medium text-red-700">will be removed</span>' : '')
+                + '</td></tr>';
+            }).join('');
+          }).join('')
+          + '</tbody></table></div>';
+        if (r.removable) {
+          html += '<p class="mt-3 text-sm text-gray-600">Accounts marked <span class="text-red-700 font-medium">will be removed</span> '
+            + 'were never activated, have no registrations or payments, and share an inbox with an activated account '
+            + 'the member already uses. Nothing else is touched.</p>'
+            + '<button type="button" id="email-cleanup" class="btn-primary mt-2">Remove ' + Number(r.removable)
+            + ' unused duplicate account(s)</button>';
+        }
+      }
+      out.innerHTML = html;
+      out.classList.remove('hidden');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Run check';
+    }
+  });
+
+  document.getElementById('email-check-result').addEventListener('click', async function (e) {
+    const btn = e.target.closest('#email-cleanup');
+    if (!btn) return;
+    if (!window.confirm('Permanently delete the accounts marked "will be removed"?\n\n'
+      + 'Each was never activated and has no registrations or payments, and the same member keeps their activated account.')) return;
+    btn.disabled = true;
+    btn.textContent = 'Removing…';
+    try {
+      const res = await apiFetch('/api/admin/activations/email-check/cleanup', { method: 'POST' });
+      showToast(res.message, 'success');
+      load();
+      document.getElementById('email-check').click();
+    } catch (err) {
+      showToast(err.message, 'error');
+      btn.disabled = false;
     }
   });
 
