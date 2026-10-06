@@ -159,15 +159,16 @@ const config = {
   get port() { return Number(process.env.PORT) || 3000; },
   get appUrl() { return process.env.APP_URL || `http://localhost:${config.port}`; },
   // Who sends activation emails.
-  //   site  - this app, with its own email design, when an admin presses
-  //           "Send activation links". Imports email nobody. (default)
   //   mergo - imports add new members to the Mergo campaign sheet, and Mergo
-  //           sends from a Gmail draft.
-  // Unknown values fall back to site rather than throwing: this is read on
+  //           sends from a Gmail draft. (default: invitations run past a
+  //           thousand, beyond the site provider's daily limit)
+  //   site  - this app, with its own email design, when an admin presses
+  //           "Send activation links". Imports email nobody.
+  // Unknown values fall back to mergo rather than throwing: this is read on
   // every import, and a typo must not take the import page down.
   get activationEmailChannel() {
     const value = String(process.env.ACTIVATION_EMAIL_CHANNEL || '').trim().toLowerCase();
-    return value === 'mergo' ? 'mergo' : 'site';
+    return value === 'site' ? 'site' : 'mergo';
   },
   // Most activation emails one "Send activation links" press queues. Brevo's
   // free plan allows 300 emails a day across everything this site sends, so the

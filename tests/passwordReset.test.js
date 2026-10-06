@@ -389,17 +389,17 @@ test('an activation link outlives a reset link by a long way', () => {
     'but still expires — an unused activation link is a standing key to the account');
 });
 
-test('activation emails go out from the site unless ACTIVATION_EMAIL_CHANNEL=mergo', () => {
+test('activation emails go out through Mergo unless ACTIVATION_EMAIL_CHANNEL=site', () => {
   // eslint-disable-next-line global-require
   const config = require('../src/config');
   const saved = process.env.ACTIVATION_EMAIL_CHANNEL;
   try {
     delete process.env.ACTIVATION_EMAIL_CHANNEL;
-    assert(config.activationEmailChannel === 'site', 'defaults to the site');
-    process.env.ACTIVATION_EMAIL_CHANNEL = ' Mergo ';
-    assert(config.activationEmailChannel === 'mergo', 'mergo is accepted, ignoring case and spaces');
+    assert(config.activationEmailChannel === 'mergo', 'defaults to Mergo');
+    process.env.ACTIVATION_EMAIL_CHANNEL = ' Site ';
+    assert(config.activationEmailChannel === 'site', 'site is accepted, ignoring case and spaces');
     process.env.ACTIVATION_EMAIL_CHANNEL = 'brevo';
-    assert(config.activationEmailChannel === 'site', 'an unknown value falls back to the site instead of breaking imports');
+    assert(config.activationEmailChannel === 'mergo', 'an unknown value falls back to Mergo instead of breaking imports');
   } finally {
     if (saved === undefined) delete process.env.ACTIVATION_EMAIL_CHANNEL;
     else process.env.ACTIVATION_EMAIL_CHANNEL = saved;
