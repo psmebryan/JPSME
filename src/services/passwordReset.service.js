@@ -18,6 +18,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const prisma = require('../config/prisma');
 const config = require('../config');
+const { findUserByEmail } = require('../utils/emailIdentity');
 const auditService = require('./audit.service');
 const jobService = require('./job.service');
 
@@ -71,8 +72,10 @@ async function requestReset(email, { ipAddress = null } = {}) {
   const address = String(email || '').trim().toLowerCase();
   if (!address) return;
 
-  const user = await prisma.user.findUnique({
-    where: { email: address },
+  // Either Gmail spelling finds the account. Imported members are stored with
+  // their dots, and used to be searched for without them — so their reset
+  // emails were never sent. See utils/emailIdentity.js.
+  const user = await findUserByEmail(prisma, address, {
     select: { id: true, email: true, firstName: true },
   });
   if (!user) return;

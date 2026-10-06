@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const prisma = require('../config/prisma');
+const { findUserByEmail } = require('../utils/emailIdentity');
 const AppError = require('../utils/AppError');
 const logger = require('../utils/logger');
 const { sendVerificationEmail, sendMemberApprovedEmail, sendAccountApprovedEmail } = require('./mail.service');
@@ -154,7 +155,7 @@ async function expiryFor(userId) {
 // mail is already on its way.
 async function prepareVerification(email) {
   const normalized = String(email || '').trim().toLowerCase();
-  const user = await prisma.user.findUnique({ where: { email: normalized } });
+  const user = await findUserByEmail(prisma, normalized);
   if (!user || user.emailVerifiedAt) return null;
 
   const outcome = await ensureVerificationCode(user);
@@ -214,10 +215,7 @@ async function verifyEmailCode(email, code) {
   const cleaned = String(code || '').replace(/\s+/g, '');
   if (!/^\d{6}$/.test(cleaned)) throw rejected();
 
-  const user = await prisma.user.findUnique({
-    where: { email: String(email || '').trim().toLowerCase() },
-    include: { emailVerificationToken: true },
-  });
+  const user = await findUserByEmail(prisma, email, { include: { emailVerificationToken: true } });
 
   // Already verified is reported the same way as unknown — see rejected().
   if (!user || user.emailVerifiedAt || !user.emailVerificationToken) throw rejected();
@@ -307,14 +305,13 @@ async function verifyEmailCode(email, code) {
 // the response, and the person reading it can already query the users table.
 async function resendVerification(email) {
   const normalized = String(email || '').trim().toLowerCase();
-  const user = await prisma.user.findUnique({ where: { email: normalized } });
+  const user = await findUserByEmail(prisma, normalized);
 
   if (!user) {
     // Worth distinguishing from "already verified" because the usual cause is
-    // an address that does not match what was stored — note that the route
-    // runs normalizeEmail() first, which strips dots from a Gmail address. An
-    // account created outside the registration form (seeded, imported, or
-    // inserted by hand) can therefore hold an address this will never find.
+    // an address that does not match what was stored. The route used to strip
+    // dots from Gmail addresses before this ran, so imported accounts were
+    // never found; findUserByEmail now accepts either spelling.
     logger.info('resend-verification: no account for that address, nothing sent', { email: normalized });
     return;
   }
