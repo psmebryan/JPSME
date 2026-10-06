@@ -17,7 +17,9 @@ const OWNED_COLUMNS = [
 // "Insert Dynamic Links in your Emails".
 const FORMULA_COLUMNS = ['Activation Button'];
 const ALL_COLUMNS = OWNED_COLUMNS.concat(FORMULA_COLUMNS);
-const BUTTON_IMAGE_PATH = '/img/mergo-activate-button.png';
+// Versioned by file name rather than overwritten: Gmail caches images by URL,
+// so a resized picture under the old name would keep showing the old size.
+const BUTTON_IMAGE_PATH = '/img/mergo-activate-button-sm.png';
 const ACTIVE_PROVIDER_STATUSES = ['PREPARED', 'QUEUED', 'SENT', 'OPENED'];
 
 let sheetsClient = null;
