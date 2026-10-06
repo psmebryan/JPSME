@@ -54,7 +54,7 @@ const registerLimiter = rateLimit({
 const registerValidators = [
   body('firstName').trim().notEmpty().withMessage('First name is required').isLength({ max: 100 }),
   body('lastName').trim().notEmpty().withMessage('Last name is required').isLength({ max: 100 }),
-  body('email').trim().isEmail().withMessage('A valid email is required').normalizeEmail(),
+  body('email').trim().isEmail().withMessage('A valid email is required').toLowerCase(),
   body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
   body('phone').optional({ checkFalsy: true }).trim().isLength({ max: 30 }),
   body('school').optional({ checkFalsy: true }).trim().isLength({ max: 150 }),
@@ -71,12 +71,12 @@ const registerValidators = [
 ];
 
 const loginValidators = [
-  body('email').trim().isEmail().withMessage('A valid email is required').normalizeEmail(),
+  body('email').trim().isEmail().withMessage('A valid email is required').toLowerCase(),
   body('password').notEmpty().withMessage('Password is required'),
 ];
 
 const resendVerificationValidators = [
-  body('email').trim().isEmail().withMessage('A valid email is required').normalizeEmail(),
+  body('email').trim().isEmail().withMessage('A valid email is required').toLowerCase(),
 ];
 
 const profileValidators = [
@@ -189,7 +189,7 @@ router.post(
   // reason.
   requireHuman(),
   [
-    body('email').isEmail().withMessage('Enter the email address you registered with').normalizeEmail(),
+    body('email').trim().isEmail().withMessage('Enter the email address you registered with').toLowerCase(),
     // Digits only, exact length, whitespace stripped first — people paste codes
     // with a stray space from the email far more often than they mistype them.
     body('code').customSanitizer((v) => String(v || '').replace(/\s+/g, ''))
@@ -223,7 +223,7 @@ const resetLimiter = rateLimit({
 router.post(
   '/forgot-password',
   verifyCsrfToken, forgotLimiter,
-  [body('email').trim().isEmail().withMessage('A valid email is required').normalizeEmail()],
+  [body('email').trim().isEmail().withMessage('A valid email is required').toLowerCase()],
   authApi.forgotPassword
 );
 

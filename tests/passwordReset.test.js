@@ -389,6 +389,51 @@ test('an activation link outlives a reset link by a long way', () => {
     'but still expires — an unused activation link is a standing key to the account');
 });
 
+test('activation emails go out through Mergo unless ACTIVATION_EMAIL_CHANNEL=site', () => {
+  // eslint-disable-next-line global-require
+  const config = require('../src/config');
+  const saved = process.env.ACTIVATION_EMAIL_CHANNEL;
+  try {
+    delete process.env.ACTIVATION_EMAIL_CHANNEL;
+    assert(config.activationEmailChannel === 'mergo', 'defaults to Mergo');
+    process.env.ACTIVATION_EMAIL_CHANNEL = ' Site ';
+    assert(config.activationEmailChannel === 'site', 'site is accepted, ignoring case and spaces');
+    process.env.ACTIVATION_EMAIL_CHANNEL = 'brevo';
+    assert(config.activationEmailChannel === 'mergo', 'an unknown value falls back to Mergo instead of breaking imports');
+  } finally {
+    if (saved === undefined) delete process.env.ACTIVATION_EMAIL_CHANNEL;
+    else process.env.ACTIVATION_EMAIL_CHANNEL = saved;
+  }
+
+  // The import only adds new members to the Mergo sheet on the Mergo channel.
+  const api = stripComments(readSrc('src', 'controllers', 'api', 'dataTransfer.api.js'));
+  assert(/if \(createdUserIds\.length && config\.activationEmailChannel === 'mergo'\)/.test(api),
+    'Mergo preparation on import is gated on the mergo channel');
+});
+
+test('one Send activation links press is capped, 250 by default', () => {
+  // eslint-disable-next-line global-require
+  const config = require('../src/config');
+  const saved = process.env.ACTIVATION_SEND_BATCH_LIMIT;
+  try {
+    delete process.env.ACTIVATION_SEND_BATCH_LIMIT;
+    assert(config.activationSendBatchLimit === 250, 'defaults to 250, inside Brevo free plan\'s 300 a day');
+    process.env.ACTIVATION_SEND_BATCH_LIMIT = '100';
+    assert(config.activationSendBatchLimit === 100, 'can be lowered');
+    process.env.ACTIVATION_SEND_BATCH_LIMIT = '0';
+    assert(config.activationSendBatchLimit === 250, 'zero falls back rather than sending nothing forever');
+  } finally {
+    if (saved === undefined) delete process.env.ACTIVATION_SEND_BATCH_LIMIT;
+    else process.env.ACTIVATION_SEND_BATCH_LIMIT = saved;
+  }
+});
+
+test('member names are escaped in email HTML', () => {
+  const mail = readSrc('src', 'services', 'mail.service.js');
+  assert(!/<p>Hi \$\{user\.firstName\},<\/p>/.test(mail), 'no greeting interpolates a raw name into HTML');
+  assert(/<p>Hi \$\{escapeHtml\(user\.firstName\)\},<\/p>/.test(mail), 'greetings use escapeHtml');
+});
+
 test('activation links last 3 days unless ACTIVATION_LINK_DAYS says otherwise', () => {
   // eslint-disable-next-line global-require
   const config = require('../src/config');

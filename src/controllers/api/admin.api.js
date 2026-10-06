@@ -468,9 +468,13 @@ const sendActivations = asyncHandler(async (req, res) => {
     return success(res, result,
       `All ${result.total} member(s) waiting already have a live activation link or are queued. Nothing sent again.`);
   }
-  return success(res, result, result.skipped
-    ? `Sending ${result.queued} activation link(s). ${result.skipped} skipped — they already have a live link or are already queued.`
-    : `Sending ${result.queued} activation link(s). They arrive over the next few minutes.`);
+  const parts = [`Sending ${result.queued} activation link(s). They arrive over the next few minutes.`];
+  if (result.skipped) parts.push(`${result.skipped} skipped — they already have a live link or are already queued.`);
+  if (result.remaining) {
+    parts.push(`${result.remaining} more are waiting: this press sends at most ${result.limit}, `
+      + 'to stay inside the daily email limit. Press again later (tomorrow, on a free Brevo plan) for the rest.');
+  }
+  return success(res, result, parts.join(' '));
 });
 
 // One person, for when somebody says theirs never arrived.

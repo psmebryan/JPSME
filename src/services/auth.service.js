@@ -1,6 +1,7 @@
 const bcrypt = require("bcryptjs");
 const prisma = require("../config/prisma");
 const AppError = require("../utils/AppError");
+const { findUserByEmail } = require("../utils/emailIdentity");
 const { queueVerificationCode } = require("./emailVerification.service");
 const sheetsSyncService = require("./sheetsSync.service");
 
@@ -49,7 +50,9 @@ async function registerUser({
   organizationId,
   next,
 }) {
-  const existing = await prisma.user.findUnique({ where: { email } });
+  // Either Gmail spelling of an existing address counts as taken: they are
+  // one inbox, and a second account for it would be a duplicate.
+  const existing = await findUserByEmail(prisma, email);
   if (existing) {
     throw new AppError("An account with this email already exists", 409);
   }
@@ -109,7 +112,7 @@ async function registerUser({
 //             a regular account can't get in through /admin/login, and an admin
 //             account can't get in through /login.
 async function login(email, password, { context = "user" } = {}) {
-  const user = await prisma.user.findUnique({ where: { email }, include: userInclude });
+  const user = await findUserByEmail(prisma, email, { include: userInclude });
   if (!user) {
     // Still run a bcrypt compare (against a hash nobody's real password will
     // ever match) so this takes roughly the same time as the "wrong

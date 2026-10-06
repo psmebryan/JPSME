@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const { findUserByEmail } = require('../utils/emailIdentity');
 const AppError = require('../utils/AppError');
 const { toPublicUser } = require('./auth.service');
 const mailService = require('./mail.service');
@@ -405,8 +406,8 @@ async function adminChangeEmail(userId, newEmail, { requireVerification = true, 
 
   // Checked before writing so the failure is a sentence rather than a unique
   // constraint violation surfacing as a 500.
-  const taken = await prisma.user.findUnique({ where: { email: address }, select: { id: true } });
-  if (taken) throw new AppError('Another account already uses that email address', 409);
+  const taken = await findUserByEmail(prisma, address, { select: { id: true } });
+  if (taken && taken.id !== target.id) throw new AppError('Another account already uses that email address', 409);
 
   const previousEmail = target.email;
 

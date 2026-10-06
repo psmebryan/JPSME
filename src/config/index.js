@@ -158,6 +158,25 @@ const config = {
   get isProduction() { return process.env.NODE_ENV === 'production'; },
   get port() { return Number(process.env.PORT) || 3000; },
   get appUrl() { return process.env.APP_URL || `http://localhost:${config.port}`; },
+  // Who sends activation emails.
+  //   mergo - imports add new members to the Mergo campaign sheet, and Mergo
+  //           sends from a Gmail draft. (default: invitations run past a
+  //           thousand, beyond the site provider's daily limit)
+  //   site  - this app, with its own email design, when an admin presses
+  //           "Send activation links". Imports email nobody.
+  // Unknown values fall back to mergo rather than throwing: this is read on
+  // every import, and a typo must not take the import page down.
+  get activationEmailChannel() {
+    const value = String(process.env.ACTIVATION_EMAIL_CHANNEL || '').trim().toLowerCase();
+    return value === 'site' ? 'site' : 'mergo';
+  },
+  // Most activation emails one "Send activation links" press queues. Brevo's
+  // free plan allows 300 emails a day across everything this site sends, so the
+  // default leaves room for verification codes and password resets.
+  get activationSendBatchLimit() {
+    const parsed = Number(process.env.ACTIVATION_SEND_BATCH_LIMIT);
+    return Number.isInteger(parsed) && parsed >= 1 && parsed <= 5000 ? parsed : 250;
+  },
   // How many days an activation link works. 1-14, default 3. Out-of-range or
   // non-numeric values fall back to the default rather than to "never expires".
   get activationLinkDays() {

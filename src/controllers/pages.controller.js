@@ -475,6 +475,10 @@ const adminActivationsPage = asyncHandler(async (req, res) => {
     // Read by the page so a deep link like ?state=BOUNCED opens on that filter.
     initialState: String(req.query.state || 'NEVER_INVITED').trim(),
     initialSearch: String(req.query.search || '').trim(),
+    // site: the "Send activation links" step. mergo: the Mergo campaign step.
+    activationChannel: config.activationEmailChannel,
+    activationSendBatchLimit: config.activationSendBatchLimit,
+    activationLinkDays: config.activationLinkDays,
   });
 });
 

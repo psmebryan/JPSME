@@ -181,7 +181,7 @@ router.put(
   verifyCsrfToken,
   [
     param('id').isInt(),
-    body('email').trim().isEmail().withMessage('A valid email is required').normalizeEmail(),
+    body('email').trim().isEmail().withMessage('A valid email is required').toLowerCase(),
     body('requireVerification').optional().isBoolean(),
   ],
   adminApi.changeUserEmail
