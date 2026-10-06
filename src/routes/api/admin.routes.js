@@ -154,6 +154,8 @@ router.get('/activations/:userId/history', param('userId').isInt({ min: 1 }), ch
 router.post('/activations/:id/resend', verifyCsrfToken, param('id').isInt(), activationsApi.resendOne);
 router.post('/activations/resend-state', verifyCsrfToken, activationsApi.resendState);
 router.get('/activations/mergo/usage', activationsApi.mergoUsage);
+router.get('/activations/email-check', activationsApi.emailCheck);
+router.post('/activations/email-check/cleanup', verifyCsrfToken, mergoCampaignLimiter, activationsApi.emailCleanup);
 router.post(
   '/activations/mergo/prepare',
   verifyCsrfToken,

@@ -37,33 +37,52 @@ function canonicalEmail(value) {
 
 // The account for a typed address, or null.
 //
-// Exact match first, so an address that is stored exactly as typed never
-// depends on the fallback. Then, for Gmail only, every stored Gmail address
-// whose inbox is the same. Exactly one such account is required: if two
-// accounts share an inbox, guessing between them could sign somebody into the
-// wrong one, so it is treated as not found.
+// The common case is one query: the exact address, already activated. Gmail
+// addresses otherwise look at every account on the same inbox, because the bug
+// left some members with two — the account they made by signing up (stored
+// without dots, activated, holding their registrations) and one the import made
+// later (stored with dots, never activated). Typing the dotted address must
+// reach the account they actually use, not the empty duplicate, so:
 //
-// `query` is passed through to findUnique (select / include).
+//   one account on the inbox          that one
+//   exactly one of them activated     the activated one
+//   none activated                    the exact spelling, if there is one
+//   several activated                 the exact spelling, if it is one of them
+//   anything else                     not found — guessing between accounts
+//                                     could sign somebody into the wrong one
+//
+// `query` is passed through to the final findUnique (select / include).
 async function findUserByEmail(prisma, typed, query = {}) {
   const email = cleanEmail(typed);
   if (!email) return null;
 
-  const exact = await prisma.user.findUnique({ where: { email }, ...query });
-  if (exact) return exact;
-
-  const canonical = canonicalEmail(email);
-  if (!canonical.endsWith('@gmail.com')) return null;
-
-  // Gmail addresses only, then compared in JS. Two LIKEs rather than one
-  // pattern so the googlemail.com spelling is covered too.
-  const candidates = await prisma.user.findMany({
-    where: { OR: [{ email: { endsWith: '@gmail.com' } }, { email: { endsWith: '@googlemail.com' } }] },
-    select: { id: true, email: true },
+  const exact = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, email: true, passwordSetAt: true },
   });
-  const matches = candidates.filter((u) => canonicalEmail(u.email) === canonical);
-  if (matches.length !== 1) return null;
+  const canonical = canonicalEmail(email);
+  const isGmail = canonical.endsWith('@gmail.com');
 
-  return prisma.user.findUnique({ where: { id: matches[0].id }, ...query });
+  let chosen = null;
+  if (exact && (exact.passwordSetAt || !isGmail)) {
+    chosen = exact;
+  } else if (isGmail) {
+    // Gmail addresses only, then compared in JS. Two endings so the
+    // googlemail.com spelling is covered too.
+    const gmailUsers = await prisma.user.findMany({
+      where: { OR: [{ email: { endsWith: '@gmail.com' } }, { email: { endsWith: '@googlemail.com' } }] },
+      select: { id: true, email: true, passwordSetAt: true },
+    });
+    const sameInbox = gmailUsers.filter((u) => canonicalEmail(u.email) === canonical);
+    const activated = sameInbox.filter((u) => u.passwordSetAt);
+    if (sameInbox.length === 1) chosen = sameInbox[0];
+    else if (activated.length === 1) chosen = activated[0];
+    else if (activated.length === 0) chosen = exact;
+    else chosen = (exact && activated.find((u) => u.id === exact.id)) || null;
+  }
+
+  if (!chosen) return null;
+  return prisma.user.findUnique({ where: { id: chosen.id }, ...query });
 }
 
 module.exports = { cleanEmail, canonicalEmail, findUserByEmail };
