@@ -56,7 +56,9 @@ async function withMembershipPaymentStatus(users) {
 
 const listUsers = asyncHandler(async (req, res) => {
   const { status } = req.query;
-  const users = await userService.listByStatus(status);
+  // The User Approvals queue asks for PENDING. Only people who signed up
+  // themselves wait on an admin; imported members are approved by activating.
+  const users = await userService.listByStatus(status, { awaitingApproval: status === 'PENDING' });
   return success(res, { users: await withMembershipPaymentStatus(users) });
 });
 

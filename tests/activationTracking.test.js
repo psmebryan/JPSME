@@ -319,6 +319,25 @@ async function main() {
     await prisma.user.delete({ where: { id: admin.id } });
   });
 
+  await test('User Approvals lists people who signed up, not imported members waiting to activate', async () => {
+    // eslint-disable-next-line global-require
+    const userService = require('../src/services/user.service');
+    const imported = await makeMember('ApprovalImported'); // PENDING, passwordSetAt null
+    const signedUp = await prisma.user.create({
+      data: {
+        firstName: 'Act', lastName: 'ApprovalSignup', email: `approvalsignup.${TAG}@example.test`,
+        password: 'x', passwordSetAt: new Date(), emailVerifiedAt: new Date(), status: 'PENDING', role: 'USER',
+      },
+      select: { id: true },
+    });
+    const queue = await userService.listByStatus('PENDING', { awaitingApproval: true });
+    const ids = new Set(queue.map((u) => u.id));
+    assert(ids.has(signedUp.id), 'a sign-up waiting for approval is listed');
+    assert(!ids.has(imported.id), 'an imported member who has not activated is not');
+    const everyone = await userService.listByStatus('PENDING');
+    assert(everyone.some((u) => u.id === imported.id), 'other callers still see every PENDING account');
+  });
+
   console.log('\nreading Mergo results back in\n');
 
   await test('a dry run writes nothing at all', async () => {
