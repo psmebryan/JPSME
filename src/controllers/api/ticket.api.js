@@ -78,4 +78,35 @@ const regenerateTicket = asyncHandler(async (req, res) => {
   }, 'New QR issued. The previous code no longer works, and a replacement has been emailed.');
 });
 
-module.exports = { downloadTicketPdf, downloadTicketQrPng, regenerateTicket };
+// Admin action: email the confirmation (with the e-ticket) again to the
+// selected registrations. For when confirmation emails were switched off to
+// save the daily email quota, or somebody says theirs never arrived.
+//
+// Sent regardless of that switch: this is an admin choosing these people, not
+// the automatic email the switch exists to stop. Only registrations in THIS
+// event that are REGISTERED and hold a ticket are sent to; anything else in the
+// selection is counted as skipped rather than failing the whole press.
+const RESEND_LIMIT = 200;
+const resendConfirmations = asyncHandler(async (req, res) => {
+  const eventId = Number(req.params.id);
+  const ids = [...new Set((Array.isArray(req.body.registrationIds) ? req.body.registrationIds : []).map(Number))]
+    .filter((id) => Number.isInteger(id) && id > 0);
+  if (!ids.length) throw new AppError('Select at least one registration.', 400);
+  if (ids.length > RESEND_LIMIT) throw new AppError(`Select no more than ${RESEND_LIMIT} at a time.`, 400);
+
+  const eligible = await prisma.eventRegistration.findMany({
+    where: { id: { in: ids }, eventId, status: 'REGISTERED', qrToken: { not: null } },
+    select: { userId: true },
+  });
+  for (const reg of eligible) {
+    // eslint-disable-next-line no-await-in-loop
+    await jobService.enqueue('SEND_EVENT_REGISTRATION_EMAIL', { userId: reg.userId, eventId });
+  }
+
+  const skipped = ids.length - eligible.length;
+  return success(res, { queued: eligible.length, skipped },
+    `Sending the confirmation email to ${eligible.length} registrant(s).`
+    + (skipped ? ` ${skipped} skipped (cancelled, awaiting payment, or not in this event).` : ''));
+});
+
+module.exports = { downloadTicketPdf, downloadTicketQrPng, regenerateTicket, resendConfirmations };

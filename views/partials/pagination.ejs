@@ -32,7 +32,14 @@ function _buildPageUrl(targetPage) {
        class="px-3 py-1.5 text-sm rounded-md border border-gray-200 <%= currentPage === 1 ? 'pointer-events-none text-gray-300' : 'text-gray-600 hover:bg-gray-50' %>"
        aria-label="Previous page">&larr;</a>
 
-    <% for (let p = 1; p <= totalPages; p++) { %>
+    <%
+      // At most ten numbers, sliding with the current page (1-10, then e.g.
+      // 5-14 on page 9). One link per page overflowed once a list ran long.
+      let _start = Math.max(1, currentPage - 4);
+      const _end = Math.min(totalPages, _start + 9);
+      _start = Math.max(1, _end - 9);
+    %>
+    <% for (let p = _start; p <= _end; p++) { %>
       <a href="<%= _buildPageUrl(p) %>"
          class="px-3 py-1.5 text-sm rounded-md border <%= p === currentPage ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50' %>"
          <%= p === currentPage ? 'aria-current="page"' : '' %>>

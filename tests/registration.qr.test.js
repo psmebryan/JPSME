@@ -167,6 +167,44 @@ async function main() {
     }
   });
 
+  await test('resend confirmation emails only registered tickets in that event, even with the switch off', async () => {
+    // eslint-disable-next-line global-require
+    const settingsService = require('../src/services/settings.service');
+    // eslint-disable-next-line global-require
+    const ticketApi = require('../src/controllers/api/ticket.api');
+    const before = await settingsService.getRegistrationEmailsEnabled();
+    try {
+      await settingsService.setRegistrationEmailsEnabled(false);
+      const event = await makeEvent(0);
+      const other = await makeEvent(0);
+      const a = await makeMember();
+      const b = await makeMember();
+      const c = await makeMember();
+      const regA = await registrationService.registerForEvent(a, event.id);
+      const regB = await registrationService.registerForEvent(b, event.id);
+      await registrationService.cancelRegistration(b.id, event.id);
+      const regC = await registrationService.registerForEvent(c, other.id); // a different event
+
+      let body = null;
+      const res = { status() { return this; }, json(payload) { body = payload; return this; } };
+      await new Promise((resolve, reject) => {
+        ticketApi.resendConfirmations(
+          { params: { id: String(event.id) }, body: { registrationIds: [regA.id, regB.id, regC.id] } },
+          res,
+          (err) => (err ? reject(err) : resolve()),
+        );
+        setTimeout(resolve, 1500);
+      });
+      assertEqual(body && body.data.queued, 1, 'only the registered ticket in this event is sent');
+      assertEqual(body.data.skipped, 2, 'the cancelled one and the other event\'s are skipped');
+      const jobs = await prisma.job.findMany({ where: { type: 'SEND_EVENT_REGISTRATION_EMAIL', payload: { contains: `"userId":${a.id}` } } });
+      assertEqual(jobs.length, 1, 'one email queued, for that registrant');
+      await prisma.job.deleteMany({ where: { id: { in: jobs.map((j) => j.id) } } });
+    } finally {
+      await settingsService.setRegistrationEmailsEnabled(before);
+    }
+  });
+
   await test('the minted ticket resolves back to that exact registration', async () => {
     const user = await makeMember();
     const event = await makeEvent(0);

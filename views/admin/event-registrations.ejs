@@ -1,26 +1,40 @@
 <%
 function regStatusBadge(status) {
   const styles = { REGISTERED: 'badge-green', PENDING_PAYMENT: 'badge-amber', CANCELLED: 'badge-slate' };
-  const labels = { PENDING_PAYMENT: 'Awaiting Payment' };
+  const labels = { PENDING_PAYMENT: 'Awaiting Payment', REGISTERED: 'Registered', CANCELLED: 'Cancelled' };
   return `<span class="${styles[status] || 'badge-slate'}">${labels[status] || status}</span>`;
 }
+// Selectable for "Resend confirmation": only a registration that has a ticket
+// to send. The server applies the same rule; this just keeps the box honest.
+function canResend(r) { return r.status === 'REGISTERED' && Boolean(r.qrToken); }
 %>
-<div class="max-w-4xl mx-auto">
-  <a href="/admin/events" class="text-sm text-indigo-600 hover:underline">&larr; Back to events</a>
-  <div class="mt-3 mb-4 flex flex-wrap items-center justify-between gap-3">
-    <h1 class="admin-h1">Registrations for "<%= event.title %>"</h1>
-    <div class="flex gap-4 text-sm">
-      <% if (isMainAdmin) { %>
-        <a href="/admin/invitations?eventId=<%= event.id %>" class="text-purple-600 hover:underline">Manage Invitations &rarr;</a>
-      <% } %>
-      <a href="/admin/events/<%= event.id %>/attendance" class="text-amber-600 hover:underline font-medium">Event day &rarr;</a>
-      <a href="/admin/events/<%= event.id %>/certificate" class="text-emerald-600 hover:underline">Manage Certificates &rarr;</a>
-      <a href="/admin/events/<%= event.id %>/email" class="text-sky-600 hover:underline">Manage Email &rarr;</a>
+<%#
+  Full width, not max-w-4xl: the table has eight columns, and boxed into a
+  narrow centred column it was clipped and needed sideways scrolling.
+%>
+<div class="w-full">
+  <div class="mb-5 flex flex-wrap items-end justify-between gap-4">
+    <div class="min-w-0">
+      <a href="/admin/events" class="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-indigo-700">
+        <span aria-hidden="true">&larr;</span> Back to events
+      </a>
+      <h1 class="admin-h1 mt-1">Registrations</h1>
+      <p class="mt-0.5 text-sm text-slate-500 truncate" title="<%= event.title %>">
+        <%= event.title %> &middot; <%= total || 0 %> registration<%= total === 1 ? '' : 's' %>
+      </p>
     </div>
+    <nav class="flex flex-wrap gap-2" aria-label="Event tools">
+      <% if (isMainAdmin) { %>
+        <a href="/admin/invitations?eventId=<%= event.id %>" class="btn-secondary text-sm">Manage invitations</a>
+      <% } %>
+      <a href="/admin/events/<%= event.id %>/attendance" class="btn-secondary text-sm">Event day</a>
+      <a href="/admin/events/<%= event.id %>/certificate" class="btn-secondary text-sm">Manage certificates</a>
+      <a href="/admin/events/<%= event.id %>/email" class="btn-secondary text-sm">Manage email</a>
+    </nav>
   </div>
 
   <form method="GET" action="/admin/events/<%= event.id %>/registrations" class="mb-4 admin-card p-4">
-    <div class="grid gap-3 sm:grid-cols-[1.5fr_180px_auto]">
+    <div class="grid gap-3 sm:grid-cols-[1fr_200px_auto]">
       <input
         type="search"
         name="search"
@@ -42,29 +56,52 @@ function regStatusBadge(status) {
       <p class="empty-state">No registrations found.</p>
     </div>
   <% } else { %>
+    <% if (isMainAdmin) { %>
+      <div class="mb-3 flex flex-wrap items-center justify-end gap-3">
+        <span class="text-sm text-slate-600"><strong id="reg-selected-count">0</strong> selected</span>
+        <button type="button" id="reg-resend" class="btn-secondary text-sm" disabled>Resend confirmation email</button>
+      </div>
+    <% } %>
     <div class="admin-table-wrap">
       <table class="admin-table">
         <thead class="admin-table-head">
           <tr>
+            <% if (isMainAdmin) { %>
+              <th class="admin-th w-10">
+                <input type="checkbox" id="reg-select-page" title="Select all on this page"
+                       aria-label="Select all registrations on this page that have a ticket">
+              </th>
+            <% } %>
             <th class="admin-th">Name</th>
-            <th class="admin-th">Email</th>
             <th class="admin-th">Phone</th>
             <th class="admin-th">Status</th>
             <th class="admin-th">Source</th>
-            <th class="admin-th">Registered At</th>
+            <th class="admin-th">Registered</th>
             <th class="admin-th">Ticket</th>
-            <% if (isMainAdmin) { %><th class="admin-th"></th><% } %>
+            <% if (isMainAdmin) { %><th class="admin-th text-right">Actions</th><% } %>
           </tr>
         </thead>
         <tbody class="admin-tbody">
           <% registrations.forEach(r => { %>
-            <tr class="admin-tr">
-              <td class="admin-td"><%= r.fullName %></td>
-              <td class="admin-td max-w-[220px] truncate"><%= r.email %></td>
-              <td class="admin-td"><%= r.phone || '-' %></td>
+            <tr class="admin-tr align-top">
+              <% if (isMainAdmin) { %>
+                <td class="admin-td">
+                  <% if (canResend(r)) { %>
+                    <input type="checkbox" data-select-reg="<%= r.id %>" aria-label="Select <%= r.fullName %>">
+                  <% } %>
+                </td>
+              <% } %>
+              <td class="admin-td">
+                <span class="block font-medium text-slate-900"><%= r.fullName %></span>
+                <span class="block text-xs text-slate-500 break-all"><%= r.email %></span>
+              </td>
+              <td class="admin-td whitespace-nowrap"><%= r.phone || '—' %></td>
               <td class="admin-td"><%- regStatusBadge(r.status) %></td>
-              <td class="admin-td"><%- r.invitationId ? '<span class="badge-purple">Invited</span>' : '-' %></td>
-              <td class="admin-td"><%= new Date(r.createdAt).toLocaleString() %></td>
+              <td class="admin-td"><%- r.invitationId ? '<span class="badge-purple">Invited</span>' : '<span class="text-slate-400">Self</span>' %></td>
+              <td class="admin-td whitespace-nowrap text-slate-600">
+                <%= new Date(r.createdAt).toLocaleDateString() %>
+                <span class="block text-xs text-slate-400"><%= new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) %></span>
+              </td>
               <td class="admin-td">
                 <% if (r.qrToken) { %>
                   <span class="block font-mono text-xs text-slate-700"><%= r.registrationNumber || '—' %></span>
@@ -81,12 +118,12 @@ function regStatusBadge(status) {
                 <% } %>
               </td>
               <% if (isMainAdmin) { %>
-                <td class="admin-td text-right">
+                <td class="admin-td text-right whitespace-nowrap">
                   <% if (r.qrToken) { %>
                     <button type="button"
                             data-regenerate-qr="<%= r.id %>"
                             data-name="<%= r.fullName %>"
-                            class="text-sm text-indigo-600 hover:underline">Regenerate QR</button>
+                            class="text-sm font-medium text-indigo-600 hover:underline">Regenerate QR</button>
                   <% } %>
                 </td>
               <% } %>
@@ -106,6 +143,8 @@ function regStatusBadge(status) {
 
 <script nonce="<%= cspNonce %>">
   document.addEventListener('DOMContentLoaded', () => {
+    const eventId = window.location.pathname.split('/')[3];
+
     document.querySelectorAll('[data-regenerate-qr]').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const name = btn.dataset.name || 'this registrant';
@@ -123,7 +162,6 @@ function regStatusBadge(status) {
         const original = btn.textContent;
         btn.textContent = 'Working...';
         try {
-          const eventId = window.location.pathname.split('/')[3];
           const res = await apiFetch(
             '/api/events/' + eventId + '/registrations/' + btn.dataset.regenerateQr + '/qr/regenerate',
             { method: 'POST' }
@@ -137,5 +175,52 @@ function regStatusBadge(status) {
         }
       });
     });
+
+    // --- select + resend confirmation ---------------------------------------
+    const selectPage = document.getElementById('reg-select-page');
+    const resendBtn = document.getElementById('reg-resend');
+    const countEl = document.getElementById('reg-selected-count');
+    if (!selectPage || !resendBtn) return;
+    const boxes = Array.from(document.querySelectorAll('[data-select-reg]'));
+
+    function refresh() {
+      const checked = boxes.filter((b) => b.checked).length;
+      countEl.textContent = String(checked);
+      resendBtn.disabled = checked === 0;
+      selectPage.checked = boxes.length > 0 && checked === boxes.length;
+      selectPage.indeterminate = checked > 0 && checked < boxes.length;
+      selectPage.disabled = boxes.length === 0;
+    }
+
+    selectPage.addEventListener('change', () => {
+      boxes.forEach((b) => { b.checked = selectPage.checked; });
+      refresh();
+    });
+    boxes.forEach((b) => b.addEventListener('change', refresh));
+
+    resendBtn.addEventListener('click', async () => {
+      const ids = boxes.filter((b) => b.checked).map((b) => Number(b.dataset.selectReg));
+      if (!ids.length) return;
+      if (!window.confirm('Email the registration confirmation (with the e-ticket) again to '
+        + ids.length + ' registrant(s)?\n\nThis uses your daily email limit, one email each.')) return;
+      resendBtn.disabled = true;
+      const label = resendBtn.textContent;
+      resendBtn.textContent = 'Sending…';
+      try {
+        const res = await apiFetch('/api/events/' + eventId + '/registrations/resend-confirmation', {
+          method: 'POST',
+          body: JSON.stringify({ registrationIds: ids }),
+        });
+        showToast(res.message);
+        boxes.forEach((b) => { b.checked = false; });
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        resendBtn.textContent = label;
+        refresh();
+      }
+    });
+
+    refresh();
   });
 </script>
