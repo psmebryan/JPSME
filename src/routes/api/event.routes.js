@@ -116,6 +116,8 @@ router.get('/:id/ticket/qr.png', apiAuth, ticketLimiter, ticketApi.downloadTicke
 // Replacing somebody's ticket is a main-admin action, kept apart from the
 // member-facing routes above it.
 router.post('/:id/registrations/:registrationId/qr/regenerate', apiAdmin, verifyCsrfToken, ticketApi.regenerateTicket);
+// Email the confirmation again to selected registrations (main admin).
+router.post('/:id/registrations/resend-confirmation', apiAdmin, verifyCsrfToken, ticketApi.resendConfirmations);
 
 // --- Event check-in ---------------------------------------------------------
 //

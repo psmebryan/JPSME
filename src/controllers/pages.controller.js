@@ -769,11 +769,21 @@ const adminEditUserPage = asyncHandler(async (req, res) => {
     }
   }
 
-  const orgSeed = await organizationService.searchOrganizations({ page: 1, pageSize: 100 });
+  // The member's current organization with its full path ("National › Region ›
+  // School"). The edit page used to offer a dropdown of the first 100
+  // organizations only, so a member whose school sat outside them showed
+  // "(none)" — and saving the form, even to fix a typo in their name, sent
+  // that "(none)" and erased their organization. The page now always shows the
+  // current one and searches for a replacement instead.
+  let currentOrganizationLabel = null;
+  if (user.organizationId) {
+    currentOrganizationLabel = await organizationService.getOrganizationPathLabel(user.organizationId)
+      .catch(() => (user.organization && user.organization.name) || null);
+  }
   renderAdmin(req, res, 'admin/user-edit', {
     title: isScopedAdmin ? 'Edit Member' : 'Edit User',
     user,
-    organizations: orgSeed.organizations,
+    currentOrganizationLabel,
     csrfToken: req.session.csrfToken,
     restricted: isScopedAdmin,
   });
