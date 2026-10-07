@@ -27,7 +27,7 @@
         </div>
         <div>
           <label class="form-label">Organization</label>
-          <p class="mt-1 text-sm text-slate-600"><%= user.organization ? user.organization.name : '(none)' %></p>
+          <p class="mt-1 text-sm text-slate-600"><%= locals.currentOrganizationLabel || (user.organization ? user.organization.name : '(none)') %></p>
           <p class="text-xs text-slate-400 mt-0.5">Contact the main admin to reassign a member's organization.</p>
         </div>
       <% } %>
@@ -52,14 +52,22 @@
             <option value="ADMIN" <%= user.role === 'ADMIN' ? 'selected' : '' %>>Admin</option>
           </select>
         </div>
+        <%# The current organization is always shown and is what Save sends unless
+            the admin picks another one or clears it. There used to be a dropdown
+            of the first 100 organizations; a member outside them showed "(none)"
+            and saving erased their organization. %>
         <div>
-          <label class="form-label">Organization</label>
-          <select name="organizationId" class="form-input">
-            <option value="">(none)</option>
-            <% (organizations || []).forEach(c => { %>
-              <option value="<%= c.id %>" <%= user.organization && user.organization.id === c.id ? 'selected' : '' %>><%= c.name %></option>
-            <% }) %>
-          </select>
+          <label class="form-label" for="org-search">Organization</label>
+          <input type="hidden" name="organizationId" id="org-id" value="<%= user.organizationId || '' %>">
+          <div class="mt-1 flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+            <span id="org-current" class="text-sm <%= user.organizationId ? 'text-slate-800' : 'text-slate-400' %>">
+              <%= user.organizationId ? (locals.currentOrganizationLabel || (user.organization && user.organization.name) || ('Organization #' + user.organizationId)) : 'No organization' %>
+            </span>
+            <button type="button" id="org-clear" class="text-xs text-red-600 hover:underline <%= user.organizationId ? '' : 'hidden' %>">Remove</button>
+          </div>
+          <input type="search" id="org-search" class="form-input mt-2" autocomplete="off"
+                 placeholder="Search to change: school, chapter or region name">
+          <div id="org-results" class="mt-1 hidden max-h-64 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-sm"></div>
         </div>
       <% } %>
 
@@ -151,6 +159,66 @@
 <% } %>
 
 <script nonce="<%= cspNonce %>">
+  // --- organization search (main admins) -------------------------------------
+  (function () {
+    const search = document.getElementById('org-search');
+    if (!search) return;
+    const idInput = document.getElementById('org-id');
+    const current = document.getElementById('org-current');
+    const clearBtn = document.getElementById('org-clear');
+    const results = document.getElementById('org-results');
+    let timer = null;
+    let lastQuery = '';
+
+    function esc(v) {
+      return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function choose(id, label) {
+      idInput.value = id ? String(id) : '';
+      current.textContent = id ? label : 'No organization';
+      current.classList.toggle('text-slate-800', Boolean(id));
+      current.classList.toggle('text-slate-400', !id);
+      clearBtn.classList.toggle('hidden', !id);
+      results.classList.add('hidden');
+      results.innerHTML = '';
+      search.value = '';
+    }
+
+    clearBtn.addEventListener('click', () => {
+      if (window.confirm('Remove this member\'s organization? It is only saved when you press Save.')) choose(null, '');
+    });
+
+    search.addEventListener('input', () => {
+      clearTimeout(timer);
+      const q = search.value.trim();
+      if (q.length < 2) { results.classList.add('hidden'); results.innerHTML = ''; return; }
+      timer = setTimeout(async () => {
+        lastQuery = q;
+        try {
+          const res = await apiFetch('/api/organizations/search?q=' + encodeURIComponent(q));
+          if (q !== lastQuery) return; // a newer search is on its way
+          const orgs = (res.data && res.data.organizations) || [];
+          results.innerHTML = orgs.length
+            ? orgs.map((o) => '<button type="button" data-org-id="' + Number(o.id) + '" data-org-label="'
+                + esc(o.pathLabel || o.name) + '" class="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50">'
+                + '<span class="block font-medium text-slate-800">' + esc(o.name) + '</span>'
+                + (o.pathLabel && o.pathLabel !== o.name ? '<span class="block text-xs text-slate-500">' + esc(o.pathLabel) + '</span>' : '')
+                + '</button>').join('')
+            : '<p class="px-3 py-2 text-sm text-slate-500">No organization matches "' + esc(q) + '".</p>';
+          results.classList.remove('hidden');
+        } catch (err) {
+          showToast(err.message, 'error');
+        }
+      }, 250);
+    });
+
+    results.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-org-id]');
+      if (btn) choose(btn.dataset.orgId, btn.dataset.orgLabel);
+    });
+  }());
+
   document.getElementById('user-edit-form').addEventListener('submit', async function (e) {
     e.preventDefault();
     const form = e.target;
