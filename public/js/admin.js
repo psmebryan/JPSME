@@ -519,9 +519,13 @@ function certStatusBadgeHtml(r) {
     return '<span class="badge-amber">Not generated</span>';
   }
   const date = r.generatedAt ? ` &middot; ${new Date(r.generatedAt).toLocaleDateString()}` : '';
-  return r.released
+  const access = r.released
     ? `<span class="badge-green">Generated &middot; Download allowed${date}</span>`
     : `<span class="badge-slate">Generated &middot; Locked${date}</span>`;
+  const mail = r.emailedAt
+    ? `<span class="block mt-1 text-xs text-emerald-700">Emailed ${new Date(r.emailedAt).toLocaleDateString()}</span>`
+    : '<span class="block mt-1 text-xs text-slate-400">Not emailed yet</span>';
+  return access + mail;
 }
 
 function certActionsHtml(eventId, r) {
@@ -531,6 +535,8 @@ function certActionsHtml(eventId, r) {
     return `<button type="button" data-generate-cert="${r.userId}" class="text-emerald-600 hover:underline text-sm font-medium">Generate</button>`;
   }
   return rowMenuHtml([
+    // Send again is for a corrected certificate after Regenerate.
+    `<button type="button" data-send-cert="${r.userId}" data-resend="${r.emailedAt ? '1' : ''}" class="${ROW_MENU_ITEM} text-indigo-700">${r.emailedAt ? 'Send again' : 'Send by email'}</button>`,
     `<a href="/api/admin/certificates/events/${eventId}/registrants/${r.userId}/download" class="${ROW_MENU_ITEM}">Download</a>`,
     r.released
       ? `<button type="button" data-revoke-cert="${r.userId}" class="${ROW_MENU_ITEM}">Revoke access</button>`
@@ -596,7 +602,10 @@ function initEventCertificateModule() {
     if (!tbody) return;
 
     try {
-      const res = await apiFetch(`/api/admin/certificates/events/${eventId}/registrants?filter=${filter}`);
+      const search = (document.getElementById('cert-search')?.value || '').trim();
+      const params = new URLSearchParams({ filter });
+      if (search) params.set('search', search);
+      const res = await apiFetch(`/api/admin/certificates/events/${eventId}/registrants?${params.toString()}`);
       const registrants = res.data.registrants;
       tbody.innerHTML = registrants.map((r) => `
         <tr data-user-id="${r.userId}" class="admin-tr align-top">
@@ -607,6 +616,11 @@ function initEventCertificateModule() {
           <td class="admin-td text-right relative cert-actions-cell">${certActionsHtml(eventId, r)}</td>
         </tr>`).join('');
       document.getElementById('cert-registrants-empty')?.classList.toggle('hidden', registrants.length > 0);
+      // Only the unfiltered list is the whole event; a search shows a subset.
+      if (filter === 'all' && !search) {
+        const emailedEl = document.getElementById('cert-emailed-count');
+        if (emailedEl) emailedEl.textContent = String(registrants.filter((r) => r.emailedAt).length);
+      }
       updateCertSelectionUI();
     } catch (err) {
       showToast(err.message, 'error');
@@ -622,6 +636,8 @@ function initEventCertificateModule() {
 
     const generateSelectedBtn = document.getElementById('generate-selected');
     if (generateSelectedBtn) generateSelectedBtn.disabled = checked.length === 0;
+    const sendSelectedBtn = document.getElementById('send-selected-certs');
+    if (sendSelectedBtn) sendSelectedBtn.disabled = checked.length === 0;
 
     const selectAll = document.getElementById('cert-select-all');
     if (selectAll) {
@@ -643,6 +659,13 @@ function initEventCertificateModule() {
     const selected = Array.from(document.querySelectorAll('.cert-row-checkbox:checked')).map((cb) => Number(cb.value));
     if (!selected.length) return showToast('Select at least one registrant', 'error');
     generateFor(selected, false);
+  });
+
+  // Search as you type, a moment after the last keystroke, within the current tab.
+  let certSearchTimer = null;
+  document.getElementById('cert-search')?.addEventListener('input', () => {
+    clearTimeout(certSearchTimer);
+    certSearchTimer = setTimeout(() => loadRegistrants(activeFilter), 300);
   });
 
   document.getElementById('cert-filter-tabs')?.addEventListener('click', (e) => {
@@ -689,6 +712,36 @@ function initEventCertificateModule() {
 
   document.getElementById('generate-all-pending')?.addEventListener('click', () => generateFor(undefined, false));
 
+  // Emailing certificates. Queued on the server, one job per person; the table
+  // refreshes after a short wait so "Emailed" starts appearing, and again on
+  // the next refresh as the rest go out.
+  async function sendCerts(userIds, { resend = false } = {}) {
+    try {
+      const res = await apiFetch(`/api/admin/certificates/events/${eventId}/send`, {
+        method: 'POST',
+        body: JSON.stringify({ userIds, resend }),
+      });
+      showToast(res.message);
+      setTimeout(() => loadRegistrants(activeFilter), 4000);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  document.getElementById('send-all-certs')?.addEventListener('click', () => {
+    if (!confirm('Email the certificate to every registered member who has not been emailed yet?\n\n'
+      + 'Missing certificates are generated first. Each member can then also download theirs from their profile. '
+      + 'This uses your daily email limit, one email each.')) return;
+    sendCerts(undefined);
+  });
+
+  document.getElementById('send-selected-certs')?.addEventListener('click', () => {
+    const selected = Array.from(document.querySelectorAll('.cert-row-checkbox:checked')).map((cb) => Number(cb.value));
+    if (!selected.length) return;
+    if (!confirm(`Email the certificate to ${selected.length} selected member(s)? Anyone already emailed is skipped.`)) return;
+    sendCerts(selected);
+  });
+
   async function setReleased(userId, released) {
     try {
       await apiFetch(`/api/admin/certificates/events/${eventId}/registrants/${userId}/release`, {
@@ -714,6 +767,13 @@ function initEventCertificateModule() {
       generateFor([Number(regenerateBtn.getAttribute('data-regenerate-cert'))], true);
       return;
     }
+    const sendBtn = e.target.closest('[data-send-cert]');
+    if (sendBtn) {
+      const resend = Boolean(sendBtn.getAttribute('data-resend'));
+      if (resend && !confirm('Send this certificate again? Use this after Regenerate, to deliver the corrected one.')) return;
+      sendCerts([Number(sendBtn.getAttribute('data-send-cert'))], { resend });
+      return;
+    }
     const allowBtn = e.target.closest('[data-allow-cert]');
     if (allowBtn) {
       setReleased(Number(allowBtn.getAttribute('data-allow-cert')), true);
@@ -724,6 +784,9 @@ function initEventCertificateModule() {
       setReleased(Number(revokeBtn.getAttribute('data-revoke-cert')), false);
     }
   });
+  // Redraw the rows with this script's markup (Send by email / Send again live
+  // in the row menu), rather than the server's first render.
+  loadRegistrants('all');
 }
 
 function initSponsors() {

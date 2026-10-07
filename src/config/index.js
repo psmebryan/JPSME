@@ -177,6 +177,12 @@ const config = {
     const parsed = Number(process.env.ACTIVATION_SEND_BATCH_LIMIT);
     return Number.isInteger(parsed) && parsed >= 1 && parsed <= 5000 ? parsed : 250;
   },
+  // Most certificate emails one "Send" press on an event's Certificate page
+  // queues. Same reasoning and default as ACTIVATION_SEND_BATCH_LIMIT.
+  get certificateSendBatchLimit() {
+    const parsed = Number(process.env.CERTIFICATE_SEND_BATCH_LIMIT);
+    return Number.isInteger(parsed) && parsed >= 1 && parsed <= 5000 ? parsed : 250;
+  },
   // How many days an activation link works. 1-14, default 3. Out-of-range or
   // non-numeric values fall back to the default rather than to "never expires".
   get activationLinkDays() {

@@ -308,6 +308,14 @@ router.post(
   param('eventId').isInt(),
   certificateApi.bulkGenerateEventCertificates
 );
+// Email certificates to the event's registrants (queued, capped per press).
+router.post(
+  '/certificates/events/:eventId/send',
+  verifyCsrfToken,
+  certificateWorkLimiter,
+  param('eventId').isInt(),
+  certificateApi.sendEventCertificates
+);
 router.get(
   '/certificates/events/:eventId/export',
   certificateWorkLimiter,

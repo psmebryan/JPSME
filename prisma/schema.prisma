@@ -1212,6 +1212,9 @@ model EventCertificate {
   released    Boolean   @default(false)
   releasedAt  DateTime?
   releasedBy  Int?
+  // When it was last emailed to its owner; cleared on regenerate so the
+  // corrected certificate can be sent. See migration 20261007090000.
+  emailedAt   DateTime?
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
