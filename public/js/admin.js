@@ -4,6 +4,7 @@ function initAdminPage() {
   initMembershipFeeForm();
   initGatewaySurchargeForm();
   initPaymentsEnabledToggle();
+  initRegistrationEmailsToggle();
   initMembershipRequiredToggle();
   initDataTransfer();
   initRowActionMenus();
@@ -1645,6 +1646,35 @@ function initPaymentsEnabledToggle() {
       label.classList.toggle('text-green-700', enabled);
       label.classList.toggle('text-red-700', !enabled);
       showToast(enabled ? 'Payments enabled' : 'Payments disabled');
+    } catch (err) {
+      checkbox.checked = !enabled;
+      showToast(err.errors?.[0]?.msg || err.message, 'error');
+    } finally {
+      checkbox.disabled = false;
+    }
+  });
+}
+
+// --- Event registration confirmation emails switch (admin/settings page) ---
+function initRegistrationEmailsToggle() {
+  const module = document.getElementById('registration-emails-module');
+  if (!module) return;
+
+  const checkbox = document.getElementById('registration-emails-checkbox');
+  const label = document.getElementById('registration-emails-label');
+
+  checkbox?.addEventListener('change', async () => {
+    const enabled = checkbox.checked;
+    checkbox.disabled = true;
+    try {
+      const res = await apiFetch('/api/admin/settings/registration-emails', {
+        method: 'PUT',
+        body: JSON.stringify({ enabled }),
+      });
+      label.textContent = enabled ? 'Confirmation emails on' : 'Confirmation emails off';
+      label.classList.toggle('text-green-700', enabled);
+      label.classList.toggle('text-red-700', !enabled);
+      showToast(res.message);
     } catch (err) {
       checkbox.checked = !enabled;
       showToast(err.errors?.[0]?.msg || err.message, 'error');

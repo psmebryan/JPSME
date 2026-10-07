@@ -7,6 +7,7 @@ const sheetsSyncService = require('./sheetsSync.service');
 const invitationService = require('./invitation.service');
 const qrService = require('./qr.service');
 const eventService = require('./event.service');
+const settingsService = require('./settings.service');
 
 // Registration closes when the event is over — not when it starts. Someone can
 // still sign up on the morning of a convention, or midway through a week-long
@@ -185,9 +186,15 @@ async function registerForEvent(user, eventId, invitation = null) {
   // Durable and retryable via the job queue (src/worker.js), instead of the
   // previous fire-and-forget mailService call — a transient Brevo failure no
   // longer just silently drops the confirmation email.
-  jobService.enqueue('SEND_EVENT_REGISTRATION_EMAIL', { userId: user.id, eventId: event.id }).catch((err) => {
-    console.error('registerForEvent: failed to enqueue confirmation email job:', err.message);
-  });
+  //
+  // Skipped while an admin has switched confirmation emails off (Settings), to
+  // keep the provider's daily quota for password resets and verification
+  // codes. The ticket is still on the member's event ticket page.
+  if (await settingsService.getRegistrationEmailsEnabled()) {
+    jobService.enqueue('SEND_EVENT_REGISTRATION_EMAIL', { userId: user.id, eventId: event.id }).catch((err) => {
+      console.error('registerForEvent: failed to enqueue confirmation email job:', err.message);
+    });
+  }
   sheetsSyncService.syncEventRegistrations(event.id);
   if (invitation) invitationService.markRegistered(invitation.id);
   return registration;

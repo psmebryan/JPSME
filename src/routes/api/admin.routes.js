@@ -214,6 +214,13 @@ router.put(
   body('enabled').isBoolean().withMessage('enabled must be true or false'),
   adminApi.updatePaymentsEnabled
 );
+router.get('/settings/registration-emails', adminApi.getRegistrationEmailsEnabled);
+router.put(
+  '/settings/registration-emails',
+  verifyCsrfToken,
+  body('enabled').isBoolean().withMessage('enabled must be true or false'),
+  adminApi.updateRegistrationEmailsEnabled
+);
 router.get('/settings/membership-payment-required', adminApi.getMembershipPaymentRequired);
 router.put(
   '/settings/membership-payment-required',
