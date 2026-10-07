@@ -16,39 +16,51 @@
   Include it from a view nested one level deeper (e.g. views/admin/events.ejs) as:
     ../partials/pagination
   passing currentPage, totalPages, baseQuery, and pageParam as above.
+
+  Looks and behaves like the admin Users list's pagination (admin.js
+  renderMembersPagination): at most ten numbers that slide with the current
+  page — 1-10, then e.g. 5-14 on page 9 — between ‹ › arrows that grey out at
+  either end.
 */
 const _pageParam = typeof pageParam !== 'undefined' ? pageParam : 'page';
 const _baseQuery = typeof baseQuery !== 'undefined' ? baseQuery : {};
 
 function _buildPageUrl(targetPage) {
-  const params = new URLSearchParams(_baseQuery);
+  const params = new URLSearchParams();
+  Object.keys(_baseQuery).forEach((k) => {
+    if (_baseQuery[k] !== undefined && _baseQuery[k] !== null && _baseQuery[k] !== '') params.set(k, _baseQuery[k]);
+  });
   params.set(_pageParam, targetPage);
   return '?' + params.toString();
 }
+
+const _base = 'px-3 py-1.5 text-sm rounded-md border';
+const _idle = 'border-slate-200 text-slate-600 hover:bg-slate-50';
+const _off = 'border-slate-100 text-slate-300 cursor-not-allowed';
 %>
 <% if (totalPages > 1) { %>
-  <nav class="flex items-center justify-center gap-1 mt-6" aria-label="Pagination">
-    <a href="<%= _buildPageUrl(Math.max(1, currentPage - 1)) %>"
-       class="px-3 py-1.5 text-sm rounded-md border border-gray-200 <%= currentPage === 1 ? 'pointer-events-none text-gray-300' : 'text-gray-600 hover:bg-gray-50' %>"
-       aria-label="Previous page">&larr;</a>
-
-    <%
-      // At most ten numbers, sliding with the current page (1-10, then e.g.
-      // 5-14 on page 9). One link per page overflowed once a list ran long.
-      let _start = Math.max(1, currentPage - 4);
-      const _end = Math.min(totalPages, _start + 9);
-      _start = Math.max(1, _end - 9);
-    %>
-    <% for (let p = _start; p <= _end; p++) { %>
-      <a href="<%= _buildPageUrl(p) %>"
-         class="px-3 py-1.5 text-sm rounded-md border <%= p === currentPage ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50' %>"
-         <%= p === currentPage ? 'aria-current="page"' : '' %>>
-        <%= p %>
-      </a>
+  <%
+    let _start = Math.max(1, currentPage - 4);
+    const _end = Math.min(totalPages, _start + 9);
+    _start = Math.max(1, _end - 9);
+  %>
+  <nav class="flex flex-wrap items-center justify-center gap-1 p-4" aria-label="Pagination">
+    <% if (currentPage > 1) { %>
+      <a href="<%= _buildPageUrl(currentPage - 1) %>" class="<%= _base %> <%= _idle %>" aria-label="Previous page">&lsaquo;</a>
+    <% } else { %>
+      <span class="<%= _base %> <%= _off %>" aria-hidden="true">&lsaquo;</span>
     <% } %>
 
-    <a href="<%= _buildPageUrl(Math.min(totalPages, currentPage + 1)) %>"
-       class="px-3 py-1.5 text-sm rounded-md border border-gray-200 <%= currentPage === totalPages ? 'pointer-events-none text-gray-300' : 'text-gray-600 hover:bg-gray-50' %>"
-       aria-label="Next page">&rarr;</a>
+    <% for (let p = _start; p <= _end; p++) { %>
+      <a href="<%= _buildPageUrl(p) %>"
+         class="<%= _base %> <%= p === currentPage ? 'bg-indigo-600 text-white border-indigo-600' : _idle %>"
+         <%= p === currentPage ? 'aria-current="page"' : '' %>><%= p %></a>
+    <% } %>
+
+    <% if (currentPage < totalPages) { %>
+      <a href="<%= _buildPageUrl(currentPage + 1) %>" class="<%= _base %> <%= _idle %>" aria-label="Next page">&rsaquo;</a>
+    <% } else { %>
+      <span class="<%= _base %> <%= _off %>" aria-hidden="true">&rsaquo;</span>
+    <% } %>
   </nav>
 <% } %>

@@ -132,6 +132,14 @@ function canResend(r) { return r.status === 'REGISTERED' && Boolean(r.qrToken); 
         </tbody>
       </table>
     </div>
+    <%
+      const _pageSize = 25;
+      const _from = (page - 1) * _pageSize + 1;
+      const _to = Math.min(total, page * _pageSize);
+    %>
+    <p class="mt-3 text-center text-xs text-slate-500">
+      Showing <%= _from %>&ndash;<%= _to %> of <%= total %> registration<%= total === 1 ? '' : 's' %>
+    </p>
     <%- include('../partials/pagination', {
       currentPage: page,
       totalPages: totalPages,
