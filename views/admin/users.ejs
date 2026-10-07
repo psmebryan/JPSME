@@ -71,11 +71,8 @@
   <% } %>
 
   <% if (viewMode === 'list') { %>
-    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4">
-      <label class="inline-flex items-center gap-2 text-sm text-slate-700">
-        <input type="checkbox" id="users-select-page" aria-label="Select deletable users on this page">
-        Select page
-      </label>
+    <%# The select-all box lives in the table header now, left of ID. %>
+    <div class="flex flex-wrap items-center justify-end gap-3 border-b border-slate-200 p-4">
       <div class="flex flex-wrap items-center gap-3">
         <span class="text-sm text-slate-600"><strong id="users-selected-count">0</strong> selected</span>
         <button type="button" id="delete-selected-users" class="btn-secondary text-sm text-red-700" disabled>
@@ -88,7 +85,7 @@
   <div class="overflow-x-auto">
     <table id="users-table" class="admin-table">
       <colgroup>
-        <% if (viewMode === 'list') { %><col class="w-10"><% } %>
+        <% if (viewMode === 'list') { %><col class="w-10"><col class="w-16"><% } %>
         <col>
         <col>
         <col>
@@ -101,7 +98,13 @@
       </colgroup>
       <thead class="admin-table-head">
         <tr>
-          <% if (viewMode === 'list') { %><th class="admin-th" aria-label="Select user"></th><% } %>
+          <% if (viewMode === 'list') { %>
+            <th class="admin-th">
+              <input type="checkbox" id="users-select-page" title="Select all on this page"
+                     aria-label="Select all deletable users on this page">
+            </th>
+            <th class="admin-th">ID</th>
+          <% } %>
           <th class="admin-th">Name</th>
           <th class="admin-th">Email</th>
           <th class="admin-th">Payment Ref</th>

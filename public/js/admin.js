@@ -930,6 +930,7 @@ function memberRowHtml(u, selectedUserIds) {
   return `
     <tr data-user-id="${u.id}" class="admin-tr align-top">
       <td class="admin-td">${canBulkDelete ? `<input type="checkbox" data-select-user="${u.id}" aria-label="Select ${escapeHtml(u.firstName)} ${escapeHtml(u.lastName)} for deletion" ${selectedUserIds.has(Number(u.id)) ? 'checked' : ''}>` : ''}</td>
+      <td class="admin-td text-slate-500 tabular-nums">${Number(u.id)}</td>
       <td class="admin-td">${escapeHtml(u.firstName)} ${escapeHtml(u.lastName)}</td>
       <td class="admin-td max-w-[220px] truncate" title="${escapeHtml(u.email)}">${escapeHtml(u.email)}</td>
       <td class="admin-td">${membershipPaymentReference(u)}</td>
@@ -963,10 +964,25 @@ function renderMembersPagination(pagination, page, totalPages) {
     pagination.innerHTML = '';
     return;
   }
-  let html = '';
-  for (let p = 1; p <= totalPages; p += 1) {
-    html += `<button type="button" data-members-page="${p}" class="px-3 py-1.5 text-sm rounded-md border ${p === page ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}">${p}</button>`;
+  // At most PAGE_WINDOW numbers at once, sliding with the current page so it
+  // stays near the middle: 1-10 to start, then e.g. 5-14 on page 9. One button
+  // per page broke the layout once the member list ran to dozens of pages.
+  const PAGE_WINDOW = 10;
+  let start = Math.max(1, page - 4);
+  const end = Math.min(totalPages, start + PAGE_WINDOW - 1);
+  start = Math.max(1, end - PAGE_WINDOW + 1);
+
+  const base = 'px-3 py-1.5 text-sm rounded-md border';
+  const idle = 'border-slate-200 text-slate-600 hover:bg-slate-50';
+  const arrow = (target, label, enabled, aria) => (enabled
+    ? `<button type="button" data-members-page="${target}" aria-label="${aria}" class="${base} ${idle}">${label}</button>`
+    : `<button type="button" disabled aria-label="${aria}" class="${base} border-slate-100 text-slate-300 cursor-not-allowed">${label}</button>`);
+
+  let html = arrow(page - 1, '&lsaquo;', page > 1, 'Previous page');
+  for (let p = start; p <= end; p += 1) {
+    html += `<button type="button" data-members-page="${p}"${p === page ? ' aria-current="page"' : ''} class="${base} ${p === page ? 'bg-indigo-600 text-white border-indigo-600' : idle}">${p}</button>`;
   }
+  html += arrow(page + 1, '&rsaquo;', page < totalPages, 'Next page');
   pagination.innerHTML = html;
 }
 
