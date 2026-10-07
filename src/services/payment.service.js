@@ -618,7 +618,10 @@ async function applyPaymentPaid(localPayment, { gatewayPaymentId, gatewayFeeCent
         prisma.user.findUnique({ where: { id: localPayment.userId } }),
         prisma.event.findUnique({ where: { id: localPayment.eventId } }),
       ]);
-      if (user && event) mailService.sendEventRegistrationEmail(user, event);
+      // Same switch as a free registration's confirmation (Settings).
+      if (user && event && await settingsService.getRegistrationEmailsEnabled()) {
+        mailService.sendEventRegistrationEmail(user, event);
+      }
     } catch (err) {
       console.error('applyPaymentPaid: failed to send event registration email for payment', localPayment.id, err.message);
     }

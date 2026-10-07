@@ -291,6 +291,20 @@ const updatePaymentsEnabled = asyncHandler(async (req, res) => {
   return success(res, { enabled }, enabled ? 'Payments enabled' : 'Payments disabled');
 });
 
+const getRegistrationEmailsEnabled = asyncHandler(async (req, res) => {
+  const enabled = await settingsService.getRegistrationEmailsEnabled();
+  return success(res, { enabled });
+});
+
+const updateRegistrationEmailsEnabled = asyncHandler(async (req, res) => {
+  if (!checkValidation(req, res)) return;
+  const enabled = req.body.enabled === true || req.body.enabled === 'true';
+  await settingsService.setRegistrationEmailsEnabled(enabled);
+  return success(res, { enabled }, enabled
+    ? 'Registration confirmation emails are on'
+    : 'Registration confirmation emails are off. Registering still works; tickets stay on each member\'s event ticket page.');
+});
+
 const getMembershipPaymentRequired = asyncHandler(async (req, res) => {
   const required = await settingsService.getMembershipPaymentRequired();
   return success(res, { required });
@@ -499,4 +513,4 @@ module.exports = {
   sendActivations,
   resendActivation,
   setUserPassword,
-  changeUserEmail, uploadFavicon, uploadHeroImage, uploadOgImage, listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, bulkDeleteUsers, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, getMembershipPaymentRequired, updateMembershipPaymentRequired, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin, getOrganizationTreeLevel, createChildOrganization, deleteOrganizationApi, setOrganizationActiveApi };
+  changeUserEmail, uploadFavicon, uploadHeroImage, uploadOgImage, listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, bulkDeleteUsers, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, getRegistrationEmailsEnabled, updateRegistrationEmailsEnabled, getMembershipPaymentRequired, updateMembershipPaymentRequired, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin, getOrganizationTreeLevel, createChildOrganization, deleteOrganizationApi, setOrganizationActiveApi };

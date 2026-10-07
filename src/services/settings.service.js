@@ -34,6 +34,13 @@ const DEFAULT_MEMBERSHIP_FEE_CENTAVOS = 50000; // placeholder ₱500.00 — set 
 // checkout must still be able to confirm/fail via its webhook regardless.
 const PAYMENTS_ENABLED_KEY = 'payments_enabled';
 
+// Whether registering for an event emails the confirmation with the e-ticket.
+// On by default. Turned off when the email provider's daily quota is tight:
+// one confirmation per registration can spend the whole quota, and then
+// password resets and verification codes stop going out. Registering still
+// works and the ticket is still on the member's event ticket page.
+const REGISTRATION_EMAILS_ENABLED_KEY = 'registration_emails_enabled';
+
 // Whether a new member MUST pay the membership fee before they can use the
 // site. Off by default: registration should work without payment, and the fee
 // stays available as something a member can choose to settle later. This only
@@ -141,6 +148,15 @@ async function setPaymentsEnabled(enabled) {
   return setSetting(PAYMENTS_ENABLED_KEY, enabled ? 'true' : 'false');
 }
 
+async function getRegistrationEmailsEnabled() {
+  const value = await getSetting(REGISTRATION_EMAILS_ENABLED_KEY, 'true');
+  return value !== 'false';
+}
+
+async function setRegistrationEmailsEnabled(enabled) {
+  return setSetting(REGISTRATION_EMAILS_ENABLED_KEY, enabled ? 'true' : 'false');
+}
+
 // Defaults to false: membership is optional unless an admin turns it on.
 async function getMembershipPaymentRequired() {
   const value = await getSetting(MEMBERSHIP_PAYMENT_REQUIRED_KEY, 'false');
@@ -192,9 +208,12 @@ module.exports = {
   setGatewaySurchargePercent,
   getMergoActivationDailyCap,
   setMergoActivationDailyCap,
+  getRegistrationEmailsEnabled,
+  setRegistrationEmailsEnabled,
   LOGO_KEY,
   MEMBERSHIP_FEE_KEY,
   PAYMENTS_ENABLED_KEY,
+  REGISTRATION_EMAILS_ENABLED_KEY,
   MEMBERSHIP_PAYMENT_REQUIRED_KEY,
   GATEWAY_SURCHARGE_PERCENT_KEY,
   MERGO_ACTIVATION_DAILY_CAP_KEY,

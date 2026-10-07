@@ -165,6 +165,21 @@
   </label>
 </div>
 
+<div id="registration-emails-module" class="admin-card p-6 max-w-md mt-6">
+  <h2 class="font-semibold mb-1">Event registration emails</h2>
+  <p class="mb-4 text-xs text-slate-500">
+    The confirmation email (with the e-ticket) sent when someone registers for an event. Turn it off when the
+    daily email limit is tight, so password resets and verification codes still go out. Registering still works,
+    and each member's ticket stays on the event's ticket page.
+  </p>
+  <label class="flex items-center gap-3 cursor-pointer">
+    <input id="registration-emails-checkbox" type="checkbox" <%= locals.registrationEmailsEnabled !== false ? 'checked' : '' %> class="h-5 w-5 rounded border-slate-300">
+    <span id="registration-emails-label" class="text-sm font-medium <%= locals.registrationEmailsEnabled !== false ? 'text-green-700' : 'text-red-700' %>">
+      <%= locals.registrationEmailsEnabled !== false ? 'Confirmation emails on' : 'Confirmation emails off' %>
+    </span>
+  </label>
+</div>
+
 <div id="data-export-module" class="admin-card p-6 max-w-2xl mt-6">
   <h2 class="font-semibold mb-1">Data export</h2>
   <p class="mb-4 text-xs text-slate-500">

@@ -139,6 +139,34 @@ async function main() {
     assert(reg.qrGeneratedAt, 'qrGeneratedAt stamped');
   });
 
+  await test('with confirmation emails switched off, registering still issues a ticket but queues no email', async () => {
+    // eslint-disable-next-line global-require
+    const settingsService = require('../src/services/settings.service');
+    const before = await settingsService.getRegistrationEmailsEnabled();
+    // The job is queued without being awaited, so give it a moment to land.
+    const settle = () => new Promise((r) => setTimeout(r, 1500));
+    const jobsFor = async (userId) => {
+      await settle();
+      return prisma.job.findMany({ where: { type: 'SEND_EVENT_REGISTRATION_EMAIL', payload: { contains: `"userId":${userId}` } } });
+    };
+    try {
+      await settingsService.setRegistrationEmailsEnabled(false);
+      const quiet = await makeMember();
+      const reg = await registrationService.registerForEvent(quiet, (await makeEvent(0)).id);
+      assert(/^[0-9a-f]{64}$/.test(reg.qrToken), 'the ticket is still issued');
+      assertEqual((await jobsFor(quiet.id)).length, 0, 'no confirmation email is queued');
+
+      await settingsService.setRegistrationEmailsEnabled(true);
+      const loud = await makeMember();
+      await registrationService.registerForEvent(loud, (await makeEvent(0)).id);
+      const queued = await jobsFor(loud.id);
+      assertEqual(queued.length, 1, 'switched back on, the email is queued again');
+      await prisma.job.deleteMany({ where: { id: { in: queued.map((j) => j.id) } } });
+    } finally {
+      await settingsService.setRegistrationEmailsEnabled(before);
+    }
+  });
+
   await test('the minted ticket resolves back to that exact registration', async () => {
     const user = await makeMember();
     const event = await makeEvent(0);
