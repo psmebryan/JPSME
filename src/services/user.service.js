@@ -15,10 +15,15 @@ const normalizeName = (value) => String(value || '').trim().toUpperCase();
 // picker, which needs approved and pending accounts together: approval is an
 // admin's own to-do list, not a fact about the person, and somebody who has
 // paid in full is still PENDING until that button is pressed.
-async function listByStatus(status) {
+// `awaitingApproval` narrows to accounts an admin actually has to decide on:
+// it leaves out imported members who have not activated yet. They are PENDING
+// too, but activating their account approves them, and they cannot be approved
+// by hand before then anyway (their address is not verified).
+async function listByStatus(status, { awaitingApproval = false } = {}) {
   const where = status
     ? { status: Array.isArray(status) ? { in: status } : status }
     : {};
+  if (awaitingApproval) where.passwordSetAt = { not: null };
   const users = await prisma.user.findMany({
     where: { ...where, role: { not: 'ADMIN' } },
     orderBy: { createdAt: 'desc' },

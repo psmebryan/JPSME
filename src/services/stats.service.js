@@ -77,7 +77,10 @@ async function getMainAdminDashboard() {
     upcomingEvents,
   ] = await Promise.all([
     prisma.user.count({ where: { role: 'USER', status: 'APPROVED' } }),
-    prisma.user.count({ where: { role: 'USER', status: 'PENDING' } }),
+    // Pending APPROVAL only: an imported member who has not activated yet is
+    // also PENDING, but activating approves them, so they are not waiting on
+    // an admin and must not inflate this count.
+    prisma.user.count({ where: { role: 'USER', status: 'PENDING', passwordSetAt: { not: null } } }),
     prisma.event.count(),
     prisma.payment.aggregate({ where: { status: 'PAID' }, _sum: { amount: true } }),
     prisma.user.findMany({ where: { role: 'USER', createdAt: { gte: windowStart } }, select: { createdAt: true } }),
@@ -138,7 +141,7 @@ async function getOrganizationAdminDashboard(organizationId) {
   const scopeIds = await organizationService.getDescendantIds(organizationId);
   const [totalMembers, pendingApprovals, upcomingEvents] = await Promise.all([
     prisma.user.count({ where: { role: 'USER', status: 'APPROVED', organizationId: { in: scopeIds } } }),
-    prisma.user.count({ where: { role: 'USER', status: 'PENDING', organizationId: { in: scopeIds } } }),
+    prisma.user.count({ where: { role: 'USER', status: 'PENDING', passwordSetAt: { not: null }, organizationId: { in: scopeIds } } }),
     prisma.event.findMany({
       where: { AND: [{ isPublished: true }, eventService.notEndedWhere(new Date())] },
       orderBy: { startDate: 'asc' },

@@ -161,6 +161,18 @@ async function loadAdminPage(url, pushState) {
     }
 
     const html = await response.text();
+
+    // A page that carries its own <script> is opened with a real page load
+    // instead of being swapped in. A browser never runs a <script> inserted
+    // through innerHTML, and those pages also wait for DOMContentLoaded, which
+    // does not fire again — so a swapped-in Invite Members, Events or
+    // Organizations page rendered but did nothing: no member table, dead
+    // buttons, and an import that never refreshed the list below it.
+    if (/<script[\s>]/i.test(html)) {
+      window.location.href = url;
+      return;
+    }
+
     content.innerHTML = html;
 
     const encodedTitle = response.headers.get('X-Page-Title');
