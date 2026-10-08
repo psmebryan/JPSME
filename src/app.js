@@ -86,7 +86,11 @@ app.get('/health/dependencies', (req, res) => {
 // completion, with the method/path/status/duration together rather than
 // scattered across whatever a handler happened to console.log along the way.
 app.use((req, res, next) => {
-  req.id = req.get('X-Request-Id') || crypto.randomUUID();
+  // An upstream id is reused only when it looks like one. The header is the
+  // client's to set, and it goes into every log line for the request, so free
+  // text here could forge or garble log entries.
+  const upstreamId = req.get('X-Request-Id');
+  req.id = upstreamId && /^[A-Za-z0-9._-]{8,64}$/.test(upstreamId) ? upstreamId : crypto.randomUUID();
   res.setHeader('X-Request-Id', req.id);
   req.log = logger.child({ requestId: req.id });
 
@@ -104,6 +108,18 @@ app.use((req, res, next) => {
 });
 
 app.use(compression());
+
+// Browser features this site never uses are switched off, so injected or
+// third-party content cannot ask for them either. The camera stays allowed for
+// this site only: the check-in scanner reads tickets with it (qr-camera.js).
+const PERMISSIONS_POLICY = [
+  'camera=(self)', 'microphone=()', 'geolocation=()', 'payment=()', 'usb=()',
+  'magnetometer=()', 'gyroscope=()', 'accelerometer=()', 'interest-cohort=()',
+].join(', ');
+app.use((req, res, next) => {
+  res.setHeader('Permissions-Policy', PERMISSIONS_POLICY);
+  next();
+});
 
 // Per-request nonce so the handful of legitimate inline <script>/<style> tags
 // across the views can be explicitly authorized without weakening the CSP
