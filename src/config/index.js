@@ -147,7 +147,17 @@ function exportComposedDatabaseUrl() {
     ? `${encodeURIComponent(user)}:${encodeURIComponent(process.env.DB_PASSWORD)}`
     : encodeURIComponent(user);
 
-  process.env.DATABASE_URL = `mysql://${auth}@${host}:${port}/${encodeURIComponent(name)}`;
+  // Connection pool. Prisma's default is two per CPU plus one — about five on
+  // a small hosting container — and every request beyond that waits, then
+  // fails after 10 seconds. A registration rush hit exactly that. Ten, with a
+  // 20-second wait, is still well inside what a shared MySQL account allows;
+  // both are adjustable without a code change.
+  const limit = Number(process.env.DB_CONNECTION_LIMIT);
+  const poolTimeout = Number(process.env.DB_POOL_TIMEOUT);
+  const pool = `connection_limit=${Number.isInteger(limit) && limit > 0 ? limit : 10}`
+    + `&pool_timeout=${Number.isInteger(poolTimeout) && poolTimeout > 0 ? poolTimeout : 20}`;
+
+  process.env.DATABASE_URL = `mysql://${auth}@${host}:${port}/${encodeURIComponent(name)}?${pool}`;
   process.env.DATABASE_URL_SOURCE = "DB_* variables";
 }
 

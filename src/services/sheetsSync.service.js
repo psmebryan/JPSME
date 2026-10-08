@@ -479,4 +479,56 @@ async function syncEventRegistrations(eventId) {
   }
 }
 
-module.exports = { syncMembership, syncEventRegistrations, syncInvitations, fetchContactsToInvite, deleteEventTab, deleteEventInvitationsTab, isConfigured };
+// --- coalescing ---------------------------------------------------------------
+//
+// Every registration, approval and payment triggers a full rewrite of a tab —
+// all members, or all of an event's registrations. During a registration rush
+// that meant dozens of identical rewrites of the same tab running at once: the
+// database read everything dozens of times, and Google's per-minute API quota
+// (shared by every sync) ran out, so later syncs failed outright.
+//
+// Now at most one sync per tab runs at a time. A request that arrives while
+// one is running does not start another; it marks the tab as needing one more
+// pass, and however many such requests arrive, exactly one follow-up runs
+// after the current pass — which reads the latest data, so nothing is missed.
+const inFlight = new Map();
+
+function coalesce(key, run) {
+  const current = inFlight.get(key);
+  if (current) {
+    current.again = true;
+    return current.promise;
+  }
+  const entry = { again: false, promise: null };
+  entry.promise = (async () => {
+    try {
+      do {
+        entry.again = false;
+        // Each sync catches and logs its own errors; this keeps a surprise
+        // from ever escaping as an unhandled rejection either.
+        // eslint-disable-next-line no-await-in-loop
+        await run().catch((err) => console.error(`sheetsSync: ${key} failed:`, err && err.message));
+      } while (entry.again);
+    } finally {
+      inFlight.delete(key);
+    }
+  })();
+  inFlight.set(key, entry);
+  return entry.promise;
+}
+
+const coalescedSyncMembership = () => coalesce('membership', () => syncMembership());
+const coalescedSyncEventRegistrations = (eventId) => coalesce(`event:${Number(eventId)}`, () => syncEventRegistrations(eventId));
+const coalescedSyncInvitations = (eventId) => coalesce(`invitations:${Number(eventId)}`, () => syncInvitations(eventId));
+
+module.exports = {
+  syncMembership: coalescedSyncMembership,
+  syncEventRegistrations: coalescedSyncEventRegistrations,
+  syncInvitations: coalescedSyncInvitations,
+  fetchContactsToInvite,
+  deleteEventTab,
+  deleteEventInvitationsTab,
+  isConfigured,
+  // The uncoalesced versions, for tests.
+  _coalesce: coalesce,
+};

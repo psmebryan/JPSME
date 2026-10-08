@@ -112,20 +112,78 @@ async function runMigrationsIfRequested() {
   });
 }
 
+// --- staying up -------------------------------------------------------------
+
+let httpServer = null;
+let shuttingDown = false;
+
+// Connects to the database, retrying for about half a minute. A deploy or a
+// host restart can bring this process up a moment before MySQL is accepting
+// connections; exiting on the first refusal turned that moment into a failed
+// boot. Gives up with the original error, so the diagnosis below still runs.
+async function connectWithRetry(attempts = 5) {
+  let lastErr = null;
+  for (let i = 1; i <= attempts; i += 1) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await prisma.$connect();
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (i === attempts) break;
+      const waitMs = Math.min(2000 * (2 ** (i - 1)), 10000);
+      console.warn(`Database not reachable yet (attempt ${i} of ${attempts}); retrying in ${waitMs / 1000}s`);
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+  }
+  throw lastErr;
+}
+
+// Stops cleanly: no new connections, in-flight requests allowed to finish (up
+// to 10s), background work stopped, database closed.
+//
+// The host sends SIGTERM on every redeploy and restart. Only SIGINT (Ctrl+C)
+// was handled, so a redeploy cut requests off mid-way and could leave a job
+// half-done.
+function shutdown(signal, exitCode = 0) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`${signal} received, shutting down`);
+  stopReconciliationSweep();
+  stopWebhookHealthCheck();
+  stopInProcessWorker();
+  stopInvitationReconciliationSweep();
+  const finish = async () => {
+    try { await prisma.$disconnect(); } catch (e) { /* exiting anyway */ }
+    process.exit(exitCode);
+  };
+  // Never wait forever on a connection that will not close.
+  setTimeout(finish, 10000).unref();
+  if (httpServer) httpServer.close(() => finish());
+  else finish();
+}
+
 async function start() {
   try {
     // Before the database, so it still reports when the database is the thing
     // that cannot be reached — which is exactly when the answer is wanted.
     await runEgressProbeIfRequested(console);
 
-    await prisma.$connect();
+    await connectWithRetry();
     await runMigrationsIfRequested();
     // After migrations, because on a first deploy the User table does not exist
     // until they have run. Does nothing unless SEED_ADMIN_ON_BOOT is set.
     await seedAdminIfRequested(prisma, console);
-    app.listen(PORT, () => {
+    httpServer = app.listen(PORT, () => {
       console.log(`JPSME server running at http://localhost:${PORT}`);
     });
+    // Longer than the hosting proxy's own keep-alive. Node's default is 5s;
+    // a proxy holds idle connections open longer, and when it reuses one Node
+    // has just closed the visitor gets a 502 — the classic "site went down for
+    // a second". headersTimeout must be above keepAliveTimeout.
+    httpServer.keepAliveTimeout = 65 * 1000;
+    httpServer.headersTimeout = 66 * 1000;
     // Before anything else, so a misconfigured deployment says so at the top
     // of the log rather than being discovered through odd behaviour later.
     preflight.report(logger);
@@ -214,13 +272,26 @@ async function start() {
   }
 }
 
-process.on('SIGINT', async () => {
-  stopReconciliationSweep();
-  stopWebhookHealthCheck();
-  stopInProcessWorker();
-  stopInvitationReconciliationSweep();
-  await prisma.$disconnect();
-  process.exit(0);
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+// A promise that rejects with nobody listening used to take the whole server
+// down (Node 15+ exits on it): one background task failing — a sheet sync, an
+// email — and every visitor got an error until the host restarted us. Logged
+// instead; the request or task that caused it has already ended.
+process.on('unhandledRejection', (reason) => {
+  logger.error('unhandled promise rejection (server kept running)', {
+    reason: reason && reason.message ? reason.message : String(reason),
+    stack: reason && reason.stack ? String(reason.stack).split('\n').slice(0, 6).join('\n') : undefined,
+  });
+});
+
+// A thrown error nothing caught. The process may be in a broken state, so it
+// is logged and the server stops cleanly — finishing in-flight requests — and
+// the host starts a fresh one, rather than carrying on half-broken.
+process.on('uncaughtException', (err) => {
+  logger.error('uncaught exception; restarting cleanly', { err: err && err.message, stack: err && err.stack });
+  shutdown('uncaughtException', 1);
 });
 
 start();

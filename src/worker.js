@@ -19,9 +19,12 @@ async function start() {
   await pollLoop(() => stopping);
 }
 
-process.on('SIGINT', async () => {
+// SIGTERM too: it is what a host or process manager sends to stop a service.
+async function stop() {
   stopping = true;
   await prisma.$disconnect();
   process.exit(0);
-});
+}
+process.on('SIGINT', stop);
+process.on('SIGTERM', stop);
 start();
