@@ -44,8 +44,24 @@ const router = express.Router();
 // happened to be signed in to JPSME.
 const ALLOWED_HEADERS = 'Authorization, Content-Type';
 
+// INTEGRATION_ALLOWED_ORIGINS, a comma-separated list of origins
+// (https://example.org), limits which websites may call this API from a
+// browser. Unset keeps the original behaviour, any origin, so an existing
+// integration does not break on upgrade. A server-to-server caller (the usual
+// case, PHP calling from its own server) sends no Origin and is unaffected
+// either way; the bearer key is what authenticates it.
+function allowedOrigin(req) {
+  const list = String(process.env.INTEGRATION_ALLOWED_ORIGINS || '')
+    .split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean);
+  if (!list.length) return '*';
+  const origin = req.get('Origin');
+  return origin && list.includes(origin) ? origin : null;
+}
+
 function cors(req, res, next) {
-  res.set('Access-Control-Allow-Origin', '*');
+  const origin = allowedOrigin(req);
+  if (origin) res.set('Access-Control-Allow-Origin', origin);
+  if (origin && origin !== '*') res.set('Vary', 'Origin');
   res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.set('Access-Control-Allow-Headers', ALLOWED_HEADERS);
   // A day, so a scanning client is not paying for a preflight on every scan.
