@@ -268,7 +268,7 @@ app.use(express.static(path.join(__dirname, '..', 'public'), { etag: true }));
 // Make the logged-in user and CSRF token available to every view.
 app.use((req, res, next) => {
   res.locals.currentUser = req.session.user || null;
-  res.locals.csrfToken = req.session.csrfToken;
+  res.locals.csrfToken = req.session.csrfToken || '';
 
   // Shared by every view that builds row-menu items (see
   // views/partials/row-menu.ejs). Those items are assembled as HTML strings

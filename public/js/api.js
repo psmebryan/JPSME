@@ -1,13 +1,38 @@
 // Shared fetch wrapper: attaches the CSRF token and normalizes the JSON envelope
 // { success, message, data } returned by every API route.
+// A page an anonymous visitor only reads is rendered without a CSRF token (it
+// gets no session at all). If such a page ever does send something, fetch a
+// token first and keep it in the meta tag for the rest of the visit.
+async function ensureCsrfMeta() {
+  let meta = document.querySelector('meta[name="csrf-token"]');
+  if (meta && meta.getAttribute('content')) return meta;
+  try {
+    const res = await fetch('/api/csrf-token', { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+    const payload = await res.json();
+    const token = payload && payload.data && payload.data.csrfToken;
+    if (token) {
+      if (!meta) {
+        meta = document.createElement('meta');
+        meta.setAttribute('name', 'csrf-token');
+        document.head.appendChild(meta);
+      }
+      meta.setAttribute('content', token);
+    }
+  } catch (err) { /* the request below will report the failure */ }
+  return meta;
+}
+
 async function apiFetch(url, options = {}) {
-  const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+  const method = String(options.method || 'GET').toUpperCase();
+  const csrfMeta = method === 'GET' || method === 'HEAD'
+    ? document.querySelector('meta[name="csrf-token"]')
+    : await ensureCsrfMeta();
   const headers = Object.assign({ Accept: 'application/json' }, options.headers || {});
 
   if (!(options.body instanceof FormData) && options.body) {
     headers['Content-Type'] = 'application/json';
   }
-  if (csrfMeta) {
+  if (csrfMeta && csrfMeta.getAttribute('content')) {
     headers['X-CSRF-Token'] = csrfMeta.getAttribute('content');
   }
 
