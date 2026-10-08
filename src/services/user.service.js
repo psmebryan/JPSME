@@ -188,6 +188,14 @@ async function setStatus(userId, status, {
     sheetsSyncService.syncMembership();
   }
 
+  // A signed-in session carries a copy of the status taken at login, so a
+  // rejection would otherwise not reach someone already signed in until they
+  // signed out. Approval is left alone: nobody needs to be thrown out for
+  // being let in, and a member who just paid would be.
+  if (user.status !== status && status !== 'APPROVED') {
+    await passwordResetService.revokeSessionsFor(user.id);
+  }
+
   return toPublicUser(updated);
 }
 
@@ -233,7 +241,7 @@ async function getById(userId) {
 async function updateUser(userId, data, { allowAdminRole = false, actorId = null } = {}) {
   const target = await prisma.user.findUnique({
     where: { id: Number(userId) },
-    select: { id: true, role: true, email: true },
+    select: { id: true, role: true, email: true, organizationId: true },
   });
   if (!target) throw new AppError('User not found', 404);
 
@@ -311,6 +319,18 @@ async function updateUser(userId, data, { allowAdminRole = false, actorId = null
       targetUserId: target.id,
       metadata: { from: target.role, to: allowed.role, email: target.email },
     });
+  }
+
+  // The session keeps the role (and, for a chapter admin, the organization
+  // their access is scoped to) from the moment they signed in. Without this, an
+  // admin demoted here kept admin access until their session ran out, up to
+  // eight hours later. Signing them out makes the change take effect now.
+  const roleChanged = allowed.role && allowed.role !== target.role;
+  const scopeMoved = Object.prototype.hasOwnProperty.call(allowed, 'organizationId')
+    && allowed.organizationId !== target.organizationId
+    && (target.role === 'CHAPTER_ADMIN' || updated.role === 'CHAPTER_ADMIN');
+  if (roleChanged || scopeMoved) {
+    await passwordResetService.revokeSessionsFor(target.id);
   }
 
   return toPublicUser(updated);
@@ -455,6 +475,9 @@ async function deleteUser(userId) {
   if (!user) throw new AppError('User not found', 404);
   if (user.role === 'ADMIN') throw new AppError('Cannot delete ADMIN account', 400);
   await prisma.user.delete({ where: { id: Number(userId) } });
+  // A deleted account's session would otherwise keep passing the signed-in
+  // check until it expired.
+  await passwordResetService.revokeSessionsFor(user.id);
   return { deleted: true };
 }
 
