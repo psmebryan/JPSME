@@ -10,6 +10,7 @@ const webhookRoutes = require('./webhook.routes');
 const articleRoutes = require('./article.routes');
 const organizationRoutes = require('./organization.routes');
 const integrationRoutes = require('./integration.routes');
+const contactRoutes = require('./contact.routes');
 const { success } = require('../../utils/apiResponse');
 const captchaService = require('../../services/captcha.service');
 const challengeService = require('../../services/challenge.service');
@@ -90,5 +91,6 @@ router.use('/payments', paymentRoutes);
 router.use('/webhooks', webhookRoutes);
 router.use('/articles', articleRoutes);
 router.use('/organizations', organizationRoutes);
+router.use('/contact', contactRoutes);
 
 module.exports = router;

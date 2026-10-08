@@ -301,6 +301,10 @@ const config = {
     get brevoApiKey() { return process.env.BREVO_API_KEY; },
     get brevoSender() { return process.env.BREVO_SENDER; },
     get brevoWebhookSecret() { return process.env.BREVO_WEBHOOK_SECRET; },
+    // Where the public contact form delivers. The visitor's address goes in
+    // Reply-To, never in From — the sender must stay on the authenticated
+    // domain or the provider rejects the send.
+    get contactTo() { return process.env.CONTACT_EMAIL_TO || 'icto@psmeinc.org.ph'; },
     smtp: {
       get host() { return process.env.SMTP_HOST; },
       get port() { return Number(process.env.SMTP_PORT) || 587; },
