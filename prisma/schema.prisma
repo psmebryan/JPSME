@@ -1329,6 +1329,21 @@ model Refund {
 // General-purpose audit trail (distinct from OrganizationAdminAudit, which
 // only covers org-admin reassignment). metadata is a JSON string of plain
 // values only — amounts, IDs, reasons — never secrets or credentials.
+// A failed sign-in, counted per account and per address so the login form can
+// ask for the human check after a few failures (see loginThrottle.service.js).
+// The email is only ever stored as a hash of its canonical form.
+model LoginAttempt {
+  id        Int      @id @default(autoincrement())
+  emailKey  String   @db.VarChar(64)
+  ip        String   @db.VarChar(64)
+  createdAt DateTime @default(now())
+
+  @@index([emailKey, createdAt])
+  @@index([ip, createdAt])
+  @@index([createdAt])
+  @@map("login_attempts")
+}
+
 model AuditLog {
   id           Int         @id @default(autoincrement())
   action       AuditAction

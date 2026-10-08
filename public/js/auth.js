@@ -73,6 +73,23 @@ document.addEventListener('DOMContentLoaded', () => {
           setTimeout(() => { window.location.href = `/verify-email${query}`; }, 900);
           return;
         }
+        // The server wants the human check before the next attempt. If this
+        // page was drawn without it, reload with it, keeping the address typed
+        // (and any ?next=). The password is not carried over.
+        if (err.code === 'HUMAN_CHECK_REQUIRED' && !loginForm.querySelector('[data-login-human-check]')) {
+          showToast(err.message, 'error');
+          const params = new URLSearchParams(window.location.search);
+          const typed = new FormData(loginForm).get('email');
+          if (typed) params.set('email', String(typed).trim());
+          params.set('check', '1');
+          setTimeout(() => { window.location.href = `${window.location.pathname}?${params}`; }, 1200);
+          return;
+        }
+        // A Turnstile token is single-use, so every failed attempt needs a
+        // fresh one. (The built-in image challenge reloads itself.)
+        if (window.turnstile && typeof window.turnstile.reset === 'function') {
+          try { window.turnstile.reset(); } catch (resetErr) { /* not rendered */ }
+        }
         showToast(err.message, 'error');
       }
       });

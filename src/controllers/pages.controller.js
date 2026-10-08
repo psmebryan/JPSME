@@ -3,6 +3,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const eventService = require('../services/event.service');
 const userService = require('../services/user.service');
 const authService = require('../services/auth.service');
+const loginThrottle = require('../services/loginThrottle.service');
 const organizationService = require('../services/organization.service');
 const organizationAdminService = require('../services/organizationAdmin.service');
 const settingsService = require('../services/settings.service');
@@ -66,11 +67,20 @@ const home = asyncHandler(async (req, res) => {
 // Both are escaped by EJS on the way out and capped here, so the worst a
 // crafted link can do is put somebody else's address in a login box — which is
 // exactly what typing it would do.
-const loginPage = (req, res) => res.render('login', {
+// The human check is drawn when this network has already failed a few times,
+// or when the page was reloaded with ?check=1 because the API asked for it for
+// the address being typed. Anyone can add ?check=1; all it does is show a
+// captcha to the person who added it.
+async function loginNeedsHumanCheck(req) {
+  return req.query.check === '1' || loginThrottle.ipNeedsCaptcha(req.ip);
+}
+
+const loginPage = asyncHandler(async (req, res) => res.render('login', {
   title: 'Login',
   email: typeof req.query.email === 'string' ? req.query.email.slice(0, 200) : '',
   justVerified: req.query.verified === '1',
-});
+  humanCheck: await loginNeedsHumanCheck(req),
+}));
 
 const forgotPasswordPage = (req, res) => res.render('forgot-password', {
   title: 'Forgot Password',
@@ -415,7 +425,12 @@ const eventPaymentReturnPage = asyncHandler(async (req, res) => {
   res.render('event-payment-return', { title: 'Payment Status', event, payment });
 });
 
-const adminLoginPage = (req, res) => res.render('admin/login', { title: 'Admin Login', layout: 'admin/layout-guest' });
+const adminLoginPage = asyncHandler(async (req, res) => res.render('admin/login', {
+  title: 'Admin Login',
+  layout: 'admin/layout-guest',
+  email: typeof req.query.email === 'string' ? req.query.email.slice(0, 200) : '',
+  humanCheck: await loginNeedsHumanCheck(req),
+}));
 
 // The admin sidebar loads modules via AJAX (see admin-nav.js), so each admin page
 // renders as a bare fragment for that request and as a full page otherwise.

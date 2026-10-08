@@ -3,6 +3,7 @@ const { validationResult } = require('express-validator');
 const asyncHandler = require('../../utils/asyncHandler');
 const { success, error } = require('../../utils/apiResponse');
 const authService = require('../../services/auth.service');
+const loginThrottle = require('../../services/loginThrottle.service');
 const passwordResetService = require('../../services/passwordReset.service');
 const emailVerificationService = require('../../services/emailVerification.service');
 const storageService = require('../../services/storage.service');
@@ -54,6 +55,15 @@ const login = asyncHandler(async (req, res) => {
   try {
     user = await authService.login(email, password, { context });
   } catch (err) {
+    // A wrong password and an unknown address are the same 401 with the same
+    // words, and are counted the same way, so neither the reply nor the point
+    // at which the human check appears says whether the address is signed up.
+    // When this failure means the next attempt needs the check, the code says
+    // so and the page shows it; the message is unchanged.
+    if (err && err.statusCode === 401) {
+      const after = await loginThrottle.recordFailure(email, req.ip);
+      if (after.captchaRequired) err.code = 'HUMAN_CHECK_REQUIRED';
+    }
     // A correct password against an unverified address is not a failed login
     // so much as an unfinished one, and the next step needs a code. Sending it
     // here rather than making them go and ask for it is the whole point: it
@@ -84,6 +94,8 @@ const login = asyncHandler(async (req, res) => {
     }
     throw err;
   }
+
+  await loginThrottle.clearForEmail(email);
 
   // Regenerate the session on privilege change to prevent session fixation.
   req.session.regenerate((err) => {
