@@ -304,17 +304,22 @@ async function resendForState(state, { actorId = null } = {}) {
 // Matched on email, not on a row number or an id, because the sheet has been
 // through Google Sheets and a person by the time it comes back — rows get
 // sorted, filtered and inserted, and any positional assumption breaks silently.
-const MERGO_STATUS_MAP = {
-  bounced: 'BOUNCED',
-  bounce: 'BOUNCED',
-  failed: 'FAILED',
-  error: 'FAILED',
-  delivered: 'DELIVERED',
-  sent: 'SENT',
-  opened: 'DELIVERED',
-  open: 'DELIVERED',
-  clicked: 'DELIVERED',
-};
+// Checked in this order, first match wins. The negatives come first because
+// the words are matched as substrings: "not sent" contains "sent" and
+// "undelivered" contains "delivered", and matching those as successes recorded
+// failed emails as sent.
+const MERGO_STATUS_MAP = [
+  ['not sent', 'FAILED'],
+  ['unsent', 'FAILED'],
+  ['undelivered', 'FAILED'],
+  ['bounce', 'BOUNCED'],
+  ['fail', 'FAILED'],
+  ['error', 'FAILED'],
+  ['click', 'DELIVERED'],
+  ['open', 'DELIVERED'],
+  ['delivered', 'DELIVERED'],
+  ['sent', 'SENT'],
+];
 
 function headerIndex(row) {
   const index = {};
@@ -388,7 +393,8 @@ async function importMergoStatuses(buffer, { actorId = null, dryRun = false } = 
 
     // Matched loosely: Mergo writes things like "Bounced (550 ...)" rather than
     // a bare keyword.
-    const key = Object.keys(MERGO_STATUS_MAP).find((k) => raw.includes(k));
+    const match = MERGO_STATUS_MAP.find(([word]) => raw.includes(word));
+    const key = match ? match[0] : null;
     if (!key) {
       errors.push(`Row ${r}: "${cellText(row, statusCol)}" is not a status this can read. Left unchanged.`);
       continue;
@@ -397,8 +403,8 @@ async function importMergoStatuses(buffer, { actorId = null, dryRun = false } = 
     updates.push({
       row: r,
       email,
-      status: MERGO_STATUS_MAP[key],
-      opened: ['opened', 'open', 'clicked'].includes(key),
+      status: match[1],
+      opened: key === 'open' || key === 'click',
       reason: reasonCol ? cellText(row, reasonCol) : '',
       openedText: openedCol ? cellText(row, openedCol) : '',
     });
@@ -451,7 +457,10 @@ async function importMergoStatuses(buffer, { actorId = null, dryRun = false } = 
         status: a.status,
         providerStatus: a.status === 'BOUNCED' ? 'BOUNCED'
           : (a.status === 'FAILED' ? 'FAILED'
-            : (a.opened ? 'OPENED' : (a.status === 'SENT' ? 'SENT' : 'PREPARED'))),
+            // DELIVERED used to fall through to PREPARED, which counts as an
+            // email still on its way and blocked the member from being added
+            // to Mergo again.
+            : (a.opened ? 'OPENED' : 'SENT')),
         failureReason: a.reason ? String(a.reason).slice(0, 255) : null,
         // Mergo has already sent by the time it writes a status, so the message
         // did leave — recording sentAt keeps "invited at" truthful on the page.

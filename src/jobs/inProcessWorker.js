@@ -39,11 +39,21 @@ function startInProcessWorker() {
   stopping = false;
   logger.info('In-process job worker started');
 
-  // Deliberately not awaited: this loop runs for the life of the process, and
-  // awaiting it here would never return to finish booting the server.
+  runLoop();
+}
+
+// Deliberately not awaited: this loop runs for the life of the process, and
+// awaiting it here would never return to finish booting the server.
+//
+// Restarts itself if the loop ever ends with an error. It used to log "stopped
+// unexpectedly" and stay stopped, so every queued email waited for the next
+// redeploy and nothing on the site said so.
+const RESTART_DELAY_MS = 5000;
+function runLoop() {
   pollLoop(() => stopping).catch((err) => {
-    running = false;
-    logger.error('in-process job worker stopped unexpectedly', { err: err.message });
+    logger.error('in-process job worker stopped unexpectedly; restarting it', { err: err.message });
+    if (stopping) { running = false; return; }
+    setTimeout(() => { if (!stopping) runLoop(); }, RESTART_DELAY_MS).unref();
   });
 }
 

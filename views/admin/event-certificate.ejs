@@ -2,9 +2,13 @@
 function statusBadge(r) {
   if (!r.generated) return '<span class="badge-amber">Not generated</span>';
   const genDate = r.generatedAt ? ' &middot; ' + new Date(r.generatedAt).toLocaleDateString() : '';
-  return r.released
+  const access = r.released
     ? `<span class="badge-green">Generated &middot; Download allowed${genDate}</span>`
     : `<span class="badge-slate">Generated &middot; Locked${genDate}</span>`;
+  const mail = r.emailedAt
+    ? `<span class="block mt-1 text-xs text-emerald-700">Emailed ${new Date(r.emailedAt).toLocaleDateString()}</span>`
+    : '<span class="block mt-1 text-xs text-slate-400">Not emailed yet</span>';
+  return access + mail;
 }
 %>
 <div id="event-certificate-module" class="max-w-5xl" data-event-id="<%= event.id %>">
@@ -55,6 +59,30 @@ function statusBadge(r) {
     </form>
   </section>
 
+  <%# Certificates are never sent on registration. This is the dedicated send:
+      it generates any missing certificate, emails it as a PDF, and allows the
+      member to download it from their profile. %>
+  <section class="admin-card p-6 mb-6">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div class="max-w-xl">
+        <h2 class="font-semibold">Send certificates</h2>
+        <p class="mt-1 text-sm text-slate-500">
+          Emails each registered member their certificate as a PDF, and lets them download it from their profile.
+          Anyone already emailed is skipped, so pressing it again only reaches the rest. Each press sends at most
+          <%= locals.certificateSendBatchLimit || 250 %>, to stay inside the daily email limit.
+        </p>
+        <p class="mt-2 text-sm text-slate-600">
+          <strong id="cert-emailed-count"><%= registrants.filter(r => r.emailedAt).length %></strong> of
+          <strong><%= registrants.length %></strong> emailed
+        </p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" id="send-selected-certs" class="btn-secondary" disabled>Send selected</button>
+        <button type="button" id="send-all-certs" class="btn-primary">Send to everyone not yet emailed</button>
+      </div>
+    </div>
+  </section>
+
   <section class="admin-card p-6">
     <div class="mb-1 flex flex-wrap items-center justify-between gap-3">
       <div>
@@ -65,6 +93,8 @@ function statusBadge(r) {
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
+        <input type="search" id="cert-search" class="form-input w-56 py-1.5 text-sm" autocomplete="off"
+               placeholder="Search name or email" aria-label="Search registrants by name or email">
         <div class="flex rounded-lg border border-slate-200 text-sm overflow-hidden" id="cert-filter-tabs">
           <button type="button" data-cert-filter="all" class="cert-filter-tab px-3 py-1.5 bg-indigo-600 text-white">All</button>
           <button type="button" data-cert-filter="generated" class="cert-filter-tab px-3 py-1.5 hover:bg-slate-50">Generated</button>

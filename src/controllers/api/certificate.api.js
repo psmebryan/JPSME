@@ -5,6 +5,7 @@ const { success, error } = require('../../utils/apiResponse');
 const certificateService = require('../../services/certificate.service');
 const jobService = require('../../services/job.service');
 const storageService = require('../../services/storage.service');
+const config = require('../../config');
 
 function checkValidation(req, res) {
   const result = validationResult(req);
@@ -103,7 +104,8 @@ const previewEventTemplate = asyncHandler(async (req, res) => {
 
 const listEventRegistrantCertificates = asyncHandler(async (req, res) => {
   const filter = ['generated', 'not_generated'].includes(req.query.filter) ? req.query.filter : 'all';
-  const registrants = await certificateService.listEventCertificateStatus(req.params.eventId, filter);
+  const search = String(req.query.search || '').trim().slice(0, 120);
+  const registrants = await certificateService.listEventCertificateStatus(req.params.eventId, filter, search);
   return success(res, { registrants });
 });
 
@@ -134,6 +136,28 @@ const downloadEventCertificateAsAdmin = asyncHandler(async (req, res) => {
   // Main admin can always fetch the file regardless of release status.
   const { key, filename } = await certificateService.getEventCertificateDownload(req.params.eventId, req.params.userId);
   await streamDownload(res, key, filename);
+});
+
+// "Send" on the event's Certificate page: email certificates to registrants.
+// No userIds means everybody registered who has not been emailed yet; userIds
+// sends to those people. resend sends again to people already emailed — for a
+// corrected certificate after Regenerate.
+const sendEventCertificates = asyncHandler(async (req, res) => {
+  const userIds = Array.isArray(req.body.userIds) ? req.body.userIds.map(Number).filter((n) => Number.isInteger(n) && n > 0) : null;
+  const result = await certificateService.queueEventCertificateEmails({
+    eventId: req.params.eventId,
+    userIds: userIds && userIds.length ? userIds : null,
+    resend: Boolean(req.body.resend),
+    adminUserId: req.session.user.id,
+    limit: config.certificateSendBatchLimit,
+  });
+  const parts = [`Sending ${result.queued} certificate(s).`];
+  if (result.alreadySent) parts.push(`${result.alreadySent} already emailed.`);
+  if (result.alreadyQueued) parts.push(`${result.alreadyQueued} already on their way.`);
+  if (result.remaining) {
+    parts.push(`${result.remaining} more waiting: one press sends at most ${result.limit}, to stay inside the daily email limit. Press again later for the rest.`);
+  }
+  return success(res, result, parts.join(' '));
 });
 
 const setEventCertificateReleased = asyncHandler(async (req, res) => {
@@ -176,6 +200,7 @@ module.exports = {
   exportEventCertificatesExcel,
   downloadEventCertificateAsAdmin,
   setEventCertificateReleased,
+  sendEventCertificates,
   downloadMembershipCertificate,
   downloadMyEventCertificate,
 };

@@ -112,7 +112,9 @@ async function registerForEvent(user, eventId, invitation = null) {
   // capacity check, and create/reactivate must all happen atomically, or two
   // requests can both pass the count check before either commits and oversell
   // a capacity-limited free event.
-  const registration = await runSerializableTransaction(
+  let registration;
+  try {
+  registration = await runSerializableTransaction(
     async (tx) => {
       const existing = await tx.eventRegistration.findUnique({
         where: { userId_eventId: { userId: user.id, eventId: event.id } },
@@ -182,6 +184,16 @@ async function registerForEvent(user, eventId, invitation = null) {
       return qrService.assignRegistrationIdentity(tx, created.id);
     }
   );
+  } catch (err) {
+    // A double-click sends the same registration twice. Both can pass the
+    // "already registered?" check before either commits; the second then hits
+    // the unique (userId, eventId) key. That is not a server fault — the first
+    // request registered them — so it gets the same answer a later retry would.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw new AppError('You are already registered for this event', 409);
+    }
+    throw err;
+  }
 
   // Durable and retryable via the job queue (src/worker.js), instead of the
   // previous fire-and-forget mailService call — a transient Brevo failure no
@@ -190,7 +202,11 @@ async function registerForEvent(user, eventId, invitation = null) {
   // Skipped while an admin has switched confirmation emails off (Settings), to
   // keep the provider's daily quota for password resets and verification
   // codes. The ticket is still on the member's event ticket page.
-  if (await settingsService.getRegistrationEmailsEnabled()) {
+  // Read after the registration is committed, so a failure here must not
+  // turn a successful registration into an error page; it falls back to
+  // sending, which is the default.
+  const sendConfirmation = await settingsService.getRegistrationEmailsEnabled().catch(() => true);
+  if (sendConfirmation) {
     jobService.enqueue('SEND_EVENT_REGISTRATION_EMAIL', { userId: user.id, eventId: event.id }).catch((err) => {
       console.error('registerForEvent: failed to enqueue confirmation email job:', err.message);
     });

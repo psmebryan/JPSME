@@ -340,6 +340,20 @@ async function main() {
 
   console.log('\nreading Mergo results back in\n');
 
+  await test('"not sent" and "undelivered" read as failures, not as sent or delivered', async () => {
+    const m1 = await makeMember('NotSent');
+    const m2 = await makeMember('Undelivered');
+    const m3 = await makeMember('Delivered');
+    const buf = await mergoSheet([
+      { email: m1.email, status: 'Email not sent' },
+      { email: m2.email, status: 'Undelivered' },
+      { email: m3.email, status: 'Delivered' },
+    ]);
+    const res = await tracking.importMergoStatuses(buf, { dryRun: true });
+    assert.strictEqual(res.failed, 2, 'both negatives are failures');
+    assert.strictEqual(res.delivered, 1, 'only the real delivery is a delivery');
+  });
+
   await test('a dry run writes nothing at all', async () => {
     const before = await prisma.activationInvite.count({ where: { userId: never.id } });
     const buf = await mergoSheet([{ email: never.email, status: 'Bounced', reason: 'Address not found' }]);

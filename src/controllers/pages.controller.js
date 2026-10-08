@@ -574,6 +574,7 @@ const adminEventCertificatePage = asyncHandler(async (req, res) => {
     template,
     registrants,
     filter: 'all',
+    certificateSendBatchLimit: config.certificateSendBatchLimit,
   });
 });
 

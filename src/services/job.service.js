@@ -70,4 +70,44 @@ async function failJob(id, error, attempts, maxAttempts) {
   });
 }
 
-module.exports = { enqueue, claimNextJob, completeJob, failJob, getJob };
+// Puts back jobs that were claimed and then never finished.
+//
+// A job is marked PROCESSING when a worker claims it. If the process stops
+// before the job completes — a redeploy, a crash, the host restarting it — the
+// row stays PROCESSING forever: nothing ever claims it again, so its email is
+// never sent. The send buttons also count PROCESSING as "already queued" and
+// skip that person every time after.
+//
+// Anything still PROCESSING well past any real job's running time is returned
+// to PENDING. The interruption counts as an attempt, so a job that kills the
+// process every time it runs still ends up FAILED instead of looping forever.
+const STUCK_AFTER_MS = 30 * 60 * 1000;
+
+async function requeueStuckJobs({ olderThanMs = STUCK_AFTER_MS, now = new Date() } = {}) {
+  const cutoff = new Date(now.getTime() - olderThanMs);
+  const stuck = await prisma.job.findMany({
+    where: { status: 'PROCESSING', updatedAt: { lt: cutoff } },
+    select: { id: true, attempts: true, maxAttempts: true },
+  });
+  let requeued = 0;
+  let failed = 0;
+  for (const job of stuck) {
+    const nextAttempts = job.attempts + 1;
+    const exhausted = nextAttempts >= job.maxAttempts;
+    // Conditional on still being PROCESSING, so a job that finished a moment
+    // ago is not reset.
+    // eslint-disable-next-line no-await-in-loop
+    const res = await prisma.job.updateMany({
+      where: { id: job.id, status: 'PROCESSING', updatedAt: { lt: cutoff } },
+      data: exhausted
+        ? { status: 'FAILED', attempts: nextAttempts, lastError: 'Interrupted while processing (server restarted) too many times.' }
+        : { status: 'PENDING', attempts: nextAttempts, availableAt: now, lastError: 'Interrupted while processing (server restarted); retried.' },
+    });
+    if (res.count) {
+      if (exhausted) failed += 1; else requeued += 1;
+    }
+  }
+  return { requeued, failed };
+}
+
+module.exports = { enqueue, claimNextJob, completeJob, failJob, getJob, requeueStuckJobs, STUCK_AFTER_MS };

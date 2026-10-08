@@ -279,6 +279,9 @@ async function generateEventCertificatesBulk({ eventId, userIds, adminUserId, fo
           released: false,
           releasedAt: null,
           releasedBy: null,
+          // A corrected certificate has not been sent yet — clearing this is
+          // what lets "Send" deliver it.
+          emailedAt: null,
         },
       });
       generated.push({ userId: reg.userId, name: fullName(reg.user), certificate: updated });
@@ -299,10 +302,21 @@ async function generateEventCertificatesBulk({ eventId, userIds, adminUserId, fo
   return { generated, skipped };
 }
 
-async function listEventCertificateStatus(eventId, filter = 'all') {
+// `search` matches the registrant's name or email, as on the registrations page.
+async function listEventCertificateStatus(eventId, filter = 'all', search = '') {
+  const where = { eventId: Number(eventId), status: 'REGISTERED' };
+  const term = String(search || '').trim();
+  if (term) {
+    where.OR = [
+      { fullName: { contains: term } },
+      { email: { contains: term } },
+      { user: { firstName: { contains: term } } },
+      { user: { lastName: { contains: term } } },
+    ];
+  }
   const [registrations, certificates] = await Promise.all([
     prisma.eventRegistration.findMany({
-      where: { eventId: Number(eventId), status: 'REGISTERED' },
+      where,
       include: { user: true },
       orderBy: { createdAt: 'desc' },
     }),
@@ -321,6 +335,7 @@ async function listEventCertificateStatus(eventId, filter = 'all') {
       generated: Boolean(cert),
       generatedAt: cert ? cert.generatedAt : null,
       released: Boolean(cert && cert.released),
+      emailedAt: cert ? cert.emailedAt : null,
     };
   });
 
@@ -442,6 +457,122 @@ async function getCertifiedEventIds(userId, eventIds) {
   return new Set(certs.map((c) => c.eventId));
 }
 
+// --- Emailing event certificates --------------------------------------------
+//
+// Nothing is sent when somebody registers. An admin presses "Send" on the
+// event's Certificate page, and each registrant gets their certificate as an
+// attached PDF, which is also released for download from their profile.
+//
+// Queued as one job per person: rendering a PDF is CPU-bound and an event can
+// run to hundreds, so this request only decides who is sent to and the job
+// worker does the rendering and sending one at a time.
+//
+// Capped per press (CERTIFICATE_SEND_BATCH_LIMIT, default 250) because every
+// site email shares one daily provider quota; whoever is left is sent on the
+// next press. Somebody already emailed, or already in the queue, is never
+// queued twice — unless `resend` is set, which is for sending one corrected
+// certificate again after Regenerate.
+async function queueEventCertificateEmails({
+  eventId, userIds = null, resend = false, adminUserId = null, limit = 250,
+}) {
+  // eslint-disable-next-line global-require
+  const jobService = require('./job.service');
+  const event = await prisma.event.findUnique({ where: { id: Number(eventId) } });
+  if (!event) throw new AppError('Event not found', 404);
+
+  const where = { eventId: event.id, status: 'REGISTERED' };
+  if (Array.isArray(userIds) && userIds.length) where.userId = { in: userIds.map(Number) };
+  const registrations = await prisma.eventRegistration.findMany({ where, select: { userId: true } });
+
+  const certificates = await prisma.eventCertificate.findMany({
+    where: { eventId: event.id, userId: { in: registrations.map((r) => r.userId) } },
+    select: { userId: true, emailedAt: true },
+  });
+  const emailed = new Set(certificates.filter((c) => c.emailedAt).map((c) => c.userId));
+
+  // Already waiting in the queue from an earlier press: not queued again.
+  const pending = await prisma.job.findMany({
+    where: { type: 'SEND_EVENT_CERTIFICATE_EMAIL', status: { in: ['PENDING', 'PROCESSING'] } },
+    select: { payload: true },
+  });
+  const queuedAlready = new Set();
+  pending.forEach((j) => {
+    try {
+      const p = JSON.parse(j.payload);
+      if (Number(p.eventId) === event.id) queuedAlready.add(Number(p.userId));
+    } catch (err) { /* unreadable payload */ }
+  });
+
+  let queued = 0;
+  let alreadySent = 0;
+  let alreadyQueued = 0;
+  let remaining = 0;
+  for (const reg of registrations) {
+    if (queuedAlready.has(reg.userId)) { alreadyQueued += 1; continue; }
+    if (!resend && emailed.has(reg.userId)) { alreadySent += 1; continue; }
+    if (queued >= limit) { remaining += 1; continue; }
+    // eslint-disable-next-line no-await-in-loop
+    await jobService.enqueue('SEND_EVENT_CERTIFICATE_EMAIL', {
+      eventId: event.id, userId: reg.userId, adminUserId,
+    });
+    queued += 1;
+  }
+
+  return { queued, alreadySent, alreadyQueued, remaining, limit, total: registrations.length };
+}
+
+// Run by the job worker for one person: generate their certificate if it does
+// not exist yet, email it as an attachment, and release it for download from
+// their profile.
+//
+// Only a REGISTERED registration is sent to — somebody who cancelled after the
+// press is skipped. A send the provider refuses (a quota, a bad address) is not
+// thrown: retrying would only spend more of the quota on the same refusal. The
+// certificate is left un-emailed, so the next press picks it up.
+async function sendEventCertificateEmail({ eventId, userId, adminUserId = null }) {
+  // eslint-disable-next-line global-require
+  const mailService = require('./mail.service');
+  const registration = await prisma.eventRegistration.findFirst({
+    where: { eventId: Number(eventId), userId: Number(userId), status: 'REGISTERED' },
+    select: { id: true },
+  });
+  if (!registration) return { sent: false, reason: 'NOT_REGISTERED' };
+
+  let certificate = await prisma.eventCertificate.findUnique({
+    where: { eventId_userId: { eventId: Number(eventId), userId: Number(userId) } },
+  });
+  if (!certificate) {
+    await generateEventCertificatesBulk({ eventId, userIds: [userId], adminUserId: adminUserId || 0 });
+    certificate = await prisma.eventCertificate.findUnique({
+      where: { eventId_userId: { eventId: Number(eventId), userId: Number(userId) } },
+    });
+    if (!certificate) return { sent: false, reason: 'NOT_GENERATED' };
+  }
+
+  const [user, event, pdf, download] = await Promise.all([
+    prisma.user.findUnique({ where: { id: Number(userId) } }),
+    prisma.event.findUnique({ where: { id: Number(eventId) } }),
+    storageService.read(certificate.filePath),
+    getEventCertificateDownload(eventId, userId),
+  ]);
+  if (!user || !event) return { sent: false, reason: 'NOT_FOUND' };
+
+  const ok = await mailService.sendEventCertificateEmail(user, event, pdf, download.filename);
+  if (!ok) return { sent: false, reason: 'SEND_FAILED' };
+
+  const now = new Date();
+  await prisma.eventCertificate.update({
+    where: { id: certificate.id },
+    data: certificate.released
+      ? { emailedAt: now }
+      : {
+        emailedAt: now, released: true, releasedAt: now,
+        releasedBy: adminUserId ? Number(adminUserId) : null,
+      },
+  });
+  return { sent: true };
+}
+
 async function deleteEventCertificateAssets(eventId) {
   await storageService.removeFolder(`storage/certificates/events/${eventId}`);
 
@@ -469,4 +600,6 @@ module.exports = {
   getEventCertificateDownload,
   getCertifiedEventIds,
   deleteEventCertificateAssets,
+  queueEventCertificateEmails,
+  sendEventCertificateEmail,
 };

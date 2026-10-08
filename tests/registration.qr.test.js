@@ -205,6 +205,22 @@ async function main() {
     }
   });
 
+  await test('a double-clicked registration registers once and answers the second click politely', async () => {
+    const user = await makeMember();
+    const event = await makeEvent(0);
+    const results = await Promise.allSettled([
+      registrationService.registerForEvent(user, event.id),
+      registrationService.registerForEvent(user, event.id),
+    ]);
+    const ok = results.filter((r) => r.status === 'fulfilled');
+    const refused = results.filter((r) => r.status === 'rejected');
+    assertEqual(ok.length, 1, 'exactly one registration');
+    assertEqual(refused.length, 1, 'the other click is refused');
+    assertEqual(refused[0].reason.statusCode, 409, 'as "already registered", not a server error');
+    const rows = await prisma.eventRegistration.count({ where: { userId: user.id, eventId: event.id } });
+    assertEqual(rows, 1, 'one row in the database');
+  });
+
   await test('the minted ticket resolves back to that exact registration', async () => {
     const user = await makeMember();
     const event = await makeEvent(0);

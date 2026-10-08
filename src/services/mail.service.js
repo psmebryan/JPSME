@@ -168,6 +168,38 @@ async function sendActivationEmail(user, url, ttlMs) {
   }
 }
 
+// An event's certificate of participation, attached as a PDF. Sent only when an
+// admin presses "Send" on the event's Certificate page — never on registration.
+// Returns whether the provider accepted it, so the caller marks it as emailed
+// only when it actually went out.
+async function sendEventCertificateEmail(user, event, pdfBuffer, filename) {
+  const profileUrl = `${String(getAppUrl() || '').replace(/\/+$/, '')}/profile`;
+  try {
+    await transporter.sendMail({
+      from: MAIL_FROM,
+      to: user.email,
+      subject: `Your certificate: ${event.title}`,
+      text: `Hi ${user.firstName},\n\n`
+        + `Thank you for taking part in ${event.title}. Your certificate is attached to this email.\n\n`
+        + `You can also download it any time from your JPSME profile:\n${profileUrl}\n\n`
+        + `If your name is wrong on the certificate, reply to this email and we will send a corrected one.`,
+      html: `
+        <p>Hi ${escapeHtml(user.firstName)},</p>
+        <p>Thank you for taking part in <strong>${escapeHtml(event.title)}</strong>. Your certificate is attached to this email.</p>
+        <p style="margin:24px 0;">
+          <a href="${profileUrl}" style="background:#ecb827;color:#131131;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Open my profile</a>
+        </p>
+        <p style="color:#666;font-size:13px;">You can download your certificate there any time.<br>
+        If your name is wrong on the certificate, reply to this email and we will send a corrected one.</p>
+      `,
+      attachments: [{ filename: filename || 'certificate.pdf', content: pdfBuffer }],
+    });
+    return true;
+  } catch (err) {
+    return reportSendFailure('event certificate', user.email, err);
+  }
+}
+
 async function sendPasswordResetEmail(user, url, ttlMs) {
   const minutes = Math.max(1, Math.round((Number(ttlMs) || 60 * 60 * 1000) / 60000));
   const lifetime = minutes >= 60
@@ -432,6 +464,7 @@ async function sendEventInvitationEmail(invitation, event) {
 
 module.exports = {
   sendActivationEmail,
+  sendEventCertificateEmail,
   sendPasswordResetEmail,
   sendPasswordChangedEmail,
   sendEmailChangedNotice,

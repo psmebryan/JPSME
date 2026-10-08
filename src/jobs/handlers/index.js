@@ -78,6 +78,13 @@ const handlers = {
     await activationTracking.recordSendOutcome(user.id, { ok, channel: 'SITE' });
   },
 
+  // One person's event certificate, queued by "Send" on the event's
+  // Certificate page. Generates it if missing, emails it as a PDF and releases
+  // it for download from their profile. See certificate.service.
+  async SEND_EVENT_CERTIFICATE_EMAIL({ eventId, userId, adminUserId }) {
+    return certificateService.sendEventCertificateEmail({ eventId, userId, adminUserId });
+  },
+
   async SEND_PASSWORD_CHANGED_EMAIL({ userId, byAdmin }) {
     const user = await prisma.user.findUnique({
       where: { id: Number(userId) },

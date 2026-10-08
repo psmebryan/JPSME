@@ -40,8 +40,32 @@ async function processOneJob(job) {
 // `shouldStop` lets the caller end the loop without this module owning any
 // process-level state — the standalone worker stops on SIGINT, the in-process
 // one stops when the server shuts down.
+// How often a running worker also puts back jobs a restart interrupted (see
+// jobService.requeueStuckJobs). Cheap: one indexed query.
+const STUCK_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+
+async function sweepStuckJobs() {
+  try {
+    const { requeued, failed } = await jobService.requeueStuckJobs();
+    if (requeued || failed) logger.warn('requeued jobs interrupted by a restart', { requeued, failed });
+  } catch (err) {
+    logger.error('could not check for stuck jobs', { err });
+  }
+}
+
 async function pollLoop(shouldStop) {
+  // At start-up first: the jobs a redeploy interrupted are exactly the ones
+  // waiting to be picked up again.
+  await sweepStuckJobs();
+  let lastSweep = Date.now();
+
   while (!shouldStop()) {
+    if (Date.now() - lastSweep > STUCK_SWEEP_INTERVAL_MS) {
+      // eslint-disable-next-line no-await-in-loop
+      await sweepStuckJobs();
+      lastSweep = Date.now();
+    }
+
     let job;
     try {
       job = await jobService.claimNextJob();
@@ -50,8 +74,16 @@ async function pollLoop(shouldStop) {
     }
 
     if (job) {
-      // eslint-disable-next-line no-await-in-loop
-      await processOneJob(job);
+      // Guarded: processOneJob catches the handler's own errors, but recording
+      // the outcome is a database write too, and a failure there used to
+      // escape this loop and stop the worker for good — no queued email went
+      // out again until the next restart.
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await processOneJob(job);
+      } catch (err) {
+        logger.error('could not record the outcome of a job', { jobId: job.id, err });
+      }
       continue; // check for another due job immediately rather than waiting out the interval
     }
 
@@ -60,4 +92,4 @@ async function pollLoop(shouldStop) {
   }
 }
 
-module.exports = { pollLoop, processOneJob, POLL_INTERVAL_MS };
+module.exports = { pollLoop, processOneJob, POLL_INTERVAL_MS, sweepStuckJobs };
