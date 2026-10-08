@@ -315,6 +315,14 @@ async function main() {
   delete process.env.MERGO_ALLOW_LOCAL_LINKS;
   process.env.APP_URL = 'https://jpsme.example';
 
+  // Two batches written at the same moment must not land on the same rows.
+  reset();
+  memory.users.push({ id: 4, role: 'USER', email: 'second@example.org', firstName: 'Second', lastName: 'Member', passwordSetAt: null });
+  await Promise.all([service.prepareSelected([1]), service.prepareSelected([4])]);
+  const ids = memory.sheet.slice(1).map((row) => row[0]).filter(Boolean);
+  assert.strictEqual(ids.length, 2, 'both batches have their own row');
+  assert.strictEqual(new Set(ids).size, 2, 'and neither overwrote the other');
+
   // An ID pasted out of a table brings a tab character along; Google then says
   // the file does not exist. The settings are trimmed so that cannot happen.
   // eslint-disable-next-line global-require

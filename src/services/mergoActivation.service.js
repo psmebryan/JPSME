@@ -343,7 +343,23 @@ function buttonFormula(activationLink) {
   return `=HYPERLINK(${q(activationLink)}, IMAGE(${q(imageUrl)}))`;
 }
 
-async function writeRows(rows) {
+// One sheet write at a time. writeRows reads where the sheet ends and appends
+// after it; two batches at once (two admins, or an import while someone presses
+// "Add selected") both read the same last row and wrote over each other, so one
+// batch's members were never emailed while JPSME showed them as queued. The
+// live site is a single process, so an in-process queue is enough.
+let sheetWriteChain = Promise.resolve();
+function withSheetLock(fn) {
+  const run = sheetWriteChain.then(fn, fn);
+  sheetWriteChain = run.catch(() => {});
+  return run;
+}
+
+function writeRows(rows) {
+  return withSheetLock(() => writeRowsNow(rows));
+}
+
+async function writeRowsNow(rows) {
   if (!rows.length) return { written: 0, failed: [] };
   if (!isConfigured()) throw new Error('Mergo activation Google Sheet is not configured.');
 
