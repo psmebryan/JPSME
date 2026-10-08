@@ -1,6 +1,8 @@
 const { Router } = require('express');
 const pages = require('../controllers/pages.controller');
 const { ensureAuth, ensureGuest, ensureAdmin, ensureAdminOrChapterAdmin, ensureMainAdminOnly } = require('../middleware/auth.middleware');
+// The admin forms below post a _csrf field; this is what checks it.
+const { verifyCsrfToken } = require('../middleware/csrf.middleware');
 
 const router = Router();
 
@@ -87,7 +89,7 @@ router.get('/admin/payments', ensureMainAdminOnly, pages.adminPaymentsPage);
 // inside the controller (adminChapterMembersPage), main admin sees everything.
 router.get('/admin/organization-members', ensureAdminOrChapterAdmin, pages.adminOrganizationMembersPage);
 router.get('/admin/organization-members/:id/edit', ensureAdminOrChapterAdmin, pages.adminEditUserPage);
-router.post('/admin/organization-members/:id/delete', ensureAdminOrChapterAdmin, pages.adminDeleteOrganizationMember);
+router.post('/admin/organization-members/:id/delete', ensureAdminOrChapterAdmin, verifyCsrfToken, pages.adminDeleteOrganizationMember);
 // Main admin only — full user management
 router.get('/admin/users', ensureMainAdminOnly, (req, res) => res.redirect('/admin/users/approvals'));
 router.get('/admin/users/all', ensureMainAdminOnly, pages.adminUsersPage);
@@ -101,12 +103,12 @@ router.get('/admin/activations', ensureMainAdminOnly, pages.adminActivationsPage
 // /admin/chapter-members above, which chapter admins can also reach)
 router.get('/admin/organizations/tree', ensureMainAdminOnly, pages.adminOrganizationTreePage);
 router.get('/admin/organizations', ensureMainAdminOnly, pages.adminOrganizationsPage);
-router.post('/admin/organizations', ensureMainAdminOnly, pages.adminCreateOrganization);
+router.post('/admin/organizations', ensureMainAdminOnly, verifyCsrfToken, pages.adminCreateOrganization);
 // Must precede the /:id routes below — otherwise "bulk-reassign" is parsed as an :id.
-router.post('/admin/organizations/bulk-reassign', ensureMainAdminOnly, pages.adminBulkReassignOrganizations);
+router.post('/admin/organizations/bulk-reassign', ensureMainAdminOnly, verifyCsrfToken, pages.adminBulkReassignOrganizations);
 router.get('/admin/organizations/:id/edit', ensureMainAdminOnly, pages.adminEditOrganizationPage);
-router.post('/admin/organizations/:id', ensureMainAdminOnly, pages.adminUpdateOrganization);
-router.post('/admin/organizations/:id/delete', ensureMainAdminOnly, pages.adminDeleteOrganization);
+router.post('/admin/organizations/:id', ensureMainAdminOnly, verifyCsrfToken, pages.adminUpdateOrganization);
+router.post('/admin/organizations/:id/delete', ensureMainAdminOnly, verifyCsrfToken, pages.adminDeleteOrganization);
 
 // Main admin only — assign/remove chapter admins
 router.get('/admin/organization-admins', ensureMainAdminOnly, pages.adminOrganizationAdminsPage);
