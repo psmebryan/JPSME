@@ -291,6 +291,12 @@ enum AuditAction {
   // observes one directly — so "when did we last learn anything about
   // deliverability" has no other answer.
   ACTIVATION_DELIVERY_IMPORTED
+  // Sign-in failures. One LOGIN_FAILED per wrong password or unknown address
+  // (the address typed and the network, never the password), and an
+  // ACCOUNT_LOCKED when one address reaches the lock threshold — the pattern an
+  // administrator looks for when somebody is guessing at an account.
+  LOGIN_FAILED
+  ACCOUNT_LOCKED
 }
 
 model User {

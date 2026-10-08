@@ -95,7 +95,7 @@ const login = asyncHandler(async (req, res) => {
     throw err;
   }
 
-  await loginThrottle.clearForEmail(email);
+  await loginThrottle.recordSuccess(email, req.ip);
 
   // Regenerate the session on privilege change to prevent session fixation.
   req.session.regenerate((err) => {

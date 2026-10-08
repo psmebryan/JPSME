@@ -181,6 +181,76 @@ async function main() {
       assert(b.html.includes('data-login-human-check'), 'admin login too');
     });
 
+    // --- M2: the lock ---------------------------------------------------------
+
+    // Ten failures: three plain, then seven with the check passed (an attempt
+    // without it is refused before the password is looked at, so is not one).
+    async function failTenTimes(b, email) {
+      const out = [];
+      for (let i = 0; i < 10; i += 1) {
+        const r = await login(b, email, 'wrong', i >= 3 ? { challengeAnswer: 'PASS' } : {});
+        out.push([r.status, r.code, r.message]);
+      }
+      return out;
+    }
+
+    await test('ten failures lock the account: right password still works, but only with the check', async () => {
+      const b = await browser();
+      await failTenTimes(b, user.email);
+      const { locked } = await loginThrottle.status(user.email, '203.0.113.9');
+      assert(locked, 'locked after ten');
+      const without = await login(b, user.email, PASSWORD);
+      assert.deepStrictEqual([without.status, without.code], [400, 'HUMAN_CHECK_REQUIRED'], 'not without the check');
+      const withCheck = await login(b, user.email, PASSWORD, { challengeAnswer: 'PASS' });
+      assert.strictEqual(withCheck.status, 200, 'right password plus the check signs in');
+    });
+
+    await test('a sign-in while locked does not lift the lock early', async () => {
+      const b = await browser();
+      await failTenTimes(b, user.email);
+      await login(b, user.email, PASSWORD, { challengeAnswer: 'PASS' });
+      const other = await browser(); // another device, after a successful sign-in
+      const r = await login(other, user.email, PASSWORD);
+      assert.strictEqual(r.code, 'HUMAN_CHECK_REQUIRED', 'still needs the check for the rest of the window');
+    });
+
+    await test('the lock looks the same for an unregistered email', async () => {
+      await clearAttempts();
+      currentIp = `${IP_PREFIX}${(ipSeq += 1)}`;
+      const knownSeq = await failTenTimes(await browser(), user.email);
+      const knownAfter = await login(await browser(), user.email, 'wrong');
+      await clearAttempts();
+      currentIp = `${IP_PREFIX}${(ipSeq += 1)}`;
+      const unknownSeq = await failTenTimes(await browser(), unknown);
+      const unknownAfter = await login(await browser(), unknown, 'wrong');
+      assert.deepStrictEqual(unknownSeq, knownSeq, 'same replies on the way to the lock');
+      assert.deepStrictEqual([unknownAfter.status, unknownAfter.code, unknownAfter.message],
+        [knownAfter.status, knownAfter.code, knownAfter.message], 'and the same once locked');
+    });
+
+    await test('LOGIN_FAILED for each failure and one ACCOUNT_LOCKED, never the password', async () => {
+      const since = new Date();
+      const b = await browser();
+      await failTenTimes(b, user.email);
+      const rows = await prisma.auditLog.findMany({
+        where: { targetUserId: user.id, createdAt: { gte: since }, action: { in: ['LOGIN_FAILED', 'ACCOUNT_LOCKED'] } },
+        orderBy: { id: 'asc' },
+      });
+      assert.strictEqual(rows.filter((r) => r.action === 'LOGIN_FAILED').length, 10, 'ten LOGIN_FAILED');
+      const locks = rows.filter((r) => r.action === 'ACCOUNT_LOCKED');
+      assert.strictEqual(locks.length, 1, 'one ACCOUNT_LOCKED');
+      assert.strictEqual(JSON.parse(locks[0].metadata).email, user.email.toLowerCase());
+      assert.strictEqual(locks[0].ipAddress, currentIp, 'records the network');
+      assert(rows.every((r) => !String(r.metadata).includes('wrong')), 'the password is never recorded');
+
+      // An unregistered address is audited too, with no account linked.
+      const before = new Date();
+      const b2 = await browser();
+      await login(b2, unknown, 'wrong', { challengeAnswer: 'PASS' }); // this network already needs the check
+      const u = await prisma.auditLog.findFirst({ where: { action: 'LOGIN_FAILED', createdAt: { gte: before }, metadata: { contains: unknown } } });
+      assert(u && u.targetUserId === null, 'unregistered address audited without an account');
+    });
+
     await test('forgot-password always needs the human check', async () => {
       const b = await browser('/forgot-password');
       assert(/data-challenge|cf-turnstile/.test(b.html), 'the check is on the page');
@@ -193,6 +263,7 @@ async function main() {
     server.close();
     await clearAttempts();
     await prisma.auditLog.deleteMany({ where: { targetUserId: user.id } });
+    await prisma.auditLog.deleteMany({ where: { action: { in: ['LOGIN_FAILED', 'ACCOUNT_LOCKED'] }, metadata: { contains: TAG } } });
     await prisma.user.delete({ where: { id: user.id } }).catch(() => {});
     await prisma.$disconnect();
     console.log(`\n${passed} passed, ${failed} failed`);
