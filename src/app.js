@@ -60,8 +60,19 @@ app.get('/health/db', async (req, res) => {
   }
 });
 
-app.get('/health/dependencies', (req, res) => {
-  res.status(200).json({
+// In production this one answers only with the right token (HEALTH_CHECK_TOKEN,
+// sent as X-Health-Token), and is a plain 404 without it. It is booleans only,
+// but which providers a site runs on is still a map for somebody probing it,
+// and nothing public needs it. /health and /health/db stay open for monitors.
+app.get('/health/dependencies', (req, res, next) => {
+  if (config.isProduction) {
+    const expected = process.env.HEALTH_CHECK_TOKEN || '';
+    const given = String(req.get('X-Health-Token') || '');
+    const ok = expected.length >= 16 && given.length === expected.length
+      && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected));
+    if (!ok) return res.status(404).json({ status: 'not found' });
+  }
+  return res.status(200).json({
     status: 'ok',
     dependencies: {
       database: !!config.database.url,
