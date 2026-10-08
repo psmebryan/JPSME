@@ -264,7 +264,7 @@ const eventSeatPickerPage = asyncHandler(async (req, res) => {
     blocked = { reason: 'NOT_REGISTERED', message: 'You are not registered for this event yet.' };
   } else if (registration.status === 'PENDING_PAYMENT') {
     blocked = { reason: 'UNPAID', message: 'Your payment is still pending. Once it clears you can choose a seat.' };
-  } else if (!event.seatingEnabled) {
+  } else if (!seatingService.isSeatingOn(event)) {
     blocked = { reason: 'SEATING_OFF', message: 'This event does not use assigned seating — any seat is fine.' };
   }
 

@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const config = require('../config');
 const AppError = require('../utils/AppError');
 const qrService = require('./qr.service');
 const eventService = require('./event.service');
@@ -247,7 +248,9 @@ async function lookupByScan({ eventId, rawScan, staffUser }) {
     // What tells the desk whether this is an arrival or somebody coming back to
     // the table to change their seat.
     checkedInAt: registration ? registration.checkedInAt : null,
-    seatingEnabled: event.seatingEnabled,
+    // The site-wide switch too (SEATING_FEATURE), so the desk never offers a
+    // seat while seating is hidden for this release.
+    seatingEnabled: Boolean(config.seatingFeature && event.seatingEnabled),
   };
 }
 

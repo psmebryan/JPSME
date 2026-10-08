@@ -200,6 +200,11 @@ const config = {
     return Number.isInteger(parsed) && parsed >= 1 && parsed <= 14 ? parsed : 3;
   },
   get trustProxy() { return envFlag('TRUST_PROXY'); },
+  // Assigned seating, site-wide. Off unless SEATING_FEATURE is set: while off,
+  // seating is unreachable for members and admins alike whatever an event's
+  // own seatingEnabled says, and the code and tables are left in place so
+  // turning it on brings everything back. See seating.service isSeatingOn.
+  get seatingFeature() { return envFlag('SEATING_FEATURE'); },
   get clusterWorkers() { return Math.max(1, Number(process.env.CLUSTER_WORKERS) || 1); },
 
   database: {

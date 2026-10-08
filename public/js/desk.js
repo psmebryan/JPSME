@@ -231,10 +231,12 @@
 
         current = { ...res.data, scannedValue: code, seat: null };
         // Their seat, if they already chose one online or at another desk.
-        try {
-          const seatRes = await apiFetch(`/api/events/${eventId}/seating/registrations/${current.registrationId}/seat`);
-          current.seat = seatRes.data.seat;
-        } catch (err) { /* no seat is a normal answer */ }
+        if (seatingOn) {
+          try {
+            const seatRes = await apiFetch(`/api/events/${eventId}/seating/registrations/${current.registrationId}/seat`);
+            current.seat = seatRes.data.seat;
+          } catch (err) { /* no seat is a normal answer */ }
+        }
 
         render();
       } catch (err) {

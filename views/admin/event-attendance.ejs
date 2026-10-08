@@ -51,6 +51,7 @@ const stations = [
       <p class="mt-1 text-3xl font-semibold tabular-nums text-green-700"><%= stats.checkedIn %></p>
       <p class="text-xs text-slate-500"><%= stats.remaining %> not yet</p>
     </div>
+    <% if (locals.seatingFeature) { %>
     <div class="admin-card p-4">
       <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Seats given</p>
       <p class="mt-1 text-3xl font-semibold tabular-nums text-indigo-700"><%= seated %></p>
@@ -58,6 +59,7 @@ const stations = [
         <p class="text-xs text-slate-500">Seating is off</p>
       <% } %>
     </div>
+    <% } %>
     <div class="admin-card p-4">
       <p class="text-xs font-medium uppercase tracking-wide text-slate-500">In a hall now</p>
       <p class="mt-1 text-3xl font-semibold tabular-nums text-slate-900"><%= totalInside %></p>
@@ -82,7 +84,7 @@ const stations = [
         </div>
       <% }) %>
 
-      <% if (currentUser && currentUser.role === 'ADMIN') { %>
+      <% if (locals.seatingFeature && currentUser && currentUser.role === 'ADMIN') { %>
         <div class="admin-card flex flex-wrap items-center justify-between gap-4 p-5">
           <div class="min-w-0 max-w-xl">
             <p class="font-semibold text-slate-900">Seating plan</p>

@@ -6,6 +6,7 @@ const { ensureAuth, ensureGuest, ensureAdmin, ensureAdminOrChapterAdmin, ensureM
 // those pages (and signed-in users) get a session, so a visitor just reading
 // the site never creates one. See csrf.middleware.js.
 const { verifyCsrfToken, withCsrfToken } = require('../middleware/csrf.middleware');
+const { requireSeatingFeature } = require('../middleware/feature.middleware');
 
 const router = Router();
 
@@ -31,7 +32,7 @@ router.get('/events/:id/ticket', ensureAuth, pages.eventTicketPage);
 // Picking a seat, by the person who will sit in it. Beside the ticket rather
 // than under /admin: the desk can assign a seat, but so can the attendee, and
 // this is the half they drive.
-router.get('/events/:id/seat', ensureAuth, pages.eventSeatPickerPage);
+router.get('/events/:id/seat', requireSeatingFeature, ensureAuth, pages.eventSeatPickerPage);
 router.get('/articles', pages.articlesPage);
 router.get('/articles/:id', pages.articleDetailPage);
 // URLs kept as /chapters/* so any existing external links still resolve;
@@ -83,7 +84,7 @@ router.get('/admin/events/:id/rooms', ensureAdmin, pages.adminEventRoomsPage);
 router.get('/admin/events/:id/rooms/:roomId/scan', ensureAdmin, pages.adminRoomScanPage);
 // Main admin only: this page shows every attendee's name against a seat and
 // can reassign them, which is more than running a door.
-router.get('/admin/events/:id/seating', ensureMainAdminOnly, pages.adminEventSeatingPage);
+router.get('/admin/events/:id/seating', requireSeatingFeature, ensureMainAdminOnly, pages.adminEventSeatingPage);
 
 // Payments — MAIN_ADMIN only. Chapter admins have no access to payment data.
 router.get('/admin/payments', ensureMainAdminOnly, pages.adminPaymentsPage);

@@ -304,6 +304,9 @@ app.use((req, res, next) => {
   // text. Defined once here rather than repeated in each view, so a view
   // cannot quietly omit the escaping.
   res.locals.MENU_ITEM = 'block w-full text-left px-3 py-2 text-sm hover:bg-slate-50';
+  // Whether assigned seating exists in this release at all (SEATING_FEATURE).
+  // Views combine it with an event's own seatingEnabled; see isSeatingOn.
+  res.locals.seatingFeature = config.seatingFeature;
   res.locals.esc = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
   ));

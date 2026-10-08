@@ -18,6 +18,9 @@ stub('../src/services/sheetsSync.service', {
 });
 
 const crypto = require('crypto');
+// Seating is behind a site-wide switch (SEATING_FEATURE, off by default);
+// these tests are about seating, so they run with it on.
+process.env.SEATING_FEATURE = 'true';
 const prisma = require('../src/config/prisma');
 const seating = require('../src/services/seating.service');
 const rooms = require('../src/services/roomAttendance.service');
