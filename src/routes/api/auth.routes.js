@@ -5,7 +5,7 @@ const authApi = require('../../controllers/api/auth.api');
 const { apiAuth } = require('../../middleware/auth.middleware');
 const { verifyCsrfToken } = require('../../middleware/csrf.middleware');
 const { uploadProfileImage } = require('../../middleware/upload.middleware');
-const verifyImageSignature = require('../../middleware/verifyImageSignature');
+const { verifyRasterImageSignature } = require('../../middleware/verifyImageSignature');
 const { requireHuman } = require('../../services/captcha.service');
 
 const router = Router();
@@ -109,7 +109,7 @@ router.post(
   apiAuth,
   verifyCsrfToken,
   uploadProfileImage.single('profileImage'),
-  verifyImageSignature,
+  verifyRasterImageSignature,
   authApi.uploadProfileImage
 );
 // No visible check in front of this one any more.

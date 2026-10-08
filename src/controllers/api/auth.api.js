@@ -121,7 +121,9 @@ const uploadProfileImage = asyncHandler(async (req, res) => {
   const publicPath = await storageService.saveUpload(req.file.buffer, {
     folder: 'profile',
     prefix: 'profile',
-    extension: path.extname(req.file.originalname).toLowerCase(),
+    // From the checked bytes, not the filename: the extension decides the
+    // Content-Type the file is served with, and the filename is the uploader's.
+    extension: req.file.detectedExtension || path.extname(req.file.originalname).toLowerCase(),
   });
   const user = await authService.updateProfileImage(req.session.user.id, publicPath);
   req.session.user = user;

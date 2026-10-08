@@ -5,21 +5,29 @@ const AppError = require('../utils/AppError');
 // actual bytes against known image signatures before the file is ever handed
 // to storageService, so a mismatched file never reaches disk (or S3, later)
 // or gets served from /uploads.
-function matchesKnownImageSignature(buffer) {
+//
+// Identifies an upload by its first bytes rather than by what the browser
+// claimed or what the file was called. Returns the extension to store it
+// under, or null when it is not an image this app accepts.
+function detectImageType(buffer) {
   if (buffer.length >= 8 && buffer.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
-    return true; // PNG
+    return '.png';
   }
   if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
-    return true; // JPEG
+    return '.jpg';
   }
   if (buffer.length >= 12 && buffer.slice(0, 4).toString('ascii') === 'RIFF' && buffer.slice(8, 12).toString('ascii') === 'WEBP') {
-    return true; // WEBP
+    return '.webp';
   }
   const head = buffer.slice(0, 256).toString('utf8').trimStart().toLowerCase();
   if (head.startsWith('<?xml') || head.startsWith('<svg')) {
-    return true; // SVG (text-based, no fixed binary magic number)
+    return '.svg'; // SVG (text-based, no fixed binary magic number)
   }
-  return false;
+  return null;
+}
+
+function matchesKnownImageSignature(buffer) {
+  return detectImageType(buffer) !== null;
 }
 
 // Use as the middleware immediately after multer's `.single(field)`. Reads
@@ -29,11 +37,34 @@ function matchesKnownImageSignature(buffer) {
 function verifyImageSignature(req, res, next) {
   if (!req.file) return next();
 
-  if (!matchesKnownImageSignature(req.file.buffer)) {
+  const detected = detectImageType(req.file.buffer);
+  if (!detected) {
     return next(new AppError('The uploaded file is not a valid image', 400));
   }
+  req.file.detectedExtension = detected;
+
+  next();
+}
+
+// For uploads made by members rather than administrators. An SVG is a
+// document that can carry script, and a member's upload is served from this
+// site's own domain, so members get raster images only — checked here by
+// content, since the declared type and the filename are both the uploader's
+// to choose. The handler stores the file under detectedExtension, so what is
+// served back is the type that was actually checked.
+function verifyRasterImageSignature(req, res, next) {
+  if (!req.file) return next();
+
+  const detected = detectImageType(req.file.buffer);
+  if (!detected || detected === '.svg') {
+    return next(new AppError('Only PNG, JPEG, or WEBP images are allowed', 400));
+  }
+  req.file.detectedExtension = detected;
 
   next();
 }
 
 module.exports = verifyImageSignature;
+module.exports.verifyRasterImageSignature = verifyRasterImageSignature;
+module.exports.detectImageType = detectImageType;
+module.exports.matchesKnownImageSignature = matchesKnownImageSignature;
