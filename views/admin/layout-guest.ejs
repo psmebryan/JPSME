@@ -10,5 +10,11 @@
 <body class="min-h-screen bg-slate-50 flex items-center justify-center">
   <%- body %>
   <script src="/js/api.js"></script>
+  <%# The admin login can ask for the human check after repeated failures, so
+      it needs the same loaders as the public layout. %>
+  <script src="/js/captcha.js"></script>
+  <% if (locals.turnstileSiteKey) { %>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  <% } %>
 </body>
 </html>

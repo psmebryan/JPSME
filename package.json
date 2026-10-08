@@ -97,5 +97,10 @@
   },
   "engines": {
     "node": ">=18.17"
+  },
+  "overrides": {
+    "express-mysql-session": {
+      "mysql2": "$mysql2"
+    }
   }
 }

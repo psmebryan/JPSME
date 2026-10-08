@@ -462,7 +462,36 @@ async function sendEventInvitationEmail(invitation, event) {
   });
 }
 
+// The public contact form. Unlike the sends above this one is not
+// best-effort: the visitor is waiting to hear whether it went, so a failure is
+// returned and the page says so instead of thanking them for nothing.
+//
+// The visitor typed every field, so each is escaped for the HTML part, and the
+// subject has line breaks stripped.
+async function sendContactMessage({ firstName, lastName, email, message }) {
+  const name = `${firstName} ${lastName}`.replace(/[\r\n]+/g, ' ').trim();
+  try {
+    await transporter.sendMail({
+      from: MAIL_FROM,
+      to: config.email.contactTo,
+      replyTo: email,
+      subject: `Website message from ${name}`.slice(0, 150),
+      text: `From: ${name} <${email}>\n\n${message}\n\n--\nSent from the contact form at ${getAppUrl()}/contact. Reply to this email to answer them.`,
+      html: `
+        <p><strong>From:</strong> ${escapeHtml(name)} &lt;${escapeHtml(email)}&gt;</p>
+        <div style="white-space:pre-wrap;border-left:3px solid #c7d2fe;padding-left:12px;">${escapeHtml(message)}</div>
+        <p style="color:#666;font-size:13px;">Sent from the contact form at ${escapeHtml(getAppUrl())}/contact.
+        Reply to this email to answer them.</p>
+      `,
+    });
+    return true;
+  } catch (err) {
+    return reportSendFailure('contact message', config.email.contactTo, err);
+  }
+}
+
 module.exports = {
+  sendContactMessage,
   sendActivationEmail,
   sendEventCertificateEmail,
   sendPasswordResetEmail,

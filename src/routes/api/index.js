@@ -10,7 +10,9 @@ const webhookRoutes = require('./webhook.routes');
 const articleRoutes = require('./article.routes');
 const organizationRoutes = require('./organization.routes');
 const integrationRoutes = require('./integration.routes');
+const contactRoutes = require('./contact.routes');
 const { success } = require('../../utils/apiResponse');
+const { ensureCsrfToken } = require('../../middleware/csrf.middleware');
 const captchaService = require('../../services/captcha.service');
 const challengeService = require('../../services/challenge.service');
 
@@ -53,7 +55,9 @@ const baselineApiLimiter = rateLimit({
 router.use(baselineApiLimiter);
 
 // Lets client-side JS fetch the current CSRF token without a full page reload.
-router.get('/csrf-token', (req, res) => success(res, { csrfToken: req.session.csrfToken }));
+// Creates one if there is none: a page an anonymous visitor reads gets no
+// session, and api.js asks here before that page makes its first POST.
+router.get('/csrf-token', (req, res) => success(res, { csrfToken: ensureCsrfToken(req) }));
 
 // Hands out the built-in challenge image and remembers only its hash on the
 // session. Also the refresh button's endpoint — asking again abandons the
@@ -90,5 +94,6 @@ router.use('/payments', paymentRoutes);
 router.use('/webhooks', webhookRoutes);
 router.use('/articles', articleRoutes);
 router.use('/organizations', organizationRoutes);
+router.use('/contact', contactRoutes);
 
 module.exports = router;

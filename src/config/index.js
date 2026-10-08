@@ -200,6 +200,11 @@ const config = {
     return Number.isInteger(parsed) && parsed >= 1 && parsed <= 14 ? parsed : 3;
   },
   get trustProxy() { return envFlag('TRUST_PROXY'); },
+  // Assigned seating, site-wide. Off unless SEATING_FEATURE is set: while off,
+  // seating is unreachable for members and admins alike whatever an event's
+  // own seatingEnabled says, and the code and tables are left in place so
+  // turning it on brings everything back. See seating.service isSeatingOn.
+  get seatingFeature() { return envFlag('SEATING_FEATURE'); },
   get clusterWorkers() { return Math.max(1, Number(process.env.CLUSTER_WORKERS) || 1); },
 
   database: {
@@ -301,6 +306,10 @@ const config = {
     get brevoApiKey() { return process.env.BREVO_API_KEY; },
     get brevoSender() { return process.env.BREVO_SENDER; },
     get brevoWebhookSecret() { return process.env.BREVO_WEBHOOK_SECRET; },
+    // Where the public contact form delivers. The visitor's address goes in
+    // Reply-To, never in From — the sender must stay on the authenticated
+    // domain or the provider rejects the send.
+    get contactTo() { return process.env.CONTACT_EMAIL_TO || 'icto@psmeinc.org.ph'; },
     smtp: {
       get host() { return process.env.SMTP_HOST; },
       get port() { return Number(process.env.SMTP_PORT) || 587; },

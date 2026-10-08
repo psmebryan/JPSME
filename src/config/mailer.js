@@ -56,7 +56,7 @@ function buildBrevoTransport() {
   const apiKey = config.email.brevoApiKey;
 
   return {
-    sendMail: async ({ from, to, subject, text, html, attachments, tags }) => {
+    sendMail: async ({ from, to, replyTo, subject, text, html, attachments, tags }) => {
       const payload = {
         sender: parseAddress(from),
         to: [parseAddress(to)],
@@ -64,6 +64,9 @@ function buildBrevoTransport() {
         htmlContent: html,
         textContent: text,
       };
+      // nodemailer's replyTo, so a reply goes to whoever wrote in rather than
+      // back to the site's own sending address.
+      if (replyTo) payload.replyTo = parseAddress(replyTo);
       const brevoAttachments = await buildBrevoAttachments(attachments);
       if (brevoAttachments) payload.attachment = brevoAttachments;
       // Echoed back verbatim on every delivery-event webhook Brevo sends for

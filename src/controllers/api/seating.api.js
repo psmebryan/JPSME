@@ -3,6 +3,8 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { success, error } = require('../../utils/apiResponse');
 const seatingService = require('../../services/seating.service');
 const prisma = require('../../config/prisma');
+const AppError = require('../../utils/AppError');
+const { assertCanCheckIn } = require('../../services/checkin.service');
 
 // Assigned seating. Two audiences on the same data:
 //
@@ -56,7 +58,10 @@ const steppedOut = asyncHandler(async (req, res) => {
 });
 
 // What the desk offers when somebody has no seat yet.
+// Desk endpoints: apiAuth on the route only proves a sign-in, so both check
+// for check-in access to this event, the same access the desk's scans need.
 const availableSeats = asyncHandler(async (req, res) => {
+  await assertCanCheckIn(req.session.user, req.params.id);
   const seats = await seatingService.listAvailableSeats(req.params.id, {
     sectionId: req.query.sectionId || null,
     limit: req.query.limit,
@@ -67,7 +72,13 @@ const availableSeats = asyncHandler(async (req, res) => {
 // One person as the desk needs to see them: who they are, whether they have
 // arrived, and where they are sitting.
 const registrationSeat = asyncHandler(async (req, res) => {
-  const seat = await seatingService.getSeatFor(req.params.registrationId);
+  await assertCanCheckIn(req.session.user, req.params.id);
+  const registration = await prisma.eventRegistration.findFirst({
+    where: { id: Number(req.params.registrationId) || 0, eventId: Number(req.params.id) || 0 },
+    select: { id: true },
+  });
+  if (!registration) throw new AppError('Registration not found', 404);
+  const seat = await seatingService.getSeatFor(registration.id);
   return success(res, { seat });
 });
 

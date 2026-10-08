@@ -60,8 +60,19 @@ app.get('/health/db', async (req, res) => {
   }
 });
 
-app.get('/health/dependencies', (req, res) => {
-  res.status(200).json({
+// In production this one answers only with the right token (HEALTH_CHECK_TOKEN,
+// sent as X-Health-Token), and is a plain 404 without it. It is booleans only,
+// but which providers a site runs on is still a map for somebody probing it,
+// and nothing public needs it. /health and /health/db stay open for monitors.
+app.get('/health/dependencies', (req, res, next) => {
+  if (config.isProduction) {
+    const expected = process.env.HEALTH_CHECK_TOKEN || '';
+    const given = String(req.get('X-Health-Token') || '');
+    const ok = expected.length >= 16 && given.length === expected.length
+      && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected));
+    if (!ok) return res.status(404).json({ status: 'not found' });
+  }
+  return res.status(200).json({
     status: 'ok',
     dependencies: {
       database: !!config.database.url,
@@ -86,7 +97,11 @@ app.get('/health/dependencies', (req, res) => {
 // completion, with the method/path/status/duration together rather than
 // scattered across whatever a handler happened to console.log along the way.
 app.use((req, res, next) => {
-  req.id = req.get('X-Request-Id') || crypto.randomUUID();
+  // An upstream id is reused only when it looks like one. The header is the
+  // client's to set, and it goes into every log line for the request, so free
+  // text here could forge or garble log entries.
+  const upstreamId = req.get('X-Request-Id');
+  req.id = upstreamId && /^[A-Za-z0-9._-]{8,64}$/.test(upstreamId) ? upstreamId : crypto.randomUUID();
   res.setHeader('X-Request-Id', req.id);
   req.log = logger.child({ requestId: req.id });
 
@@ -104,6 +119,18 @@ app.use((req, res, next) => {
 });
 
 app.use(compression());
+
+// Browser features this site never uses are switched off, so injected or
+// third-party content cannot ask for them either. The camera stays allowed for
+// this site only: the check-in scanner reads tickets with it (qr-camera.js).
+const PERMISSIONS_POLICY = [
+  'camera=(self)', 'microphone=()', 'geolocation=()', 'payment=()', 'usb=()',
+  'magnetometer=()', 'gyroscope=()', 'accelerometer=()', 'interest-cohort=()',
+].join(', ');
+app.use((req, res, next) => {
+  res.setHeader('Permissions-Policy', PERMISSIONS_POLICY);
+  next();
+});
 
 // Per-request nonce so the handful of legitimate inline <script>/<style> tags
 // across the views can be explicitly authorized without weakening the CSP
@@ -175,7 +202,23 @@ app.set('layout', 'layout');
 // malicious SVG opened directly in a browser tab has its embedded script
 // blocked. Moving this static mount before helmet (e.g. "for performance")
 // would silently remove that protection.
-app.use('/uploads', express.static(path.join(__dirname, '..', 'public', 'uploads'), { maxAge: '7d', etag: true }));
+//
+// A second, stricter policy for uploads specifically, replacing the page
+// policy on these responses. An uploaded file is only ever meant to be shown
+// inside a page (<img>), never opened as a page itself, so if someone does
+// open one directly it gets no script, no plugins, no forms, no frames, and a
+// sandbox that gives it an opaque origin with no access to the site's cookies
+// or storage. Images displayed with <img> are unaffected: a response's CSP
+// only applies when that response is the document.
+// Set only on a file actually being served, not on the whole path: a missing
+// upload falls through to the ordinary 404 page, which needs the page policy.
+const UPLOADS_CSP = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox";
+
+app.use('/uploads', express.static(path.join(__dirname, '..', 'public', 'uploads'), {
+  maxAge: '7d',
+  etag: true,
+  setHeaders: (res) => res.setHeader('Content-Security-Policy', UPLOADS_CSP),
+}));
 
 // Uploads now live in the database (see dbStorage.driver.js — the host wipes
 // the filesystem on every deploy), so this answers what express.static above
@@ -218,6 +261,7 @@ app.use('/uploads', async (req, res, next) => {
 
     res.setHeader('Content-Type', file.mimeType);
     res.setHeader('Content-Length', file.size);
+    res.setHeader('Content-Security-Policy', UPLOADS_CSP);
     // Generated filenames carry a timestamp and random suffix, so a given URL
     // can never serve different bytes later — which is what makes immutable
     // honest here rather than optimistic.
@@ -251,7 +295,7 @@ app.use(express.static(path.join(__dirname, '..', 'public'), { etag: true }));
 // Make the logged-in user and CSRF token available to every view.
 app.use((req, res, next) => {
   res.locals.currentUser = req.session.user || null;
-  res.locals.csrfToken = req.session.csrfToken;
+  res.locals.csrfToken = req.session.csrfToken || '';
 
   // Shared by every view that builds row-menu items (see
   // views/partials/row-menu.ejs). Those items are assembled as HTML strings
@@ -260,6 +304,9 @@ app.use((req, res, next) => {
   // text. Defined once here rather than repeated in each view, so a view
   // cannot quietly omit the escaping.
   res.locals.MENU_ITEM = 'block w-full text-left px-3 py-2 text-sm hover:bg-slate-50';
+  // Whether assigned seating exists in this release at all (SEATING_FEATURE).
+  // Views combine it with an event's own seatingEnabled; see isSeatingOn.
+  res.locals.seatingFeature = config.seatingFeature;
   res.locals.esc = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
   ));

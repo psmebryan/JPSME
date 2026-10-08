@@ -13,6 +13,7 @@ const { apiAuth, apiAdmin } = require('../../middleware/auth.middleware');
 const { verifyCsrfToken } = require('../../middleware/csrf.middleware');
 const { uploadEventImage } = require('../../middleware/upload.middleware');
 const verifyImageSignature = require('../../middleware/verifyImageSignature');
+const { requireSeatingFeature } = require('../../middleware/feature.middleware');
 
 const router = Router();
 
@@ -237,6 +238,11 @@ router.post(
 // Two maps over the same seats. The admin one carries names; the attendee one
 // does not, and is scoped to the caller's own registration — which is resolved
 // server-side, so a request cannot name somebody else's.
+// Every seating route, members' and admins', is a 404 while SEATING_FEATURE is
+// off. Mounted ahead of them, and ahead of the auth checks, so the answer is
+// the same whoever asks.
+router.use('/:id/seating', requireSeatingFeature);
+
 router.get('/:id/seating/map', apiAdmin, seatingApi.adminMap);
 // Who has left their seat, and for how long. Behind the same gate as the admin
 // map, because it names people and reports their movements.

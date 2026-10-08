@@ -10,12 +10,18 @@
     <input type="hidden" name="context" value="admin">
     <div>
       <label class="form-label" for="email">Email</label>
-      <input type="email" id="email" name="email" required class="form-input">
+      <input type="email" id="email" name="email" required class="form-input" value="<%= locals.email || '' %>">
     </div>
     <div>
       <label class="form-label" for="password">Password</label>
       <input type="password" id="password" name="password" required class="form-input">
     </div>
+    <% if (locals.humanCheck) { %>
+      <div data-login-human-check>
+        <p class="text-sm text-slate-600">For your security, please complete this check to sign in.</p>
+        <%- include('../partials/human-check') %>
+      </div>
+    <% } %>
     <button type="submit" class="btn-primary w-full">
       Login
     </button>

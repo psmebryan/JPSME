@@ -2,6 +2,22 @@ const { validationResult } = require('express-validator');
 const asyncHandler = require('../../utils/asyncHandler');
 const { success, error } = require('../../utils/apiResponse');
 const roomService = require('../../services/roomAttendance.service');
+const { assertCanCheckIn } = require('../../services/checkin.service');
+const prisma = require('../../config/prisma');
+const AppError = require('../../utils/AppError');
+
+// The read endpoints below are behind apiAuth on the route, which only proves
+// somebody is signed in. What they return — who is in which hall, where one
+// person has been — is the door staff's business, so each one checks for the
+// same check-in access the scans require. Without it any member could list
+// the people inside a room by guessing ids.
+async function assertRegistrationInEvent(eventId, registrationId) {
+  const registration = await prisma.eventRegistration.findFirst({
+    where: { id: Number(registrationId) || 0, eventId: Number(eventId) || 0 },
+    select: { id: true },
+  });
+  if (!registration) throw new AppError('Registration not found', 404);
+}
 
 // Rooms and room attendance. Sits alongside checkin.api rather than inside it:
 // arriving at the venue and entering a hall are different scans at different
@@ -22,6 +38,7 @@ function checkValidation(req, res) {
 // --- configuration ----------------------------------------------------------
 
 const listRooms = asyncHandler(async (req, res) => {
+  await assertCanCheckIn(req.session.user, req.params.id);
   const rooms = await roomService.listRooms(req.params.id);
   return success(res, { rooms });
 });
@@ -64,6 +81,7 @@ const deleteRoom = asyncHandler(async (req, res) => {
 // --- sessions ---------------------------------------------------------------
 
 const listSessions = asyncHandler(async (req, res) => {
+  await assertCanCheckIn(req.session.user, req.params.id);
   const sessions = await roomService.listSessions(req.params.id);
   return success(res, { sessions });
 });
@@ -109,6 +127,7 @@ const scan = asyncHandler(async (req, res) => {
 });
 
 const listInside = asyncHandler(async (req, res) => {
+  await assertCanCheckIn(req.session.user, req.params.id);
   const inside = await roomService.listInside(req.params.id, req.params.roomId);
   return success(res, { inside, count: inside.length });
 });
@@ -127,6 +146,11 @@ const overrideState = asyncHandler(async (req, res) => {
 });
 
 const attendanceHistory = asyncHandler(async (req, res) => {
+  await assertCanCheckIn(req.session.user, req.params.id);
+  // The history query is keyed on the registration alone, so pin it to the
+  // event the caller has access to — otherwise access to one event would
+  // read any registration's movements.
+  await assertRegistrationInEvent(req.params.id, req.params.registrationId);
   const history = await roomService.getAttendanceHistory(req.params.registrationId);
   return success(res, { history });
 });

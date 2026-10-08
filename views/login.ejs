@@ -44,6 +44,14 @@
           it — not buried under the form where they would have to fail first. %>
       <a href="/forgot-password" class="text-sm text-indigo-600 hover:underline">Forgot your password?</a>
     </div>
+    <%# Only after repeated failures for this address or network; see
+        loginThrottle.service.js. Somebody signing in normally never sees it. %>
+    <% if (locals.humanCheck) { %>
+      <div data-login-human-check>
+        <p class="text-sm text-gray-600">For your security, please complete this check to sign in.</p>
+        <%- include('partials/human-check') %>
+      </div>
+    <% } %>
     <button type="submit" class="w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700">
       Login
     </button>

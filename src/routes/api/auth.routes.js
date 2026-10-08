@@ -5,8 +5,9 @@ const authApi = require('../../controllers/api/auth.api');
 const { apiAuth } = require('../../middleware/auth.middleware');
 const { verifyCsrfToken } = require('../../middleware/csrf.middleware');
 const { uploadProfileImage } = require('../../middleware/upload.middleware');
-const verifyImageSignature = require('../../middleware/verifyImageSignature');
+const { verifyRasterImageSignature } = require('../../middleware/verifyImageSignature');
 const { requireHuman } = require('../../services/captcha.service');
+const loginThrottle = require('../../services/loginThrottle.service');
 
 const router = Router();
 
@@ -70,6 +71,32 @@ const registerValidators = [
   body('next').optional({ checkFalsy: true }).isLength({ max: 500 }),
 ];
 
+// The human check on sign-in, only once it is needed: after a few failures for
+// the typed address or from this network (loginThrottle.service.js). Before
+// that, only the invisible honeypot applies, so somebody who types their
+// password correctly never sees a captcha.
+//
+// Decided before the password is looked at, from counts kept for every typed
+// address whether or not it has an account, so the answer is the same for a
+// registered and an unregistered email.
+const honeypotOnly = requireHuman({ challenge: false });
+const fullHumanCheck = requireHuman();
+async function loginHumanCheck(req, res, next) {
+  const { captchaRequired } = await loginThrottle.status(req.body && req.body.email, req.ip);
+  if (!captchaRequired) return honeypotOnly(req, res, next);
+
+  const body = req.body || {};
+  if (!body.captchaToken && !body.challengeAnswer) {
+    return res.status(400).json({
+      success: false,
+      message: 'Please complete the security check, then sign in again.',
+      errors: null,
+      code: 'HUMAN_CHECK_REQUIRED',
+    });
+  }
+  return fullHumanCheck(req, res, next);
+}
+
 const loginValidators = [
   body('email').trim().isEmail().withMessage('A valid email is required').toLowerCase(),
   body('password').notEmpty().withMessage('Password is required'),
@@ -100,7 +127,7 @@ const profileValidators = [
 // should be turned away before the server spends anything parsing what it
 // claimed to be.
 router.post('/register', verifyCsrfToken, registerLimiter, requireHuman(), registerValidators, authApi.register);
-router.post('/login', verifyCsrfToken, loginLimiter, loginValidators, authApi.login);
+router.post('/login', verifyCsrfToken, loginLimiter, loginHumanCheck, loginValidators, authApi.login);
 router.post('/logout', verifyCsrfToken, authApi.logout);
 router.get('/me', apiAuth, authApi.me);
 router.put('/me/profile', apiAuth, verifyCsrfToken, profileValidators, authApi.updateProfile);
@@ -109,7 +136,7 @@ router.post(
   apiAuth,
   verifyCsrfToken,
   uploadProfileImage.single('profileImage'),
-  verifyImageSignature,
+  verifyRasterImageSignature,
   authApi.uploadProfileImage
 );
 // No visible check in front of this one any more.
@@ -222,7 +249,9 @@ const resetLimiter = rateLimit({
 
 router.post(
   '/forgot-password',
-  verifyCsrfToken, forgotLimiter,
+  // Always behind the human check: every accepted request is a real email to
+  // a real inbox, which makes this form worth scripting.
+  verifyCsrfToken, forgotLimiter, requireHuman(),
   [body('email').trim().isEmail().withMessage('A valid email is required').toLowerCase()],
   authApi.forgotPassword
 );

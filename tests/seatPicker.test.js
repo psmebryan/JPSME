@@ -408,7 +408,9 @@ async function main() {
 
   await test('the route is registered behind a login', async () => {
     const routes = fs.readFileSync(path.join(ROOT, 'src', 'routes', 'pages.routes.js'), 'utf8');
-    assert(/'\/events\/:id\/seat', ensureAuth, pages\.eventSeatPickerPage/.test(routes),
+    // The site-wide seating switch may sit in front (requireSeatingFeature);
+    // the login check must still be on the route.
+    assert(/'\/events\/:id\/seat', (requireSeatingFeature, )?ensureAuth, pages\.eventSeatPickerPage/.test(routes),
       'the seat page requires a session');
   });
 }

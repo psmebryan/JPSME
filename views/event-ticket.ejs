@@ -93,7 +93,7 @@ function when(e) {
       saved as an image, and a link is no use in either. Shown only when the
       event actually uses assigned seating, so nobody is invited to choose a
       seat that does not exist. %>
-  <% if (event.seatingEnabled) { %>
+  <% if (locals.seatingFeature && event.seatingEnabled) { %>
     <div class="mt-4 text-center">
       <a href="/events/<%= event.id %>/seat" class="btn-primary inline-block px-6 py-2.5">
         <%= locals.attendance && attendance.seat ? 'Change my seat' : 'Choose my seat' %>

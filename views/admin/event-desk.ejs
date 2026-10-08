@@ -22,7 +22,7 @@
 <div class="max-w-5xl mx-auto"
      data-desk-root
      data-event-id="<%= event.id %>"
-     data-seating="<%= event.seatingEnabled ? 'on' : 'off' %>">
+     data-seating="<%= locals.seatingFeature && event.seatingEnabled ? 'on' : 'off' %>">
 
   <%- include('../partials/event-ops-nav', { event, active: 'desk' }) %>
 
@@ -38,7 +38,9 @@
     </label>
   </div>
 
-  <% if (!event.seatingEnabled) { %>
+  <%# Only when seating exists in this release: otherwise there is nothing to
+      turn on, and the link would lead to a 404. %>
+  <% if (locals.seatingFeature && !event.seatingEnabled) { %>
     <div class="mt-4 rounded-lg border border-slate-300 bg-slate-50 p-4 text-sm text-slate-700">
       Assigned seating is off for this event, so this desk just admits people.
       <a href="/admin/events/<%= event.id %>/seating" class="text-indigo-600 hover:underline">Turn it on</a>

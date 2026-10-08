@@ -44,6 +44,8 @@ const isMainAdmin = locals.currentUser && currentUser.role === 'ADMIN';
   <nav class="-mb-px flex gap-1 overflow-x-auto" aria-label="Event day">
     <% TABS.forEach((tab) => { %>
       <% if (tab.mainAdminOnly && !isMainAdmin) return; %>
+      <%# Seating is hidden for this release unless SEATING_FEATURE is on. %>
+      <% if (tab.key === 'seating' && !locals.seatingFeature) return; %>
       <a href="<%= tab.href %>"
          <%# Unescaped: this is an attribute, not text. Escaped, its quotes come
              out as &quot; and the attribute never exists — which costs a screen

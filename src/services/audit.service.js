@@ -63,6 +63,9 @@ const AUDIT_ACTIONS = [
   // Seat configuration, and by-hand seat changes.
   'SEATING_UPDATED',
   'SEAT_OVERRIDDEN',
+  // Sign-in failures, and an address reaching the lock threshold.
+  'LOGIN_FAILED',
+  'ACCOUNT_LOCKED',
 ];
 
 const SAFE_USER_SELECT = { id: true, firstName: true, lastName: true, email: true };

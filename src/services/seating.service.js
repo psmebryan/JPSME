@@ -645,10 +645,17 @@ async function loadSeat(eventId, seatId) {
   return seat;
 }
 
+// Whether an event uses assigned seating right now: the site-wide switch
+// (SEATING_FEATURE) AND the event's own setting. Everything that decides
+// whether to offer a seat asks this, never event.seatingEnabled alone.
+function isSeatingOn(event) {
+  return Boolean(config.seatingFeature && event && event.seatingEnabled);
+}
+
 async function assertSeatable(eventId, registrationId) {
   const event = await prisma.event.findUnique({ where: { id: Number(eventId) } });
   if (!event) throw new AppError('Event not found', 404);
-  if (!event.seatingEnabled) throw new AppError('This event does not use assigned seating', 400, 'SEATING_DISABLED');
+  if (!isSeatingOn(event)) throw new AppError('This event does not use assigned seating', 400, 'SEATING_DISABLED');
 
   const registration = await prisma.eventRegistration.findUnique({ where: { id: Number(registrationId) } });
   if (!registration || registration.eventId !== Number(eventId)) {
@@ -941,6 +948,7 @@ async function getSeatHistory(eventId, seatId) {
 }
 
 module.exports = {
+  isSeatingOn,
   HOLD_MS,
   getSeatMap,
   releaseAbandonedSeats,

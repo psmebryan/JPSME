@@ -5,6 +5,10 @@ const ALLOWED_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'im
 // pdfkit's doc.image() only supports PNG/JPEG, so certificate backgrounds
 // (which get composited into a PDF) can't accept WEBP/SVG like other uploads.
 const CERTIFICATE_MIME_TYPES = new Set(['image/png', 'image/jpeg']);
+// Member uploads: raster only. An SVG can carry script and is served from this
+// site's own domain, which is acceptable from an administrator and not from
+// any signed-in member. verifyRasterImageSignature re-checks the bytes.
+const MEMBER_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
 // memoryStorage, not diskStorage — the file lands in req.file.buffer instead
 // of being written straight to disk by multer itself. Every controller then
@@ -84,7 +88,7 @@ function makeUpload(allowedMimeTypes, message, maxFileSize) {
 // what used to be an unexplained error. Profile photos come straight off a
 // phone camera and are no smaller.
 const uploadLogo = makeUpload(ALLOWED_MIME_TYPES, 'Only PNG, JPEG, WEBP, or SVG images are allowed', 5 * 1024 * 1024);
-const uploadProfileImage = makeUpload(ALLOWED_MIME_TYPES, 'Only PNG, JPEG, WEBP, or SVG images are allowed', 5 * 1024 * 1024);
+const uploadProfileImage = makeUpload(MEMBER_IMAGE_MIME_TYPES, 'Only PNG, JPEG, or WEBP images are allowed', 5 * 1024 * 1024);
 const uploadEventImage = makeUpload(ALLOWED_MIME_TYPES, 'Only PNG, JPEG, WEBP, or SVG images are allowed', 3 * 1024 * 1024);
 const uploadSponsorLogo = makeUpload(ALLOWED_MIME_TYPES, 'Only PNG, JPEG, WEBP, or SVG images are allowed', 5 * 1024 * 1024);
 const uploadArticleImage = makeUpload(ALLOWED_MIME_TYPES, 'Only PNG, JPEG, WEBP, or SVG images are allowed', 3 * 1024 * 1024);

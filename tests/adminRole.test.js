@@ -84,7 +84,24 @@ async function auditFor(userId) {
   });
 }
 
+// A stored session for the user, shaped as express-mysql-session writes it.
+async function signIn(user) {
+  const sid = `${TAG}${user.id}-${Date.now()}`;
+  const data = JSON.stringify({ cookie: {}, user: { id: user.id, role: user.role, status: user.status } });
+  await prisma.$executeRawUnsafe(
+    'INSERT INTO sessions (session_id, expires, data) VALUES (?, ?, ?)',
+    sid, Math.floor(Date.now() / 1000) + 3600, data
+  );
+  return sid;
+}
+
+async function sessionExists(sid) {
+  const rows = await prisma.$queryRawUnsafe('SELECT session_id FROM sessions WHERE session_id = ?', sid);
+  return rows.length > 0;
+}
+
 async function cleanup() {
+  await prisma.$executeRawUnsafe('DELETE FROM sessions WHERE session_id LIKE ?', `${TAG}%`).catch(() => {});
   if (!created.length) return;
   await prisma.auditLog.deleteMany({ where: { targetUserId: { in: created } } });
   await prisma.user.deleteMany({ where: { id: { in: created } } });
@@ -177,6 +194,39 @@ async function main() {
     await userService.updateUser(member.id, { role: 'CHAPTER_ADMIN', phone: '0917' }, { allowAdminRole: true, actorId: standingAdmin.id });
     assertEqual((await auditFor(member.id)).length, 0, 'no entry for a no-op');
     assertEqual((await read(member.id)).phone, '0917', 'while the real edit still saved');
+  });
+
+  // The session keeps the role from sign-in, so a demotion has to end it or
+  // the demoted admin keeps admin access until the session expires.
+  await test('demoting an admin signs them out everywhere', async () => {
+    const admin = await makeUser('ADMIN');
+    const sid = await signIn(admin);
+    await userService.updateUser(admin.id, { role: 'USER' }, { allowAdminRole: true, actorId: standingAdmin.id });
+    assert(!(await sessionExists(sid)), 'the demoted admin session is gone');
+  });
+
+  await test('an edit that leaves the role alone keeps them signed in', async () => {
+    const member = await makeUser('CHAPTER_ADMIN');
+    const sid = await signIn(member);
+    await userService.updateUser(member.id, { phone: '0919' }, { allowAdminRole: true, actorId: standingAdmin.id });
+    assert(await sessionExists(sid), 'session untouched by an ordinary edit');
+  });
+
+  await test('rejecting a member signs them out, approving does not', async () => {
+    const member = await makeUser('USER');
+    await prisma.user.update({ where: { id: member.id }, data: { emailVerifiedAt: new Date() } });
+    const kept = await signIn(member);
+    await userService.setStatus(member.id, 'APPROVED', { actorId: standingAdmin.id, skipApprovalEmail: true });
+    assert(await sessionExists(kept), 'approval keeps the session');
+    await userService.setStatus(member.id, 'REJECTED', { actorId: standingAdmin.id });
+    assert(!(await sessionExists(kept)), 'rejection ends it');
+  });
+
+  await test('deleting a member signs them out', async () => {
+    const member = await makeUser('USER');
+    const sid = await signIn(member);
+    await userService.deleteUser(member.id);
+    assert(!(await sessionExists(sid)), 'the deleted member session is gone');
   });
 
   await test('editing a member without sending a role leaves it alone', async () => {
