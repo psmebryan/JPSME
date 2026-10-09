@@ -241,6 +241,16 @@ async function updateProfile(userId, { firstName, lastName, middleInitial, phone
   if (firstName && firstName.trim()) data.firstName = normalizeName(firstName);
   if (lastName && lastName.trim()) data.lastName = normalizeName(lastName);
 
+  // A chapter admin's organization is not theirs to change. It is the scope of
+  // their admin access (apiAdminOrChapterAdmin reads it from the session this
+  // update refreshes), so letting them pick it would let any chapter admin
+  // move themselves to the top of the tree and manage every member under it.
+  // It is changed by a main admin under Users -> Edit, which also signs them
+  // out so the new scope takes effect cleanly. Ignored rather than refused, so
+  // the rest of their profile still saves.
+  const current = await prisma.user.findUnique({ where: { id: Number(userId) }, select: { role: true } });
+  if (current && current.role === 'CHAPTER_ADMIN') delete data.organizationId;
+
   const user = await prisma.user.update({
     where: { id: Number(userId) },
     data,

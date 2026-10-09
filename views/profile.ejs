@@ -395,6 +395,20 @@
                      mean re-picking the whole chain. It replaced a single flat list
                      of every organization, which gave no indication of where an
                      entry sat in the hierarchy. -->
+                <% if (profileData.role === 'CHAPTER_ADMIN') { %>
+                <%# A chapter admin's organization is the scope of their admin access,
+                    so it is shown, not edited. A main admin changes it under
+                    Users -> Edit. The server ignores it from here either way. %>
+                <div class="md:col-span-2">
+                  <p class="block text-sm font-medium mb-1">Organization</p>
+                  <p class="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
+                    <%= (profileData.organization && profileData.organization.name) || 'Not assigned' %>
+                  </p>
+                  <p class="text-xs text-gray-500 mt-1">
+                    This is the organization you administer. To change it, ask a main administrator.
+                  </p>
+                </div>
+                <% } else { %>
                 <div class="md:col-span-2">
                   <div class="relative mb-3">
                     <label class="block text-sm font-medium mb-1" for="organization-search">
@@ -425,6 +439,7 @@
                   </p>
                   <p id="chapter-error" class="hidden text-xs text-red-600 mt-1">Please select your organization.</p>
                 </div>
+                <% } %>
 
                 <div>
                   <label class="block text-sm font-medium mb-1" for="yearLevel">Year level</label>
