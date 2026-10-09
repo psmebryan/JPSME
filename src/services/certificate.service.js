@@ -7,6 +7,94 @@ const storageService = require('./storage.service');
 // loop payment -> registration -> event -> certificate.
 const membershipService = require('./membership.service');
 const { substituteTokens, formatDate, fullName } = require('../utils/templateTokens');
+const settingsService = require('./settings.service');
+
+// --- Layout -------------------------------------------------------------------
+//
+// Two ways to draw an event certificate:
+//
+//   text  The original: the background (or a plain border) with the title and
+//         body text printed over it.
+//   name  A finished design made elsewhere (Canva), uploaded as the background
+//         with its own wording and signatures already on it. Only the
+//         recipient's name is printed, at the spot the design leaves for it.
+//
+// The defaults are measured from the 16th SNC design: the NAME placeholder's
+// baseline sits 50.78% down an A4 landscape page, its capitals are 31.2pt tall
+// (44.3pt Helvetica Bold, the size Canva reports), in #2b508c, centred, and the
+// rule under it spans 69% of the width — a longer name is shrunk to fit it.
+//
+// Kept as JSON in site settings, keyed by event, so a design change needs no
+// database migration.
+const NAME_FONTS = ['Helvetica-Bold', 'Helvetica', 'Times-Bold', 'Times-Roman'];
+const LAYOUT_DEFAULTS = {
+  mode: 'text',
+  nameColor: '#2b508c',
+  nameSize: 44.3,
+  nameBaseline: 50.78,
+  nameCenterX: 50,
+  nameMaxWidth: 69,
+  nameFont: 'Helvetica-Bold',
+  nameUppercase: false,
+};
+
+function layoutKey(eventId) {
+  return `certificate_layout_event_${Number(eventId)}`;
+}
+
+// Anything missing or out of range falls back to the default rather than
+// drawing a name off the page.
+function sanitizeLayout(input = {}) {
+  const num = (v, lo, hi, dflt) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= lo && n <= hi ? Math.round(n * 100) / 100 : dflt;
+  };
+  return {
+    mode: input.mode === 'name' ? 'name' : 'text',
+    nameColor: /^#[0-9a-fA-F]{6}$/.test(String(input.nameColor || '')) ? input.nameColor : LAYOUT_DEFAULTS.nameColor,
+    nameSize: num(input.nameSize, 6, 150, LAYOUT_DEFAULTS.nameSize),
+    nameBaseline: num(input.nameBaseline, 3, 97, LAYOUT_DEFAULTS.nameBaseline),
+    nameCenterX: num(input.nameCenterX, 10, 90, LAYOUT_DEFAULTS.nameCenterX),
+    nameMaxWidth: num(input.nameMaxWidth, 20, 100, LAYOUT_DEFAULTS.nameMaxWidth),
+    nameFont: NAME_FONTS.includes(input.nameFont) ? input.nameFont : LAYOUT_DEFAULTS.nameFont,
+    nameUppercase: input.nameUppercase === true || input.nameUppercase === 'true' || input.nameUppercase === 'on',
+  };
+}
+
+async function getEventLayout(eventId) {
+  const raw = await settingsService.getSetting(layoutKey(eventId), null);
+  if (!raw) return { ...LAYOUT_DEFAULTS };
+  try { return sanitizeLayout(JSON.parse(raw)); } catch (err) { return { ...LAYOUT_DEFAULTS }; }
+}
+
+async function setEventLayout(eventId, layout) {
+  const clean = sanitizeLayout(layout);
+  await settingsService.setSetting(layoutKey(eventId), JSON.stringify(clean));
+  return clean;
+}
+
+// Draws just the recipient's name, centred on its baseline, shrinking a long
+// name so it never runs past the line the design gives it.
+function drawNameOnly(doc, layout, fields) {
+  const { width, height } = doc.page;
+  let text = String(fields.fullName || '').trim();
+  if (layout.nameUppercase) text = text.toUpperCase();
+  let size = layout.nameSize;
+  doc.font(layout.nameFont).fontSize(size);
+  const maxWidth = (width * layout.nameMaxWidth) / 100;
+  const natural = doc.widthOfString(text);
+  if (natural > maxWidth) {
+    size = (size * maxWidth) / natural;
+    doc.fontSize(size);
+  }
+  const textWidth = doc.widthOfString(text);
+  const x = (width * layout.nameCenterX) / 100 - textWidth / 2;
+  // pdfkit places text by the top of its line box; move up by the font's
+  // ascender so the baseline lands exactly where the design's placeholder sat.
+  const baseline = (height * layout.nameBaseline) / 100;
+  const top = baseline - (doc._font.ascender / 1000) * size;
+  doc.fillColor(layout.nameColor).text(text, x, top, { lineBreak: false });
+}
 
 const DEFAULT_MEMBERSHIP_TITLE = 'Certificate of Membership';
 const DEFAULT_MEMBERSHIP_BODY =
@@ -59,6 +147,12 @@ async function renderCertificatePdf(template, fields) {
       drawFallbackBackground(doc, width, height);
     }
 
+    if (template.layout && template.layout.mode === 'name') {
+      drawNameOnly(doc, template.layout, fields);
+      doc.end();
+      return;
+    }
+
     const color = /^#[0-9a-fA-F]{6}$/.test(template.textColor) ? template.textColor : '#1a1a2e';
     const title = substituteTokens(template.title, fields);
     const body = substituteTokens(template.bodyText, fields);
@@ -101,6 +195,7 @@ async function upsertMembershipTemplate({ title, bodyText, textColor }) {
       textColor: textColor !== undefined ? textColor : template.textColor,
     },
   });
+  return { ...updated, layout: savedLayout };
 }
 
 async function setMembershipTemplateBackground(publicPath) {
@@ -120,12 +215,15 @@ async function getEventTemplate(eventId) {
       data: { type: 'EVENT', eventId: Number(eventId), title: DEFAULT_EVENT_TITLE, bodyText: DEFAULT_EVENT_BODY },
     });
   }
-  return template;
+  // The layout travels with the template, so every render — preview, bulk
+  // generate, send — draws the same design.
+  return { ...template, layout: await getEventLayout(eventId) };
 }
 
-async function upsertEventTemplate(eventId, { title, bodyText, textColor }) {
+async function upsertEventTemplate(eventId, { title, bodyText, textColor, layout }) {
   const template = await getEventTemplate(eventId);
-  return prisma.certificateTemplate.update({
+  const savedLayout = layout ? await setEventLayout(eventId, layout) : template.layout;
+  const updated = await prisma.certificateTemplate.update({
     where: { id: template.id },
     data: {
       title: title !== undefined ? title : template.title,
@@ -574,6 +672,7 @@ async function sendEventCertificateEmail({ eventId, userId, adminUserId = null }
 }
 
 async function deleteEventCertificateAssets(eventId) {
+  await prisma.siteSetting.deleteMany({ where: { key: layoutKey(eventId) } }).catch(() => {});
   await storageService.removeFolder(`storage/certificates/events/${eventId}`);
 
   const template = await prisma.certificateTemplate.findUnique({ where: { eventId: Number(eventId) } });
@@ -602,4 +701,8 @@ module.exports = {
   deleteEventCertificateAssets,
   queueEventCertificateEmails,
   sendEventCertificateEmail,
+  getEventLayout,
+  sanitizeLayout,
+  LAYOUT_DEFAULTS,
+  NAME_FONTS,
 };

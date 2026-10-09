@@ -19,6 +19,11 @@ const certificateTemplateValidators = [
   body('title').optional({ checkFalsy: true }).trim().isLength({ max: 200 }).withMessage('Title is too long'),
   body('bodyText').optional({ checkFalsy: true }).trim().isLength({ max: 2000 }).withMessage('Body text is too long'),
   body('textColor').optional({ checkFalsy: true }).matches(/^#[0-9a-fA-F]{6}$/).withMessage('Text color must be a hex value like #1a1a2e'),
+  body('layoutMode').optional({ checkFalsy: true }).isIn(['text', 'name']).withMessage('Choose a design type'),
+  body('nameColor').optional({ checkFalsy: true }).matches(/^#[0-9a-fA-F]{6}$/).withMessage('Name color must be a hex value like #2b508c'),
+  body('nameSize').optional({ checkFalsy: true }).isFloat({ min: 6, max: 150 }).withMessage('Name size must be between 6 and 150'),
+  body('nameBaseline').optional({ checkFalsy: true }).isFloat({ min: 3, max: 97 }).withMessage('Name position must be between 3% and 97%'),
+  body('nameMaxWidth').optional({ checkFalsy: true }).isFloat({ min: 20, max: 100 }).withMessage('Name width must be between 20% and 100%'),
 ];
 
 const emailTemplateValidators = [
