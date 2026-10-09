@@ -507,7 +507,7 @@ function initMembershipCertificateModule() {
         method: 'PUT',
         body: JSON.stringify(Object.fromEntries(formData)),
       });
-      showToast('Certificate updated');
+      showToast('Certificate saved. Use Preview PDF to check it, then Regenerate any certificates made before this change.');
     } catch (err) {
       showToast(err.errors?.[0]?.msg || err.message, 'error');
     }
@@ -574,6 +574,16 @@ function initEventCertificateModule() {
   });
 
   const textForm = document.getElementById('event-cert-text-form');
+
+  // Design type: the name settings for an uploaded design, or the title and
+  // text for a plain certificate. Only the relevant fields are shown.
+  textForm?.addEventListener('change', (e) => {
+    if (e.target.name !== 'layoutMode') return;
+    const nameMode = e.target.value === 'name';
+    document.getElementById('cert-name-fields')?.classList.toggle('hidden', !nameMode);
+    textForm.querySelectorAll('.cert-text-fields').forEach((el) => el.classList.toggle('hidden', nameMode));
+  });
+
   textForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const formData = new FormData(textForm);

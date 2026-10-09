@@ -79,7 +79,21 @@ const getEventTemplate = asyncHandler(async (req, res) => {
 
 const updateEventTemplate = asyncHandler(async (req, res) => {
   if (!checkValidation(req, res)) return;
-  const template = await certificateService.upsertEventTemplate(req.params.eventId, req.body);
+  const b = req.body;
+  // The design fields arrive flat from the page's form; only sent when the
+  // form has them, so an older client cannot reset a saved layout.
+  const layout = b.layoutMode !== undefined ? {
+    mode: b.layoutMode,
+    nameColor: b.nameColor,
+    nameSize: b.nameSize,
+    nameBaseline: b.nameBaseline,
+    nameMaxWidth: b.nameMaxWidth,
+    nameFont: b.nameFont,
+    nameUppercase: b.nameUppercase,
+  } : undefined;
+  const template = await certificateService.upsertEventTemplate(req.params.eventId, {
+    title: b.title, bodyText: b.bodyText, textColor: b.textColor, layout,
+  });
   return success(res, { template }, 'Event certificate template updated');
 });
 

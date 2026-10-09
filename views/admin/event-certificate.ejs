@@ -39,16 +39,58 @@ function statusBadge(r) {
   <section class="admin-card p-6 mb-6">
     <h2 class="font-semibold mb-1">Certificate Text</h2>
     <p class="mb-4 text-xs text-slate-500">Available tokens: <code>{{fullName}}</code>, <code>{{firstName}}</code>, <code>{{lastName}}</code>, <code>{{middleInitial}}</code>, <code>{{chapterName}}</code>, <code>{{eventTitle}}</code>, <code>{{eventDate}}</code></p>
+    <% const L = template.layout || {}; const nameMode = L.mode === 'name'; %>
     <form id="event-cert-text-form" class="space-y-4">
-      <div>
+      <fieldset>
+        <legend class="form-label">Design type</legend>
+        <div class="mt-1 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <label class="inline-flex items-center gap-2"><input type="radio" name="layoutMode" value="text" <%= nameMode ? '' : 'checked' %>> Plain certificate &mdash; print the title and text below</label>
+          <label class="inline-flex items-center gap-2"><input type="radio" name="layoutMode" value="name" <%= nameMode ? 'checked' : '' %>> Uploaded design &mdash; print the name only</label>
+        </div>
+        <p class="mt-1 text-xs text-slate-500">Use &ldquo;Uploaded design&rdquo; for a finished certificate made in Canva: upload it as the background with the name left blank, and only the member&rsquo;s name is printed on it, as First M. Last.</p>
+      </fieldset>
+
+      <div id="cert-name-fields" class="grid gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 <%= nameMode ? '' : 'hidden' %>">
+        <div>
+          <label for="cert-name-color" class="form-label">Name color</label>
+          <input id="cert-name-color" name="nameColor" type="color" value="<%= L.nameColor || '#2b508c' %>" class="h-10 w-20 rounded border border-slate-300">
+        </div>
+        <div>
+          <label for="cert-name-size" class="form-label">Name size (pt)</label>
+          <input id="cert-name-size" name="nameSize" type="number" step="0.1" min="6" max="150" value="<%= L.nameSize || 44.3 %>" class="form-input">
+          <p class="mt-1 text-xs text-slate-500">The size Canva shows. Long names shrink to fit the line.</p>
+        </div>
+        <div>
+          <label for="cert-name-baseline" class="form-label">Name position from the top (%)</label>
+          <input id="cert-name-baseline" name="nameBaseline" type="number" step="0.05" min="3" max="97" value="<%= L.nameBaseline || 50.78 %>" class="form-input">
+          <p class="mt-1 text-xs text-slate-500">Where the bottom of the letters sits. Higher number = lower on the page.</p>
+        </div>
+        <div>
+          <label for="cert-name-width" class="form-label">Widest the name may be (% of page)</label>
+          <input id="cert-name-width" name="nameMaxWidth" type="number" step="1" min="20" max="100" value="<%= L.nameMaxWidth || 69 %>" class="form-input">
+        </div>
+        <div>
+          <label for="cert-name-font" class="form-label">Font</label>
+          <select id="cert-name-font" name="nameFont" class="form-input">
+            <% [['Helvetica-Bold', 'Helvetica Bold (closest to Canva Sans Bold)'], ['Helvetica', 'Helvetica'], ['Times-Bold', 'Times Bold'], ['Times-Roman', 'Times']].forEach(([v, label]) => { %>
+              <option value="<%= v %>" <%= (L.nameFont || 'Helvetica-Bold') === v ? 'selected' : '' %>><%= label %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="flex items-end">
+          <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="nameUppercase" <%= L.nameUppercase ? 'checked' : '' %>> Print the name in CAPITALS</label>
+        </div>
+      </div>
+
+      <div class="cert-text-fields <%= nameMode ? 'hidden' : '' %>">
         <label for="event-cert-title" class="form-label">Title</label>
         <input id="event-cert-title" name="title" value="<%= template.title %>" maxlength="200" class="form-input">
       </div>
-      <div>
+      <div class="cert-text-fields <%= nameMode ? 'hidden' : '' %>">
         <label for="event-cert-body" class="form-label">Body</label>
         <textarea id="event-cert-body" name="bodyText" rows="4" maxlength="2000" class="form-input"><%= template.bodyText %></textarea>
       </div>
-      <div>
+      <div class="cert-text-fields <%= nameMode ? 'hidden' : '' %>">
         <label for="event-cert-color" class="form-label">Text Color</label>
         <input id="event-cert-color" name="textColor" type="color" value="<%= template.textColor %>" class="h-10 w-20 rounded border border-slate-300">
       </div>
