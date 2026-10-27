@@ -377,6 +377,9 @@ model User {
   updatedAt               DateTime   @updatedAt
 
   organization           Organization?           @relation("UserOrganization", fields: [organizationId], references: [id], onDelete: SetNull)
+  // Set by an admin from the Master List; decides which event fee applies.
+  memberTypeId           Int?
+  memberType             MemberType?             @relation(fields: [memberTypeId], references: [id], onDelete: SetNull)
   registrations          EventRegistration[]
   emailVerificationToken EmailVerificationToken?
   passwordResetToken     PasswordResetToken?
@@ -500,6 +503,8 @@ model Event {
   updatedAt   DateTime  @updatedAt
 
   registrations       EventRegistration[]
+  // One fee per member type. feeCentavos above is what everyone else pays.
+  fees                EventFee[]
   certificateTemplate CertificateTemplate?
   certificates        EventCertificate[]
   emailTemplates      EmailTemplate[]
@@ -768,6 +773,11 @@ model EventRegistration {
   // aggregate on every scan instead. Null = not yet admitted.
   checkedInAt        DateTime?
   invitationId       Int?               @unique
+  // A snapshot taken at registration: the fee that applied to them and the
+  // member type it came from (null = the event's own fee). Later changes to a
+  // type or a fee never rewrite what somebody was told they owed.
+  feeCentavos        Int?
+  memberTypeName     String?            @db.VarChar(60)
   createdAt          DateTime           @default(now())
 
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1132,6 +1142,8 @@ model Organization {
   facebookUrl String?
   subRegion   String?
   yearFounded Int?
+  // Shown on the Student Organization Master; the full list is officers below.
+  president   String?  @db.VarChar(150)
   isActive    Boolean  @default(true)
   order       Int      @default(0)
   createdAt   DateTime @default(now())
@@ -1143,6 +1155,7 @@ model Organization {
   admins        OrganizationAdmin[]
   registrations EventRegistration[]
   adminAudits   OrganizationAdminAudit[]
+  officers      OrganizationOfficer[]
 
   @@index([parentId])
   @@index([type])
@@ -1335,6 +1348,66 @@ model Refund {
 // General-purpose audit trail (distinct from OrganizationAdminAudit, which
 // only covers org-admin reassignment). metadata is a JSON string of plain
 // values only — amounts, IDs, reasons — never secrets or credentials.
+// A student organization's officers, kept on the Student Organization Master.
+model OrganizationOfficer {
+  id             Int          @id @default(autoincrement())
+  organizationId Int
+  name           String       @db.VarChar(150)
+  position       String       @db.VarChar(100)
+  // Free text, e.g. "2026-2027".
+  termYear       String?      @db.VarChar(20)
+  sortOrder      Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("organization_officers")
+}
+
+// The Master List of member types (up to three, enforced by the app), kept
+// by a main admin. A member's type decides which event fee applies to them.
+model MemberType {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique @db.VarChar(60)
+  sortOrder Int        @default(0)
+  // Off = hidden from new choices; members who have it keep it.
+  isActive  Boolean    @default(true)
+  // The membership fee for this type. The channel fee is PayMongo's rate
+  // (Site Settings), added on top at checkout, so it is not stored here.
+  membershipFeeCentavos Int?
+  // false = NEW rate (first membership), true = RENEWAL rate (lapsed member).
+  renewable             Boolean @default(false)
+  // How long a membership at this rate lasts; null = lifetime.
+  validityYears         Int?    @default(1)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  users     User[]
+  eventFees EventFee[]
+
+  @@map("member_types")
+}
+
+// What a member type pays for one event. A registrant with no type, or a type
+// with no row here, pays Event.feeCentavos.
+model EventFee {
+  id           Int        @id @default(autoincrement())
+  eventId      Int
+  memberTypeId Int
+  feeCentavos  Int        @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  event      Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  memberType MemberType @relation(fields: [memberTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, memberTypeId])
+  @@index([memberTypeId])
+  @@map("event_fees")
+}
+
 // A failed sign-in, counted per account and per address so the login form can
 // ask for the human check after a few failures (see loginThrottle.service.js).
 // The email is only ever stored as a hash of its canonical form.

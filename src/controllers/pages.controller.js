@@ -4,6 +4,8 @@ const eventService = require('../services/event.service');
 const userService = require('../services/user.service');
 const authService = require('../services/auth.service');
 const loginThrottle = require('../services/loginThrottle.service');
+const memberTypeService = require('../services/memberType.service');
+const studentOrgService = require('../services/studentOrg.service');
 const organizationService = require('../services/organization.service');
 const organizationAdminService = require('../services/organizationAdmin.service');
 const settingsService = require('../services/settings.service');
@@ -207,10 +209,17 @@ const eventDetailPage = asyncHandler(async (req, res) => {
 
   // Previewed before "Register & Pay" so the total on PayMongo's own checkout
   // page (fee + this same surcharge, itemized) isn't a surprise.
-  const surchargeCentavos = event.feeCentavos > 0 ? await paymentService.calculateGatewaySurcharge(event.feeCentavos) : 0;
+  // The registration options (a member type with a fee for this event, then
+  // "everyone else"); empty when the event has a single fee. The viewer's own
+  // type is passed only to label it, never to pick for them.
+  const feeOptions = await memberTypeService.listEventOptions(event);
+  const paymentsEnabled = await settingsService.getPaymentsEnabled();
+  const surchargeCentavos = paymentsEnabled && !feeOptions.length && event.feeCentavos > 0
+    ? await paymentService.calculateGatewaySurcharge(event.feeCentavos) : 0;
 
   res.render('event-details', {
     title: event.title, event, isRegistered, registrationStatus, surchargeCentavos,
+    feeOptions, paymentsEnabled,
     // Computed from the same helper registration.service enforces with, so the
     // page and the server can never disagree about whether this is still open.
     hasEnded: eventService.hasEventEnded(event),
@@ -393,15 +402,26 @@ const profilePage = asyncHandler(async (req, res) => {
 });
 
 const membershipPaymentPage = asyncHandler(async (req, res) => {
+  // The member's type decides the amount (memberType.service membershipQuote);
+  // the active types are what they may pick from when availing or renewing.
+  const [quote, membershipNow] = await Promise.all([
+    memberTypeService.membershipQuote(req.session.user.id),
+    paymentService.getMembershipStatus(req.session.user.id),
+  ]);
+  // NEW rates for a first membership, RENEWAL rates for a lapsed one.
+  const memberTypeChoices = await memberTypeService.choicesFor(membershipNow.state);
+  res.locals.memberQuote = quote;
+  res.locals.memberTypeChoices = memberTypeChoices;
   const [payment, feeCentavos, membershipPaymentRequired, membership] = await Promise.all([
     paymentService.getLatestMembershipPayment(req.session.user.id),
-    settingsService.getMembershipFeeCentavos(),
+    Promise.resolve(quote.amountCentavos || 0),
     settingsService.getMembershipPaymentRequired(),
     paymentService.getMembershipStatus(req.session.user.id),
   ]);
   // Shown before they click "Continue to Payment" so the total on PayMongo's
   // own checkout page (fee + this same surcharge, itemized) isn't a surprise.
-  const surchargeCentavos = await paymentService.calculateGatewaySurcharge(feeCentavos);
+  // PayMongo's channel fee on the type's amount; nothing until a type is chosen.
+  const surchargeCentavos = quote.amountCentavos === null ? 0 : quote.channelFeeCentavos;
   res.render('membership-payment', {
     title: 'Membership Payment', payment, feeCentavos, surchargeCentavos, membershipPaymentRequired, membership,
   });
@@ -523,13 +543,31 @@ const adminEventsPage = asyncHandler(async (req, res) => {
   });
 });
 
+// The Master List: member types, and how many members each has.
+const adminMasterListPage = asyncHandler(async (req, res) => {
+  const memberTypes = await memberTypeService.listMemberTypes();
+  renderAdmin(req, res, 'admin/master-list', {
+    title: 'Member Types', memberTypes, gatewaySurchargePercent: await settingsService.getGatewaySurchargePercent(),
+  });
+});
+
+// Master List: the student units, their place in the tree, and leadership.
+const adminStudentOrgMasterPage = asyncHandler(async (req, res) => {
+  const [organizations, provinces] = await Promise.all([
+    studentOrgService.listStudentOrganizations(),
+    studentOrgService.listProvinces(),
+  ]);
+  renderAdmin(req, res, 'admin/student-org-master', { title: 'Student Organizations', organizations, provinces });
+});
+
 const adminSettingsPage = asyncHandler(async (req, res) => {
-  const [logoUrl, faviconUrl, heroImageUrl, ogImageUrl, membershipFeeCentavos, paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired, pendingActivations, registrationEmailsEnabled] = await Promise.all([
+  // No membership fee here any more: each member type's amount on the
+  // Master List is the fee.
+  const [logoUrl, faviconUrl, heroImageUrl, ogImageUrl, paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired, pendingActivations, registrationEmailsEnabled] = await Promise.all([
     settingsService.getLogoUrl(),
     settingsService.getFaviconUrl(),
     settingsService.getHeroImageUrl(),
     settingsService.getOgImageUrl(),
-    settingsService.getMembershipFeeCentavos(),
     settingsService.getPaymentsEnabled(),
     settingsService.getGatewaySurchargePercent(),
     settingsService.getMembershipPaymentRequired(),
@@ -542,7 +580,7 @@ const adminSettingsPage = asyncHandler(async (req, res) => {
   renderAdmin(req, res, 'admin/settings', {
     title: 'Site Settings',
     logoUrl, faviconUrl, heroImageUrl, ogImageUrl,
-    membershipFeeCentavos, paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired,
+    paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired,
     pendingActivations, registrationEmailsEnabled,
   });
 });
@@ -796,9 +834,11 @@ const adminEditUserPage = asyncHandler(async (req, res) => {
     currentOrganizationLabel = await organizationService.getOrganizationPathLabel(user.organizationId)
       .catch(() => (user.organization && user.organization.name) || null);
   }
+  const memberTypes = isScopedAdmin ? [] : await memberTypeService.listMemberTypes();
   renderAdmin(req, res, 'admin/user-edit', {
     title: isScopedAdmin ? 'Edit Member' : 'Edit User',
     user,
+    memberTypes,
     currentOrganizationLabel,
     csrfToken: req.session.csrfToken,
     restricted: isScopedAdmin,
@@ -912,13 +952,18 @@ const adminBulkReassignOrganizations = asyncHandler(async (req, res) => {
 
 // Render the admin "Create Event" page (Add Event)
 const adminCreateEventPage = asyncHandler(async (req, res) => {
-  renderAdmin(req, res, 'admin/event-new', { title: 'Create Event' });
+  const memberTypes = await memberTypeService.listMemberTypes();
+  renderAdmin(req, res, 'admin/event-new', { title: 'Create Event', memberTypes, eventFees: {} });
 });
 
 // Admin edit event page
 const adminEditEventPage = asyncHandler(async (req, res) => {
-  const event = await eventService.getEventById(req.params.id);
-  renderAdmin(req, res, 'admin/event-edit', { title: 'Edit Event', event });
+  const [event, memberTypes, eventFees] = await Promise.all([
+    eventService.getEventById(req.params.id),
+    memberTypeService.listMemberTypes(),
+    memberTypeService.getEventFees(req.params.id),
+  ]);
+  renderAdmin(req, res, 'admin/event-edit', { title: 'Edit Event', event, memberTypes, eventFees });
 });
 
 // Admin view registrations page
@@ -1272,6 +1317,8 @@ const adminEditArticlePage = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  adminMasterListPage,
+  adminStudentOrgMasterPage,
   forgotPasswordPage,
   resetPasswordPage,
   integrationDemoPage,

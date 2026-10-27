@@ -49,12 +49,35 @@
         </div>
 
         <div>
-          <label for="feePhp" class="form-label">Registration Fee</label>
+          <label for="feePhp" class="form-label">Standard registration fee</label>
           <div class="relative">
             <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-500">&#8369;</span>
             <input id="feePhp" name="feePhp" type="number" min="0" max="1000000" step="0.01" placeholder="0.00" class="form-input pl-8" />
           </div>
-          <p class="mt-1 text-xs text-slate-500">Leave blank or 0 for a free event. Paid via GCash, same as membership.</p>
+          <p class="mt-1 text-xs text-slate-500">Leave blank or 0 for a free event. Shown as &ldquo;Everyone else&rdquo; when the event has member type options below.</p>
+        </div>
+        <%# One box per member type from the Master List. Blank = that type pays
+            the standard fee above. Read by memberType.service parseFeeFields. %>
+        <div class="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <p class="form-label">Fees by member type</p>
+          <% const mtFees = locals.eventFees || {}; %>
+          <% if (locals.memberTypes && memberTypes.length) { %>
+            <p class="mb-3 text-xs text-slate-500">Each box with an amount becomes an option registrants can pick, alongside &ldquo;Everyone else&rdquo; at the standard fee. Leave a box blank to not offer that type. Types switched off on the Master List are not offered.</p>
+            <div class="grid gap-3 sm:grid-cols-3">
+              <% memberTypes.forEach((t) => { const f = mtFees[t.id]; %>
+                <div>
+                  <label for="memberTypeFee_<%= t.id %>" class="text-sm text-slate-700"><%= t.name %><% if (!t.isActive) { %> <span class="text-xs text-slate-400">(off)</span><% } %></label>
+                  <div class="relative mt-1">
+                    <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-500">&#8369;</span>
+                    <input id="memberTypeFee_<%= t.id %>" name="memberTypeFee_<%= t.id %>" type="number" min="0" max="1000000" step="0.01"
+                           value="<%= f === undefined ? '' : (f / 100).toFixed(2) %>" placeholder="Not offered" class="form-input pl-8" />
+                  </div>
+                </div>
+              <% }) %>
+            </div>
+          <% } else { %>
+            <p class="text-xs text-slate-500">Add member types on the <a href="/admin/master/member-types" class="text-indigo-600 hover:underline">Master List</a> to charge each type a different fee.</p>
+          <% } %>
         </div>
 
         <div class="flex items-center gap-3">

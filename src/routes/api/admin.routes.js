@@ -4,6 +4,8 @@ const rateLimit = require('express-rate-limit');
 const adminApi = require('../../controllers/api/admin.api');
 const certificateApi = require('../../controllers/api/certificate.api');
 const adminPaymentApi = require('../../controllers/api/adminPayment.api');
+const memberTypeApi = require('../../controllers/api/memberType.api');
+const studentOrgApi = require('../../controllers/api/studentOrg.api');
 const adminEmailApi = require('../../controllers/api/adminEmail.api');
 const adminBroadcastApi = require('../../controllers/api/adminBroadcast.api');
 const invitationApi = require('../../controllers/api/invitation.api');
@@ -201,12 +203,6 @@ router.post('/settings/favicon', verifyCsrfToken, uploadLogo.single('image'), ve
 router.post('/settings/hero-image', verifyCsrfToken, uploadEventImage.single('image'), verifyImageSignature, adminApi.uploadHeroImage);
 router.post('/settings/og-image', verifyCsrfToken, uploadLogo.single('image'), verifyImageSignature, adminApi.uploadOgImage);
 router.put(
-  '/settings/membership-fee',
-  verifyCsrfToken,
-  body('feePhp').isFloat({ min: 0, max: 1000000 }).withMessage('Enter a valid fee amount'),
-  adminApi.updateMembershipFee
-);
-router.put(
   '/settings/gateway-surcharge-percent',
   verifyCsrfToken,
   body('percent').isFloat({ min: 0, max: 100 }).withMessage('Enter a valid percentage'),
@@ -242,6 +238,23 @@ router.get('/data/export', dataTransferApi.exportWorkbook);
 router.get('/data/import-template', dataTransferApi.importTemplate);
 router.post('/data/import/preview', verifyCsrfToken, uploadDataWorkbook.single('workbook'), dataTransferApi.previewImport);
 router.post('/data/import', verifyCsrfToken, uploadDataWorkbook.single('workbook'), dataTransferApi.runImport);
+
+// Master List: member types. Main admin only, inherited from router.use(apiAdmin)
+// above. Validation is in memberType.service (name 1-60 chars, unique, at most 3).
+router.get('/member-types', memberTypeApi.list);
+router.post('/member-types', verifyCsrfToken, memberTypeApi.create);
+router.put('/member-types/:id', verifyCsrfToken, param('id').isInt({ min: 1 }), checkRouteInput, memberTypeApi.update);
+router.delete('/member-types/:id', verifyCsrfToken, param('id').isInt({ min: 1 }), checkRouteInput, memberTypeApi.remove);
+
+// Master List: student organizations and their officers. Main admin only,
+// inherited from router.use(apiAdmin) above.
+router.get('/student-organizations', studentOrgApi.list);
+router.post('/student-organizations', verifyCsrfToken, studentOrgApi.create);
+router.put('/student-organizations/:id', verifyCsrfToken, param('id').isInt({ min: 1 }), checkRouteInput, studentOrgApi.update);
+router.get('/student-organizations/:id/officers', param('id').isInt({ min: 1 }), checkRouteInput, studentOrgApi.listOfficers);
+router.post('/student-organizations/:id/officers', verifyCsrfToken, param('id').isInt({ min: 1 }), checkRouteInput, studentOrgApi.addOfficer);
+router.put('/student-organizations/:id/officers/:officerId', verifyCsrfToken, param('id').isInt({ min: 1 }), param('officerId').isInt({ min: 1 }), checkRouteInput, studentOrgApi.updateOfficer);
+router.delete('/student-organizations/:id/officers/:officerId', verifyCsrfToken, param('id').isInt({ min: 1 }), param('officerId').isInt({ min: 1 }), checkRouteInput, studentOrgApi.removeOfficer);
 
 router.get('/sponsors', adminApi.listSponsors);
 router.post('/sponsors', verifyCsrfToken, uploadSponsorLogo.single('logo'), verifyImageSignature, adminApi.createSponsor);

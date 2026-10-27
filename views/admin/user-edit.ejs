@@ -51,6 +51,18 @@
 
       <% if (!restricted) { %>
         <div>
+          <label class="form-label" for="memberTypeId">Member type</label>
+          <select id="memberTypeId" name="memberTypeId" class="form-input">
+            <option value="">None (site-wide membership fee)</option>
+            <% (locals.memberTypes || []).forEach((t) => { %>
+              <option value="<%= t.id %>" <%= Number(user.memberTypeId) === t.id ? 'selected' : '' %>><%= t.name %><%= t.renewable ? ' \u2014 Renewal' : '' %><%= t.isActive ? '' : ' (off)' %></option>
+            <% }) %>
+          </select>
+          <% if (!(locals.memberTypes || []).length) { %>
+            <p class="mt-1 text-xs text-slate-500">Add member types on the <a href="/admin/master/member-types" class="text-indigo-600 hover:underline">Master List</a>.</p>
+          <% } %>
+        </div>
+        <div>
           <label class="form-label">Role</label>
           <select name="role" class="form-input">
             <option value="USER" <%= user.role === 'USER' ? 'selected' : '' %>>User</option>

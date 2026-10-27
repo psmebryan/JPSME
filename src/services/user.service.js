@@ -9,6 +9,7 @@ const jobService = require('./job.service');
 const passwordResetService = require('./passwordReset.service');
 const sheetsSyncService = require('./sheetsSync.service');
 const organizationService = require('./organization.service');
+const memberTypeService = require('./memberType.service');
 const normalizeName = (value) => String(value || '').trim().toUpperCase();
 
 // `status` takes one value or several. Several matters for the invitation
@@ -27,7 +28,7 @@ async function listByStatus(status, { awaitingApproval = false } = {}) {
   const users = await prisma.user.findMany({
     where: { ...where, role: { not: 'ADMIN' } },
     orderBy: { createdAt: 'desc' },
-    include: { organization: true },
+    include: { organization: true, memberType: true },
   });
   return users.map(toPublicUser);
 }
@@ -97,7 +98,7 @@ async function listMembersForAdmin({
     prisma.user.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      include: { organization: true },
+      include: { organization: true, memberType: true },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
@@ -152,7 +153,7 @@ async function setStatus(userId, status, {
   const updated = await prisma.user.update({
     where: { id: Number(userId) },
     data: { status },
-    include: { organization: true },
+    include: { organization: true, memberType: true },
   });
 
   // Skip logging a no-op "changed from X to X" (e.g. re-approving an
@@ -222,13 +223,13 @@ async function listByOrganization(organizationId, { includeDescendants = true } 
   const users = await prisma.user.findMany({
     where,
     orderBy: { createdAt: 'desc' },
-    include: { organization: true },
+    include: { organization: true, memberType: true },
   });
   return users.map(toPublicUser);
 }
 
 async function getById(userId) {
-  const user = await prisma.user.findUnique({ where: { id: Number(userId) }, include: { organization: true } });
+  const user = await prisma.user.findUnique({ where: { id: Number(userId) }, include: { organization: true, memberType: true } });
   if (!user) throw new AppError('User not found', 404);
   return toPublicUser(user);
 }
@@ -296,6 +297,16 @@ async function updateUser(userId, data, { allowAdminRole = false, actorId = null
       : ['CHAPTER_ADMIN', 'USER'];
     if (assignable.includes(roleVal)) allowed.role = roleVal;
   }
+  // Member type, from the Master List. Main admins only: the scoped (chapter
+  // admin) path never passes allowAdminRole, and its payload is already cut
+  // down to name and contact fields before it gets here.
+  if (allowAdminRole && Object.prototype.hasOwnProperty.call(data, 'memberTypeId')) {
+    const raw = data.memberTypeId;
+    const value = raw === '' || raw === null || raw === undefined ? null : Number(raw);
+    if (value !== null && !Number.isInteger(value)) throw new AppError('Invalid member type', 400);
+    await memberTypeService.assertMemberTypeExists(value);
+    allowed.memberTypeId = value;
+  }
   if (Object.prototype.hasOwnProperty.call(data, 'organizationId')) {
     if (data.organizationId === '' || data.organizationId === null || data.organizationId === undefined) {
       allowed.organizationId = null;
@@ -306,7 +317,7 @@ async function updateUser(userId, data, { allowAdminRole = false, actorId = null
     }
   }
 
-  const updated = await prisma.user.update({ where: { id: Number(userId) }, data: allowed, include: { organization: true } });
+  const updated = await prisma.user.update({ where: { id: Number(userId) }, data: allowed, include: { organization: true, memberType: true } });
 
   // Logged after the write, so nothing claims a change that did not happen.
   // Awaited rather than fired and forgotten: granting ADMIN hands over every

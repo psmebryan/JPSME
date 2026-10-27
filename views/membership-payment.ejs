@@ -61,8 +61,12 @@ const canPay = !payment || payment.status === 'PENDING' || payButtonStatuses.inc
         <div class="text-center py-4">
           <div class="text-4xl mb-3">&#10003;</div>
           <h3 class="text-xl font-bold text-green-700 mb-1">Membership Active</h3>
+          <% if (ms.lifetime) { %>
+            <p class="text-gray-600 mb-4"><strong>Lifetime membership.</strong> It does not expire.</p>
+          <% } else { %>
           <p class="text-gray-600 mb-1">Valid until <strong><%= msExpiry %></strong>.</p>
           <p class="text-gray-600 mb-4"><%= ms.daysRemaining %> day<%= ms.daysRemaining === 1 ? '' : 's' %> remaining &mdash; you can renew once it lapses.</p>
+          <% } %>
           <% if (payment && payment.status === 'PAID') { %>
             <p class="text-2xl font-extrabold text-gray-900">&#8369;<%= (payment.amount / 100).toFixed(2) %></p>
             <p class="text-sm text-gray-500 mt-1"><%= payment.paidAt ? new Date(payment.paidAt).toLocaleString() : '' %></p>
@@ -75,11 +79,42 @@ const canPay = !payment || payment.status === 'PENDING' || payButtonStatuses.inc
           <p class="text-gray-600">We're waiting for confirmation from the payment provider. Please do not make another payment.</p>
         </div>
       <% } else { %>
+        <%# The member type decides the fee: the member picks one of the types
+            that are switched on. Saved straight away (PUT /api/auth/me/member-type)
+            and the page reloads with that type's amount and channel fee. %>
+        <% const choices = locals.memberTypeChoices || []; %>
+        <% const quote = locals.memberQuote || {}; %>
+        <% if (choices.length) { %>
+          <fieldset data-member-type-choice>
+            <legend class="text-sm font-medium text-gray-700 mb-2">Choose your member type</legend>
+            <div class="space-y-2">
+              <% choices.forEach((t) => { %>
+                <label class="flex items-center gap-3 rounded-md border border-gray-200 px-3 py-2 hover:bg-gray-50">
+                  <input type="radio" name="memberTypeId" value="<%= t.id %>" <%= quote.memberTypeId === t.id ? 'checked' : '' %>>
+                  <span class="flex-1 text-sm text-gray-800"><%= t.name %>
+                    <span class="block text-xs text-gray-500"><%= t.validityYears === null ? 'Lifetime' : `Valid for ${t.validityYears} year${t.validityYears === 1 ? '' : 's'}` %></span>
+                  </span>
+                  <%# The amount plus PayMongo's channel fee: what they will be charged. %>
+                  <span class="text-sm text-gray-700">&#8369;<%= ((t.membershipFeeCentavos + (t.channelFeeCentavos || 0)) / 100).toFixed(2) %></span>
+                </label>
+              <% }) %>
+            </div>
+            <% if (!quote.memberTypeId) { %>
+              <p class="mt-2 text-xs text-amber-700">Choose your member type to see your fee.</p>
+            <% } %>
+          </fieldset>
+        <% } %>
+        <%# Nothing to pay until a member type is chosen: the type is the fee. %>
+        <% if (quote.amountCentavos === null || quote.amountCentavos === undefined) { %>
+          <p class="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            <%= choices.length ? 'Choose your member type above to see your fee and continue.' : 'Membership is not open yet. Please check back soon.' %>
+          </p>
+        <% } else { %>
         <div>
-          <p class="text-sm text-gray-500 mb-1">Registration Fee</p>
+          <p class="text-sm text-gray-500 mb-1">Registration Fee<% if (quote.memberTypeName) { %> &middot; <%= quote.memberTypeName %><% } %></p>
           <p class="text-3xl font-extrabold text-gray-900">&#8369;<%= totalPhp %></p>
           <% if (locals.surchargeCentavos > 0) { %>
-            <p class="text-xs text-gray-400 mt-1">&#8369;<%= feePhp %> membership fee + &#8369;<%= surchargePhp %> payment processing fee</p>
+            <p class="text-xs text-gray-400 mt-1">&#8369;<%= feePhp %> membership fee + &#8369;<%= surchargePhp %> PayMongo channel fee</p>
           <% } %>
         </div>
 
@@ -103,9 +138,39 @@ const canPay = !payment || payment.status === 'PENDING' || payButtonStatuses.inc
         <p class="text-xs text-gray-500 text-center">
           Your payment is processed securely through our payment provider. JPSME does not store your GCash credentials, MPIN, or OTP.
         </p>
+        <% } %>
       <% } %>
     </div>
   </div>
 </div>
 
+<script nonce="<%= cspNonce %>">
+// Saving the member type the moment one is picked, then reloading so the fee
+// shown is the one the server will charge.
+(function () {
+  function onReady(fn) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
+    else fn();
+  }
+  onReady(function () {
+    const box = document.querySelector('[data-member-type-choice]');
+    if (!box) return;
+    box.addEventListener('change', async (e) => {
+      if (e.target.name !== 'memberTypeId') return;
+      box.disabled = true;
+      try {
+        const res = await apiFetch('/api/auth/me/member-type', {
+          method: 'PUT',
+          body: JSON.stringify({ memberTypeId: e.target.value }),
+        });
+        showToast(res.message);
+        setTimeout(() => window.location.reload(), 500);
+      } catch (err) {
+        showToast(err.message, 'error');
+        box.disabled = false;
+      }
+    });
+  });
+}());
+</script>
 <script src="/js/payment.js"></script>

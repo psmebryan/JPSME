@@ -49,15 +49,38 @@
   <% const registered = typeof isRegistered !== 'undefined' && isRegistered; %>
   <% const eventOver = typeof locals.hasEnded !== 'undefined' && locals.hasEnded; %>
   <% const status = typeof registrationStatus !== 'undefined' ? registrationStatus : null; %>
-  <% const hasFee = event.feeCentavos > 0; %>
+  <%# Fees. With options (member types that have a fee for this event, then
+      "everyone else"), the registrant picks one below the list; without, the
+      event's single fee. See memberType.service listEventOptions. %>
+  <% const feeOptions = locals.feeOptions || []; %>
+  <% const peso = (c) => (c / 100).toFixed(2); %>
+  <% const anyFee = event.feeCentavos > 0 || feeOptions.some((o) => o.feeCentavos > 0); %>
+  <% const payOnline = anyFee && !!locals.paymentsEnabled; %>
   <% const surchargeCentavos = locals.surchargeCentavos || 0; %>
-  <% if (hasFee) { %>
-    <p class="text-lg font-semibold text-gray-900 mb-3">
-      Registration Fee: &#8369;<%= ((event.feeCentavos + surchargeCentavos) / 100).toFixed(2) %>
-      <% if (surchargeCentavos > 0) { %>
-        <span class="block text-xs font-normal text-gray-400 mt-0.5">&#8369;<%= (event.feeCentavos / 100).toFixed(2) %> event fee + &#8369;<%= (surchargeCentavos / 100).toFixed(2) %> payment processing fee</span>
+  <% if (feeOptions.length) { %>
+    <div class="mb-3">
+      <p class="text-lg font-semibold text-gray-900">Registration options</p>
+      <ul class="mt-1 text-sm text-gray-600">
+        <% feeOptions.forEach((o) => { %>
+          <li><%= o.label %>: <%= o.feeCentavos > 0 ? '\u20B1' + peso(o.feeCentavos) : 'Free' %></li>
+        <% }) %>
+      </ul>
+      <% if (anyFee && !locals.paymentsEnabled) { %>
+        <p class="mt-1 text-xs text-gray-500">Paid to the organizers. There is no online payment for now.</p>
       <% } %>
-    </p>
+    </div>
+  <% } else if (event.feeCentavos > 0) { %>
+    <div class="mb-3">
+      <p class="text-lg font-semibold text-gray-900">
+        Registration Fee: &#8369;<%= peso(event.feeCentavos + surchargeCentavos) %>
+        <% if (surchargeCentavos > 0) { %>
+          <span class="block text-xs font-normal text-gray-400 mt-0.5">&#8369;<%= peso(event.feeCentavos) %> event fee + &#8369;<%= peso(surchargeCentavos) %> payment processing fee</span>
+        <% } %>
+      </p>
+      <% if (!locals.paymentsEnabled) { %>
+        <p class="mt-1 text-xs text-gray-500">Paid to the organizers. There is no online payment for now.</p>
+      <% } %>
+    </div>
   <% } %>
 
   <% if (eventOver) { %>
@@ -102,6 +125,22 @@
       Payment Pending &mdash; Pay Now
     </button>
   <% } else { %>
+    <%# The registrant picks their option. Required by the server whenever the
+        event has options; events.js sends the checked one as feeOption. %>
+    <% if (feeOptions.length && !registered && locals.currentUser) { %>
+      <fieldset class="mb-4" data-fee-options>
+        <legend class="text-sm font-medium text-gray-700 mb-2">Choose your registration option</legend>
+        <div class="space-y-2">
+          <% feeOptions.forEach((o) => { %>
+            <label class="flex items-center gap-3 rounded-md border border-gray-200 px-3 py-2 hover:bg-gray-50">
+              <input type="radio" name="feeOption" value="<%= o.value %>">
+              <span class="flex-1 text-sm text-gray-800"><%= o.label %></span>
+              <span class="text-sm font-semibold text-gray-900"><%= o.feeCentavos > 0 ? '\u20B1' + peso(o.feeCentavos) : 'Free' %></span>
+            </label>
+          <% }) %>
+        </div>
+      </fieldset>
+    <% } %>
     <button
       data-register-event="<%= event.id %>"
       data-logged-in="<%= !!locals.currentUser %>"
@@ -109,7 +148,7 @@
       <% if (invitation) { %>data-invite-token="<%= invitation.token %>"<% } %>
       <%= registered ? 'disabled aria-disabled="true"' : '' %>
       class="bg-indigo-600 text-white px-5 py-3 rounded-md hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed">
-      <%= registered ? 'Registered' : (hasFee ? 'Register & Pay' : 'Register for this event') %>
+      <%= registered ? 'Registered' : (payOnline ? 'Register & Pay' : 'Register for this event') %>
     </button>
     <% if (registered) { %>
       <a href="/events/<%= event.id %>/ticket"

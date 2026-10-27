@@ -5,6 +5,9 @@ const paymentService = require('../../services/payment.service');
 const eventService = require('../../services/event.service');
 const authService = require('../../services/auth.service');
 const invitationService = require('../../services/invitation.service');
+const memberTypeService = require('../../services/memberType.service');
+const settingsService = require('../../services/settings.service');
+const prisma = require('../../config/prisma');
 const AppError = require('../../utils/AppError');
 
 // Session only stores a lightweight user snapshot; pull the fresh profile so
@@ -32,13 +35,40 @@ const registerForEvent = asyncHandler(async (req, res) => {
   // the resulting registration back to it (see resolveInvitationForUser).
   const invitation = await invitationService.resolveInvitationForUser(req.body.inviteToken, event.id, user);
 
-  if (event.feeCentavos > 0) {
-    const { checkoutUrl } = await paymentService.createEventCheckout(user.id, event.id, invitation);
+  // What this person pays: the option they picked from the event's options
+  // (a member type with a fee for this event, or "everyone else"), checked
+  // against the database. Only the choice comes from the request, never an
+  // amount. An event with no options charges its own fee.
+  let fee;
+  try {
+    fee = await memberTypeService.resolveEventChoice(event, req.body.feeOption);
+  } catch (err) {
+    // "Pay now" on a pending payment sends no choice: reuse what was recorded
+    // when they first chose.
+    const pending = err.statusCode === 422 && !req.body.feeOption
+      ? await prisma.eventRegistration.findUnique({ where: { userId_eventId: { userId: user.id, eventId: event.id } } })
+      : null;
+    if (!pending || pending.status !== 'PENDING_PAYMENT' || pending.feeCentavos === null) throw err;
+    fee = { feeCentavos: pending.feeCentavos, memberTypeName: pending.memberTypeName };
+  }
+
+  // Online payment only when it is switched on. While it is off (Admin ->
+  // Settings), a paid event registers them straight away with the fee
+  // recorded, to be collected offline, instead of refusing them.
+  if (fee.feeCentavos > 0 && await settingsService.getPaymentsEnabled()) {
+    const { checkoutUrl } = await paymentService.createEventCheckout(user.id, event.id, invitation, { amountCentavos: fee.feeCentavos });
+    await prisma.eventRegistration.updateMany({
+      where: { userId: user.id, eventId: event.id },
+      data: { feeCentavos: fee.feeCentavos, memberTypeName: fee.memberTypeName },
+    });
     return success(res, { checkoutUrl }, 'Redirecting to payment', 201);
   }
 
-  const registration = await registrationService.registerForEvent(user, req.params.id, invitation);
-  return success(res, { registration }, 'You are registered for this event', 201);
+  const registration = await registrationService.registerForEvent(user, req.params.id, invitation, fee);
+  const message = fee.feeCentavos > 0
+    ? `You are registered. Your registration fee is PHP ${(fee.feeCentavos / 100).toFixed(2)}${fee.memberTypeName ? ` (${fee.memberTypeName})` : ''}, paid to the organizers.`
+    : 'You are registered for this event';
+  return success(res, { registration, feeCentavos: fee.feeCentavos, memberTypeName: fee.memberTypeName }, message, 201);
 });
 
 const cancelRegistration = asyncHandler(async (req, res) => {

@@ -119,6 +119,11 @@ router.get('/admin/organization-admins', ensureMainAdminOnly, pages.adminOrganiz
 
 // Main admin only — site settings
 router.get('/admin/settings', ensureMainAdminOnly, pages.adminSettingsPage);
+// Master List: one page per list. Member types first; the old single-page
+// address still works.
+router.get('/admin/master/member-types', ensureMainAdminOnly, pages.adminMasterListPage);
+router.get('/admin/master/student-organizations', ensureMainAdminOnly, pages.adminStudentOrgMasterPage);
+router.get('/admin/master-list', ensureMainAdminOnly, (req, res) => res.redirect('/admin/master/member-types'));
 router.get('/admin/sponsors', ensureMainAdminOnly, pages.adminSponsorsPage);
 
 // Main admin only — certificates

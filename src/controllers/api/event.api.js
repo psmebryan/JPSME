@@ -4,6 +4,7 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { success, error } = require('../../utils/apiResponse');
 const eventService = require('../../services/event.service');
 const storageService = require('../../services/storage.service');
+const memberTypeService = require('../../services/memberType.service');
 
 function checkValidation(req, res) {
   const result = validationResult(req);
@@ -43,6 +44,8 @@ const getEvent = asyncHandler(async (req, res) => {
 const createEvent = asyncHandler(async (req, res) => {
   if (!checkValidation(req, res)) return;
   const payload = applyFeeConversion({ ...req.body });
+  // Checked before anything is saved, so a bad fee never leaves a half-made event.
+  const memberTypeFees = memberTypeService.parseFeeFields(req.body);
   if (req.file) {
     payload.imageUrl = await storageService.saveUpload(req.file.buffer, {
       folder: 'events',
@@ -51,6 +54,7 @@ const createEvent = asyncHandler(async (req, res) => {
     });
   }
   const { event, reused } = await eventService.createEvent(payload);
+  if (!reused) await memberTypeService.setEventFees(event.id, memberTypeFees);
   // 200 rather than 201 when nothing was created, and said plainly. A retry
   // that quietly reported "Event created" would leave the admin unsure whether
   // to go and look for a duplicate.
@@ -62,6 +66,7 @@ const createEvent = asyncHandler(async (req, res) => {
 const updateEvent = asyncHandler(async (req, res) => {
   if (!checkValidation(req, res)) return;
   const payload = applyFeeConversion({ ...req.body });
+  const memberTypeFees = memberTypeService.parseFeeFields(req.body);
   if (req.file) {
     payload.imageUrl = await storageService.saveUpload(req.file.buffer, {
       folder: 'events',
@@ -70,6 +75,7 @@ const updateEvent = asyncHandler(async (req, res) => {
     });
   }
   const event = await eventService.updateEvent(req.params.id, payload);
+  await memberTypeService.setEventFees(event.id, memberTypeFees);
   return success(res, { event }, 'Event updated');
 });
 

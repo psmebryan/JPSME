@@ -257,16 +257,6 @@ const uploadOgImage = makeSiteImageUploader({
 // stored internally as integer centavos to avoid float currency math. This
 // controls what every future applicant is charged, so it's validated directly
 // here rather than trusted from the route-level check alone.
-const updateMembershipFee = asyncHandler(async (req, res) => {
-  const feePhp = Number(req.body.feePhp);
-  if (!Number.isFinite(feePhp) || feePhp < 0 || feePhp > 1000000) {
-    return error(res, 'Enter a valid fee amount', 422);
-  }
-  const centavos = Math.round(feePhp * 100);
-  await settingsService.setMembershipFeeCentavos(centavos);
-  return success(res, { feeCentavos: centavos }, 'Membership fee updated');
-});
-
 const updateGatewaySurchargePercent = asyncHandler(async (req, res) => {
   const percent = Number(req.body.percent);
   if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
@@ -513,4 +503,4 @@ module.exports = {
   sendActivations,
   resendActivation,
   setUserPassword,
-  changeUserEmail, uploadFavicon, uploadHeroImage, uploadOgImage, listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, bulkDeleteUsers, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, getRegistrationEmailsEnabled, updateRegistrationEmailsEnabled, getMembershipPaymentRequired, updateMembershipPaymentRequired, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin, getOrganizationTreeLevel, createChildOrganization, deleteOrganizationApi, setOrganizationActiveApi };
+  changeUserEmail, uploadFavicon, uploadHeroImage, uploadOgImage, listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, bulkDeleteUsers, uploadLogo, getLogo, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, getRegistrationEmailsEnabled, updateRegistrationEmailsEnabled, getMembershipPaymentRequired, updateMembershipPaymentRequired, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin, getOrganizationTreeLevel, createChildOrganization, deleteOrganizationApi, setOrganizationActiveApi };

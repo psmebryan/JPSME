@@ -130,6 +130,9 @@ router.post('/register', verifyCsrfToken, registerLimiter, requireHuman(), regis
 router.post('/login', verifyCsrfToken, loginLimiter, loginHumanCheck, loginValidators, authApi.login);
 router.post('/logout', verifyCsrfToken, authApi.logout);
 router.get('/me', apiAuth, authApi.me);
+// A member choosing their member type when they avail or renew membership.
+// Only a type that is switched on, and not while a membership is active.
+router.put('/me/member-type', apiAuth, verifyCsrfToken, authApi.chooseMemberType);
 router.put('/me/profile', apiAuth, verifyCsrfToken, profileValidators, authApi.updateProfile);
 router.post(
   '/me/profile/image',

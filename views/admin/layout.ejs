@@ -168,6 +168,17 @@
           <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('settings') %></svg>
           Site Settings
         </a>
+        <%# Master List: the choices the rest of the site uses, one page each. %>
+        <div class="px-1">
+          <button id="master-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-white/5 hover:text-white focus:outline-none">
+            <span class="flex items-center gap-2.5"><svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('users') %></svg> Master List</span>
+            <svg id="master-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('chevron') %></svg>
+          </button>
+          <div id="master-submenu" class="mt-1 space-y-0.5 hidden">
+            <a href="/admin/master/member-types" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Member Type</a>
+            <a href="/admin/master/student-organizations" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Student Organization</a>
+          </div>
+        </div>
         <a href="/admin/sponsors" data-admin-link class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors">
           <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('handshake') %></svg>
           Sponsors

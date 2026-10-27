@@ -4,6 +4,10 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { success, error } = require('../../utils/apiResponse');
 const authService = require('../../services/auth.service');
 const loginThrottle = require('../../services/loginThrottle.service');
+const memberTypeService = require('../../services/memberType.service');
+const paymentService = require('../../services/payment.service');
+const prisma = require('../../config/prisma');
+const AppError = require('../../utils/AppError');
 const passwordResetService = require('../../services/passwordReset.service');
 const emailVerificationService = require('../../services/emailVerification.service');
 const storageService = require('../../services/storage.service');
@@ -123,6 +127,23 @@ const updateProfile = asyncHandler(async (req, res) => {
   const user = await authService.updateProfile(req.session.user.id, req.body);
   req.session.user = user;
   return success(res, { user }, 'Profile updated successfully');
+});
+
+// The type is chosen when membership is availed or renewed, so it is locked
+// while a membership year is running: changing it then would change nothing
+// they owe, only what they claim to be. An admin can still change it.
+const chooseMemberType = asyncHandler(async (req, res) => {
+  const membership = await paymentService.getMembershipStatus(req.session.user.id);
+  if (membership.state === 'ACTIVE') {
+    throw new AppError('Your membership is active. You can choose again when you renew.', 409);
+  }
+  // NEW rates for a first membership, RENEWAL rates for a lapsed one.
+  const type = await memberTypeService.assertChoosable(req.body.memberTypeId, membership.state);
+  await prisma.user.update({ where: { id: req.session.user.id }, data: { memberTypeId: type.id } });
+  const user = await authService.getById(req.session.user.id);
+  req.session.user = user;
+  const quote = await memberTypeService.membershipQuote(req.session.user.id);
+  return success(res, { memberType: { id: type.id, name: type.name }, quote }, `Member type set to ${type.name}.`);
 });
 
 const uploadProfileImage = asyncHandler(async (req, res) => {
@@ -295,6 +316,7 @@ module.exports = {
   me,
   updateProfile,
   uploadProfileImage,
+  chooseMemberType,
   resendVerification,
   resendPendingVerification,
   verifyEmailCode,

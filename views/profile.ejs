@@ -151,10 +151,15 @@
           <div class="flex flex-wrap items-center justify-between gap-4">
             <div class="min-w-0">
               <% if (ms.state === 'ACTIVE') { %>
+                <% if (ms.lifetime) { %>
+                  <p class="text-sm font-medium text-gray-900">Lifetime membership</p>
+                  <p class="mt-0.5 text-xs text-gray-500">It does not expire.</p>
+                <% } else { %>
                 <p class="text-sm font-medium text-gray-900">Valid until <%= msExpiry %></p>
                 <p class="mt-0.5 text-xs text-gray-500">
                   <%= ms.daysRemaining %> day<%= ms.daysRemaining === 1 ? '' : 's' %> remaining.
                 </p>
+                <% } %>
               <% } else if (ms.state === 'EXPIRED') { %>
                 <p class="text-sm font-medium text-gray-900">Expired on <%= msExpiry %></p>
                 <p class="mt-0.5 text-xs text-gray-500">Renew for another year to get your certificate back.</p>
