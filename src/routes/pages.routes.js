@@ -1,6 +1,8 @@
 const { Router } = require('express');
 const pages = require('../controllers/pages.controller');
-const { ensureAuth, ensureGuest, ensureAdmin, ensureAdminOrChapterAdmin, ensureMainAdminOnly } = require('../middleware/auth.middleware');
+const {
+  ensureAuth, ensureGuest, ensureAdmin, ensureAdminOrChapterAdmin, ensureMainAdminOnly, presidentTargetGuard,
+} = require('../middleware/auth.middleware');
 // The admin forms below post a _csrf field; verifyCsrfToken is what checks it.
 // withCsrfToken marks a page an anonymous visitor submits a form from: only
 // those pages (and signed-in users) get a session, so a visitor just reading
@@ -93,7 +95,7 @@ router.get('/admin/payments', ensureMainAdminOnly, pages.adminPaymentsPage);
 // inside the controller (adminChapterMembersPage), main admin sees everything.
 router.get('/admin/organization-members', ensureAdminOrChapterAdmin, pages.adminOrganizationMembersPage);
 router.get('/admin/organization-members/:id/edit', ensureAdminOrChapterAdmin, pages.adminEditUserPage);
-router.post('/admin/organization-members/:id/delete', ensureAdminOrChapterAdmin, verifyCsrfToken, pages.adminDeleteOrganizationMember);
+router.post('/admin/organization-members/:id/delete', ensureAdminOrChapterAdmin, verifyCsrfToken, presidentTargetGuard, pages.adminDeleteOrganizationMember);
 // Main admin only — full user management
 router.get('/admin/users', ensureMainAdminOnly, (req, res) => res.redirect('/admin/users/approvals'));
 router.get('/admin/users/all', ensureMainAdminOnly, pages.adminUsersPage);

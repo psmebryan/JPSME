@@ -20,9 +20,19 @@ const auditService = require('./audit.service');
 // at the National Convention should confer nothing at a chapter's own seminar,
 // and should stop mattering when the convention ends rather than sitting on
 // someone's account indefinitely.
+async function presidentHasCheckIn() {
+  // eslint-disable-next-line global-require
+  const modules = await require('./adminAccess.service').getPresidentModules();
+  return modules.includes('checkin');
+}
+
 async function canCheckIn(sessionUser, eventId) {
   if (!sessionUser) return false;
   if (sessionUser.role === 'ADMIN') return true;
+  // The National President: at every event, like the main admin, but only
+  // while the main admin has given them Check-in. Checked here because the
+  // check-in API is not behind the admin route guards.
+  if (sessionUser.role === 'PRESIDENT') return presidentHasCheckIn();
   if (sessionUser.role !== 'CHAPTER_ADMIN') return false;
 
   const grant = await prisma.eventCheckInStaff.findUnique({
@@ -60,7 +70,7 @@ async function grantCheckInAccess({ eventId, userId, adminUserId, ipAddress = nu
   if (!user) throw new AppError('User not found', 404);
   // A main admin already has access everywhere, so granting them one is a no-op
   // that would only make the staff list misleading about who needed it.
-  if (user.role === 'ADMIN') throw new AppError('Main admins can already check in at every event', 400);
+  if (user.role === 'ADMIN' || user.role === 'PRESIDENT') throw new AppError('Main admins and the National President can already check in at every event', 400);
   if (user.role !== 'CHAPTER_ADMIN') throw new AppError('Only a chapter admin can be given check-in access', 400);
 
   // Upsert rather than create: re-granting someone whose access was revoked
@@ -123,6 +133,8 @@ async function listCheckInEvents(sessionUser, { scope = 'current' } = {}) {
     });
     if (!grants.length) return [];
     where.id = { in: grants.map((g) => g.eventId) };
+  } else if (sessionUser.role === 'PRESIDENT') {
+    if (!(await presidentHasCheckIn())) return [];
   } else if (sessionUser.role !== 'ADMIN') {
     return [];
   }

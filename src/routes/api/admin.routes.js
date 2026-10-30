@@ -13,7 +13,7 @@ const invitationApi = require('../../controllers/api/invitation.api');
 const dataTransferApi = require('../../controllers/api/dataTransfer.api');
 const activationsApi = require('../../controllers/api/activations.api');
 const jobApi = require('../../controllers/api/job.api');
-const { apiAdmin, apiAdminOrChapterAdmin } = require('../../middleware/auth.middleware');
+const { apiAdmin, apiAdminOrChapterAdmin, presidentTargetGuard } = require('../../middleware/auth.middleware');
 const { verifyCsrfToken } = require('../../middleware/csrf.middleware');
 const { uploadLogo, uploadEventImage, uploadSponsorLogo, uploadCertificateBackground, uploadEmailAttachment, uploadDataWorkbook } = require('../../middleware/upload.middleware');
 const verifyImageSignature = require('../../middleware/verifyImageSignature');
@@ -89,6 +89,10 @@ function checkRouteInput(req, res, next) {
   }
   return next();
 }
+
+// A President never changes the main admin or a President account, on any
+// route below (see presidentTargetGuard). Does nothing for anyone else.
+router.use(presidentTargetGuard);
 
 // Allow ADMIN and CHAPTER_ADMIN (scoped) for chapter member endpoints
 router.get('/organization-members', apiAdminOrChapterAdmin, adminApi.listOrganizationMembers);
@@ -210,6 +214,14 @@ router.put(
   verifyCsrfToken,
   body('percent').isFloat({ min: 0, max: 100 }).withMessage('Enter a valid percentage'),
   adminApi.updateGatewaySurchargePercent
+);
+// What the National President may open. Under /settings, which is in no
+// module, so only the main admin ever reaches it (config/adminModules).
+router.put(
+  '/settings/president-access',
+  verifyCsrfToken,
+  body('modules').isArray({ max: 50 }).withMessage('modules must be a list'),
+  adminApi.updatePresidentAccess
 );
 router.get('/settings/payments-enabled', adminApi.getPaymentsEnabled);
 router.put(

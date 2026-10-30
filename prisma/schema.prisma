@@ -30,6 +30,9 @@ enum Role {
   USER
   ADMIN
   CHAPTER_ADMIN
+  // National President: admin access limited to the modules the main admin
+  // ticks (Site Settings -> National President access; config/adminModules).
+  PRESIDENT
 }
 
 // Stored as named levels rather than a number so the value can't drift into

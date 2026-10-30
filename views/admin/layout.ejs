@@ -55,13 +55,25 @@
       </div>
     </div>
 
+    <%#
+      Each section shows only when this person may open its module: the main
+      admin sees every one, a National President the ones ticked in Site
+      Settings (adminModules, from config/adminModules). The routes refuse the
+      rest anyway; this only hides what would be refused. A chapter admin keeps
+      their own short menu.
+    %>
+    <% const can = (key) => (locals.adminModules || []).includes(key); %>
+    <% const SUB = 'flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white'; %>
+    <% const TOP = 'flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors'; %>
     <nav id="admin-nav" class="px-2 py-4 space-y-0.5 text-sm flex-1">
-      <a href="/admin/dashboard" data-admin-link class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors">
-        <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('dashboard') %></svg>
-        Dashboard
-      </a>
+      <% if (isChapterAdmin || can('dashboard')) { %>
+        <a href="/admin/dashboard" data-admin-link class="<%= TOP %>">
+          <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('dashboard') %></svg>
+          Dashboard
+        </a>
+      <% } %>
 
-      <% if (isMainAdmin) { %>
+      <% if (can('users')) { %>
         <div class="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Users</div>
         <div class="px-1">
           <button id="user-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-white/5 hover:text-white focus:outline-none">
@@ -69,43 +81,52 @@
             <svg id="user-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('chevron') %></svg>
           </button>
           <div id="user-submenu" class="mt-1 space-y-0.5 hidden">
-            <a href="/admin/users/all" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Users</a>
-            <a href="/admin/users/approvals" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">User Approvals</a>
+            <a href="/admin/users/all" data-admin-link class="<%= SUB %>">Users</a>
+            <a href="/admin/users/approvals" data-admin-link class="<%= SUB %>">User Approvals</a>
             <%# Named Activations, not Invitations: /admin/invitations already
                 exists for event invitations, and two nav entries called the
                 same thing is how an admin ends up on the wrong page. %>
-            <a href="/admin/activations" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Activations</a>
+            <a href="/admin/activations" data-admin-link class="<%= SUB %>">Activations</a>
           </div>
         </div>
       <% } %>
 
-      <div class="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Programs</div>
-      <a href="/admin/events" data-admin-link class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors">
-        <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('events') %></svg>
-        Events
-      </a>
-
-      <% if (isMainAdmin) { %>
-        <a href="/admin/payments" data-admin-link class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors">
+      <% if (isChapterAdmin || can('events') || can('payments') || can('auditLog')) { %>
+        <div class="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Programs</div>
+      <% } %>
+      <% if (isChapterAdmin || can('events')) { %>
+        <a href="/admin/events" data-admin-link class="<%= TOP %>">
+          <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('events') %></svg>
+          Events
+        </a>
+      <% } %>
+      <% if (can('payments')) { %>
+        <a href="/admin/payments" data-admin-link class="<%= TOP %>">
           <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('payments') %></svg>
           Payments
         </a>
-        <a href="/admin/audit-log" data-admin-link class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors">
+      <% } %>
+      <% if (can('auditLog')) { %>
+        <a href="/admin/audit-log" data-admin-link class="<%= TOP %>">
           <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('auditLog') %></svg>
           Audit Log
         </a>
+      <% } %>
+      <% if (can('events')) { %>
         <div class="px-1">
           <button id="invitation-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-white/5 hover:text-white focus:outline-none">
             <span class="flex items-center gap-2.5"><svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('mail') %></svg> Invitation Management</span>
             <svg id="invitation-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('chevron') %></svg>
           </button>
           <div id="invitation-submenu" class="mt-1 space-y-0.5 hidden">
-            <a href="/admin/invitations" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Manage Invitations</a>
-            <a href="/admin/invitations?source=SELF_REQUESTED" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Invitation Requests</a>
-            <a href="/admin/event-emails" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Invitation Email</a>
+            <a href="/admin/invitations" data-admin-link class="<%= SUB %>">Manage Invitations</a>
+            <a href="/admin/invitations?source=SELF_REQUESTED" data-admin-link class="<%= SUB %>">Invitation Requests</a>
+            <% if (can('emails')) { %><a href="/admin/event-emails" data-admin-link class="<%= SUB %>">Invitation Email</a><% } %>
           </div>
         </div>
+      <% } %>
 
+      <% if (can('checkin')) { %>
         <div class="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Event Day</div>
         <div class="px-1">
           <button id="checkin-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-white/5 hover:text-white focus:outline-none">
@@ -113,13 +134,13 @@
             <svg id="checkin-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('chevron') %></svg>
           </button>
           <div id="checkin-submenu" class="mt-1 space-y-0.5 hidden">
-            <a href="/admin/check-in" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Events &amp; Stations</a>
-            <% if (currentUser && currentUser.role === 'ADMIN') { %>
-              <a href="/admin/check-in/staff" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Check-in Staff</a>
-            <% } %>
+            <a href="/admin/check-in" data-admin-link class="<%= SUB %>">Events &amp; Stations</a>
+            <a href="/admin/check-in/staff" data-admin-link class="<%= SUB %>">Check-in Staff</a>
           </div>
         </div>
+      <% } %>
 
+      <% if (can('organizations')) { %>
         <div class="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Organization Management</div>
         <div class="px-1">
           <button id="chapter-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-white/5 hover:text-white focus:outline-none">
@@ -127,48 +148,59 @@
             <svg id="chapter-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('chevron') %></svg>
           </button>
           <div id="chapter-submenu" class="mt-1 space-y-0.5 hidden">
-            <a href="/admin/organizations/tree" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Structure</a>
-            <a href="/admin/organizations" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Organizations</a>
-            <a href="/admin/organization-admins" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Organization Admins</a>
+            <a href="/admin/organizations/tree" data-admin-link class="<%= SUB %>">Structure</a>
+            <a href="/admin/organizations" data-admin-link class="<%= SUB %>">Organizations</a>
+            <a href="/admin/organization-admins" data-admin-link class="<%= SUB %>">Organization Admins</a>
           </div>
         </div>
       <% } else if (isChapterAdmin) { %>
-        <a href="/admin/organization-members" data-admin-link class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors">
+        <a href="/admin/organization-members" data-admin-link class="<%= TOP %>">
           <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('users') %></svg>
           My Organization Members
         </a>
       <% } %>
 
-      <% if (isMainAdmin) { %>
+      <% if (can('certificates') || can('emails')) { %>
         <div class="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Certificates</div>
+      <% } %>
+      <% if (can('certificates')) { %>
         <div class="px-1">
           <button id="certificate-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-white/5 hover:text-white focus:outline-none">
             <span class="flex items-center gap-2.5"><svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('certificate') %></svg> Certificates</span>
             <svg id="certificate-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('chevron') %></svg>
           </button>
           <div id="certificate-submenu" class="mt-1 space-y-0.5 hidden">
-            <a href="/admin/certificates" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Membership Template</a>
-            <a href="/admin/event-certificates" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Event Certificates</a>
+            <a href="/admin/certificates" data-admin-link class="<%= SUB %>">Membership Template</a>
+            <a href="/admin/event-certificates" data-admin-link class="<%= SUB %>">Event Certificates</a>
           </div>
         </div>
-
+      <% } %>
+      <% if (can('emails')) { %>
         <div class="px-1">
           <button id="email-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-white/5 hover:text-white focus:outline-none">
             <span class="flex items-center gap-2.5"><svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('mail') %></svg> Emails</span>
             <svg id="email-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('chevron') %></svg>
           </button>
           <div id="email-submenu" class="mt-1 space-y-0.5 hidden">
-            <a href="/admin/emails" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Membership Email</a>
-            <a href="/admin/event-emails" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Event Emails</a>
-            <a href="/admin/broadcasts" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Broadcast Email</a>
+            <a href="/admin/emails" data-admin-link class="<%= SUB %>">Membership Email</a>
+            <a href="/admin/event-emails" data-admin-link class="<%= SUB %>">Event Emails</a>
+            <a href="/admin/broadcasts" data-admin-link class="<%= SUB %>">Broadcast Email</a>
           </div>
         </div>
+      <% } %>
 
+      <% if (isMainAdmin || can('reports') || can('masterEvents') || can('masterMembers') || can('sponsors') || can('articles')) { %>
         <div class="px-3 pt-4 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Administration</div>
-        <a href="/admin/settings" data-admin-link class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors">
+      <% } %>
+      <%# Site Settings, which includes who the President is and what they may
+          open, is the main admin's alone and is never offered as a module. %>
+      <% if (isMainAdmin) { %>
+        <a href="/admin/settings" data-admin-link class="<%= TOP %>">
           <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('settings') %></svg>
           Site Settings
         </a>
+      <% } %>
+      <% if (can('reports')) { %>
         <%# Reports: read-only, each with filters and an Export. %>
         <div class="px-1">
           <button id="report-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-white/5 hover:text-white focus:outline-none">
@@ -176,11 +208,13 @@
             <svg id="report-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('chevron') %></svg>
           </button>
           <div id="report-submenu" class="mt-1 space-y-0.5 hidden">
-            <a href="/admin/reports/transactions" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Transaction Report</a>
-            <a href="/admin/reports/organization-members" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Student Org Member Summary</a>
-            <a href="/admin/reports/organization-events" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Student Org Event Registration</a>
+            <a href="/admin/reports/transactions" data-admin-link class="<%= SUB %>">Transaction Report</a>
+            <a href="/admin/reports/organization-members" data-admin-link class="<%= SUB %>">Student Org Member Summary</a>
+            <a href="/admin/reports/organization-events" data-admin-link class="<%= SUB %>">Student Org Event Registration</a>
           </div>
         </div>
+      <% } %>
+      <% if (can('masterEvents') || can('masterMembers')) { %>
         <%# Master List: the choices the rest of the site uses, one page each. %>
         <div class="px-1">
           <button id="master-management-toggle" aria-expanded="false" class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-white/5 hover:text-white focus:outline-none">
@@ -188,17 +222,23 @@
             <svg id="master-management-chevron" class="w-4 h-4 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('chevron') %></svg>
           </button>
           <div id="master-submenu" class="mt-1 space-y-0.5 hidden">
-            <a href="/admin/master/member-types" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Member Type</a>
-            <a href="/admin/master/student-organizations" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Student Organization</a>
-            <a href="/admin/master/event-fees" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Event Fee</a>
-            <a href="/admin/master/memberships" data-admin-link class="flex items-center gap-2.5 pl-9 pr-3 py-2 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white">Membership</a>
+            <% if (can('masterMembers')) { %>
+              <a href="/admin/master/member-types" data-admin-link class="<%= SUB %>">Member Type</a>
+              <a href="/admin/master/student-organizations" data-admin-link class="<%= SUB %>">Student Organization</a>
+            <% } %>
+            <% if (can('masterEvents')) { %><a href="/admin/master/event-fees" data-admin-link class="<%= SUB %>">Event Fee</a><% } %>
+            <% if (can('masterMembers')) { %><a href="/admin/master/memberships" data-admin-link class="<%= SUB %>">Membership</a><% } %>
           </div>
         </div>
-        <a href="/admin/sponsors" data-admin-link class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors">
+      <% } %>
+      <% if (can('sponsors')) { %>
+        <a href="/admin/sponsors" data-admin-link class="<%= TOP %>">
           <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('handshake') %></svg>
           Sponsors
         </a>
-        <a href="/admin/articles" data-admin-link class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border-l-2 border-transparent hover:bg-white/5 hover:text-white transition-colors">
+      <% } %>
+      <% if (can('articles')) { %>
+        <a href="/admin/articles" data-admin-link class="<%= TOP %>">
           <svg class="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><%- navIcon('article') %></svg>
           Articles
         </a>
@@ -229,7 +269,7 @@
         <div class="flex items-center gap-3 shrink-0">
           <div class="text-right leading-tight hidden sm:block">
             <div class="text-sm font-semibold text-slate-900"><%= currentUser.firstName %> <%= currentUser.lastName %></div>
-            <div class="text-xs text-slate-500"><%= isChapterAdmin ? 'Chapter Admin' : 'National Board' %></div>
+            <div class="text-xs text-slate-500"><%= isChapterAdmin ? 'Chapter Admin' : (currentUser && currentUser.role === 'PRESIDENT' ? 'National President' : 'National Board') %></div>
           </div>
           <div class="h-10 w-10 rounded-full bg-indigo-600 text-white flex items-center justify-center text-sm font-semibold shrink-0"><%= initials %></div>
         </div>

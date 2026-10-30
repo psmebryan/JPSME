@@ -1,7 +1,7 @@
 <% const members = locals.members || []; const organization = locals.organization || null; %>
 <% const organizationPath = locals.organizationPath || null; const leader = locals.leader || null; %>
 <% const otherMembers = members.filter(m => !leader || m.id !== leader.id); %>
-<% const isMainAdmin = locals.currentUser && currentUser.role === 'ADMIN'; %>
+<% const isMainAdmin = locals.currentUser && ['ADMIN', 'PRESIDENT'].includes(currentUser.role); %>
 <%
 const TYPE_LABEL = {
   NATIONAL: 'National', REGION: 'Region', PROVINCE: 'Province', STUDENT_UNIT: 'Student Unit',

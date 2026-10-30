@@ -25,7 +25,10 @@
   // What a card says about getting in. Derived from real numbers — capacity
   // and the registration count — never asserted. An event with no capacity set
   // has no limit, so it simply reads as open.
+  // A finished event says so first, whatever its numbers: registration is
+  // closed for it (the server refuses it too).
   function availability(event) {
+    if (event.hasEnded) return { label: 'Event Ended', cls: 'jp-badge-ended', full: true, ended: true };
     const taken = (event._count && event._count.registrations) || 0;
     if (!event.capacity) return { label: 'Registration Open', cls: 'jp-badge-open', full: false };
     if (taken >= event.capacity) return { label: 'Fully Booked', cls: 'jp-badge-full', full: true };
@@ -399,7 +402,7 @@
               <div class="mt-auto pt-6">
                 <span class="jp-badge <%= status.cls %>"><%= status.label %></span>
                 <a href="/events/<%= event.id %>" class="jp-btn <%= status.full ? 'jp-btn-outline' : 'jp-btn-gold' %> mt-4 w-full">
-                  <%= status.full ? 'View Details' : 'Register Now' %>
+                  <%= status.ended ? 'View Event' : (status.full ? 'View Details' : 'Register Now') %>
                 </a>
               </div>
             </div>

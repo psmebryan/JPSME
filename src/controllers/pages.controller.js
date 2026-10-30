@@ -30,6 +30,7 @@ const integrationKeyService = require('../services/integrationKey.service');
 const passwordResetService = require('../services/passwordReset.service');
 const articleService = require('../services/article.service');
 const articleFormat = require('../utils/articleFormat');
+const adminAccessService = require('../services/adminAccess.service');
 const membershipMasterService = require('../services/membershipMaster.service');
 const reportsService = require('../services/reports.service');
 const AppError = require('../utils/AppError');
@@ -478,7 +479,8 @@ function renderAdmin(req, res, view, locals) {
 }
 
 const adminDashboardPage = asyncHandler(async (req, res) => {
-  const isMainAdmin = req.session.user.role === 'ADMIN';
+  // The National President sees the national dashboard, as the main admin does.
+  const isMainAdmin = adminAccessService.isNationalAdmin(req.session.user);
 
   if (isMainAdmin) {
     const dashboard = await statsService.getMainAdminDashboard();
@@ -662,11 +664,22 @@ const adminSettingsPage = asyncHandler(async (req, res) => {
     passwordResetService.pendingActivationCount(),
     settingsService.getRegistrationEmailsEnabled(),
   ]);
+  // National President access: the modules, which are ticked, and who holds
+  // the role now.
+  const [presidentModules, presidents] = await Promise.all([
+    adminAccessService.getPresidentModules(),
+    prisma.user.findMany({
+      where: { role: 'PRESIDENT' },
+      select: { id: true, firstName: true, lastName: true, email: true },
+      orderBy: { lastName: 'asc' },
+    }),
+  ]);
   renderAdmin(req, res, 'admin/settings', {
     title: 'Site Settings',
     logoUrl, faviconUrl, heroImageUrl, ogImageUrl,
     paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired,
     pendingActivations, registrationEmailsEnabled,
+    adminModuleList: adminAccessService.MODULES, presidentModules, presidents,
   });
 });
 
@@ -856,7 +869,7 @@ const adminOrganizationTreePage = asyncHandler(async (req, res) => {
 const adminOrganizationMembersPage = asyncHandler(async (req, res) => {
   let organizationId = null;
   if (req.session.user.role === 'CHAPTER_ADMIN') organizationId = req.session.user.organizationId;
-  if (req.session.user.role === 'ADMIN' && req.query.organizationId) organizationId = req.query.organizationId;
+  if (adminAccessService.isNationalAdmin(req.session.user) && req.query.organizationId) organizationId = req.query.organizationId;
 
   let members = [];
   let organization = null;
@@ -1229,7 +1242,7 @@ const adminEventRoomsPage = asyncHandler(async (req, res) => {
     // Only a main admin may change the configuration; everyone who can scan
     // may read it. The page hides the controls it would be refused rather than
     // offering buttons that 403.
-    canConfigure: req.session.user.role === 'ADMIN',
+    canConfigure: adminAccessService.isNationalAdmin(req.session.user),
   });
 });
 
@@ -1290,7 +1303,7 @@ const adminEventCheckInReportPage = asyncHandler(async (req, res) => {
 });
 
 const adminEventRegistrationsPage = asyncHandler(async (req, res) => {
-  const isMainAdmin = req.session.user.role === 'ADMIN';
+  const isMainAdmin = adminAccessService.isNationalAdmin(req.session.user);
   const search = (req.query.search || '').toString().trim();
   const status = (req.query.status || '').toString();
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);

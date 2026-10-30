@@ -1,6 +1,79 @@
 <h1 class="admin-h1 mb-6">Site Settings</h1>
 
 <%#
+  National President access. Ticks decide which admin modules an account with
+  the National President role can open; config/adminModules says which pages
+  belong to each. Site Settings itself is never offered. Saved through
+  PUT /api/admin/settings/president-access (main admin only).
+%>
+<% const granted = locals.presidentModules || []; %>
+<div id="president-access-module" class="admin-card p-6 mb-6">
+  <div class="flex flex-wrap items-start justify-between gap-4">
+    <div>
+      <h2 class="font-semibold mb-1">National President access</h2>
+      <p class="text-sm text-slate-500 max-w-2xl">
+        Tick what the National President can open in the admin. Everything not ticked is hidden from them and
+        refused if they try the address directly. Site Settings, including this list, stays yours alone.
+      </p>
+    </div>
+    <div class="flex gap-2">
+      <button type="button" class="btn-secondary px-3 py-1.5 text-sm" data-pa-all>Tick all</button>
+      <button type="button" class="btn-secondary px-3 py-1.5 text-sm" data-pa-none>Clear</button>
+    </div>
+  </div>
+
+  <div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+    <% (locals.adminModuleList || []).forEach((m) => { %>
+      <label class="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 p-3 hover:bg-slate-50 has-[:checked]:border-indigo-300 has-[:checked]:bg-indigo-50/50">
+        <input type="checkbox" class="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600" name="presidentModules" value="<%= m.key %>" <%= granted.includes(m.key) ? 'checked' : '' %>>
+        <span>
+          <span class="block text-sm font-medium text-slate-900"><%= m.label %></span>
+          <span class="block text-xs text-slate-500"><%= m.hint %></span>
+        </span>
+      </label>
+    <% }) %>
+  </div>
+
+  <div class="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-slate-200 pt-4">
+    <div class="text-sm text-slate-600">
+      <% const presidents = locals.presidents || []; %>
+      <% if (presidents.length) { %>
+        <span class="font-medium text-slate-800">National President:</span>
+        <% presidents.forEach((p, i) => { %><a href="/admin/users/<%= p.id %>/edit" class="text-indigo-600 hover:underline"><%= p.firstName %> <%= p.lastName %></a><%= i < presidents.length - 1 ? ', ' : '' %><% }) %>
+      <% } else { %>
+        Nobody has the role yet. Give it on a member's account: <span class="font-medium">Users &rarr; Edit &rarr; Role &rarr; National President</span>.
+      <% } %>
+    </div>
+    <button type="button" class="btn-primary px-4 py-2" data-pa-save>Save access</button>
+  </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  const box = document.getElementById('president-access-module');
+  if (!box) return;
+  const boxes = () => Array.from(box.querySelectorAll('input[name="presidentModules"]'));
+  box.querySelector('[data-pa-all]').addEventListener('click', () => boxes().forEach((b) => { b.checked = true; }));
+  box.querySelector('[data-pa-none]').addEventListener('click', () => boxes().forEach((b) => { b.checked = false; }));
+  const save = box.querySelector('[data-pa-save]');
+  save.addEventListener('click', async () => {
+    save.disabled = true;
+    try {
+      const res = await apiFetch('/api/admin/settings/president-access', {
+        method: 'PUT',
+        body: JSON.stringify({ modules: boxes().filter((b) => b.checked).map((b) => b.value) }),
+      });
+      showToast(res.message);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      save.disabled = false;
+    }
+  });
+}());
+</script>
+
+<%#
   The four site images, together, because they are one decision: what the
   organisation looks like everywhere it appears. Each says where it shows up,
   since the difference between them is not obvious from a filename.
