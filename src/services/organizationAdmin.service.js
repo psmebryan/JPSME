@@ -36,6 +36,10 @@ async function assignOrganizationAdmin({ organizationId, userId, changedBy, note
   if (user.role === 'ADMIN') {
     throw new AppError('This account is already a main admin and does not need an organization scope', 400);
   }
+  // Making them a chapter admin would quietly take away the President role.
+  if (user.role === 'PRESIDENT') {
+    throw new AppError('This account is the National President. Change their role on their account first if that is intended.', 400);
+  }
 
   return prisma.$transaction(async (tx) => {
     // A user administers at most one organization — moving them simply

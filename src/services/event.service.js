@@ -20,13 +20,26 @@ async function listActiveEvents() {
 // Its own function rather than a flag on listActiveEvents, because that one is
 // also the shape of GET /api/events, and a public API response should not grow
 // a field to suit one page's card design.
-async function listHomeEvents(take = 3) {
-  return prisma.event.findMany({
-    where: { isPublished: true },
+// The home page's event cards: what is coming up, soonest first. Ordering every
+// published event by date put long-finished events first, still reading
+// "Register Now". Only when fewer than `take` are coming up are the gaps filled
+// with the most recently finished ones, which the cards then mark as ended
+// (`hasEnded`, from hasEventEnded, the rule registration itself enforces).
+async function listHomeEvents(take = 3, now = new Date()) {
+  const include = { _count: { select: { registrations: true } } };
+  const upcoming = await prisma.event.findMany({
+    where: { AND: [{ isPublished: true }, notEndedWhere(now)] },
     orderBy: { startDate: 'asc' },
     take,
-    include: { _count: { select: { registrations: true } } },
+    include,
   });
+  const ended = upcoming.length < take ? await prisma.event.findMany({
+    where: { AND: [{ isPublished: true }, hasEndedWhere(now)] },
+    orderBy: { startDate: 'desc' },
+    take: take - upcoming.length,
+    include,
+  }) : [];
+  return [...upcoming, ...ended].map((e) => ({ ...e, hasEnded: hasEventEnded(e, now) }));
 }
 
 async function listPublishedEvents() {

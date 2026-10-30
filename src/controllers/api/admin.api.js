@@ -24,6 +24,7 @@ const paymentService = require('../../services/payment.service');
 const storageService = require('../../services/storage.service');
 const organizationAdminService = require('../../services/organizationAdmin.service');
 const organizationService = require('../../services/organization.service');
+const adminAccessService = require('../../services/adminAccess.service');
 
 // Enriches each user with their latest membership-payment status so the admin
 // can see who's paid before approving — one batched query, not N.
@@ -142,8 +143,13 @@ const updateUser = asyncHandler(async (req, res) => {
   // allowAdminRole is true only here, on the branch a full admin reaches —
   // the scoped branch above has already stripped `role` from the payload, so a
   // chapter admin cannot arrive with one however they craft the request.
+  // A President (national reach, no orgScope) may not hand out ADMIN or
+  // PRESIDENT; presidentTargetGuard has already refused both, this repeats it.
+  const isMainAdmin = req.session.user.role === 'ADMIN';
   const user = await userService.updateUser(userId, payload, {
-    allowAdminRole: !req.orgScope,
+    allowAdminRole: !req.orgScope && isMainAdmin,
+    allowPresidentRole: !req.orgScope && isMainAdmin,
+    allowMemberType: !req.orgScope,
     actorId: req.session.user.id,
   });
   return success(res, { user }, 'User updated');
@@ -265,6 +271,14 @@ const updateGatewaySurchargePercent = asyncHandler(async (req, res) => {
   }
   await settingsService.setGatewaySurchargePercent(percent);
   return success(res, { percent }, 'Payment processing surcharge updated');
+});
+
+// Site Settings -> National President access. Unknown module names are
+// dropped by the service, so only real modules can be granted.
+const updatePresidentAccess = asyncHandler(async (req, res) => {
+  if (!checkValidation(req, res)) return undefined;
+  const modules = await adminAccessService.setPresidentModules(req.body.modules);
+  return success(res, { modules }, 'National President access saved. It applies on their next page.');
 });
 
 const getPaymentsEnabled = asyncHandler(async (req, res) => {
@@ -500,6 +514,7 @@ const resendActivation = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  updatePresidentAccess,
   activationStatus,
   sendActivations,
   resendActivation,

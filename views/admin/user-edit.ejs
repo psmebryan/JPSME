@@ -67,7 +67,12 @@
           <select name="role" class="form-input">
             <option value="USER" <%= user.role === 'USER' ? 'selected' : '' %>>User</option>
             <option value="CHAPTER_ADMIN" <%= user.role === 'CHAPTER_ADMIN' ? 'selected' : '' %>>Organization Admin</option>
-            <option value="ADMIN" <%= user.role === 'ADMIN' ? 'selected' : '' %>>Admin</option>
+            <%# Only the main admin can give (or see as a choice) the Admin and
+                National President roles; the server refuses them from anyone else. %>
+            <% if (locals.currentUser && currentUser.role === 'ADMIN') { %>
+              <option value="PRESIDENT" <%= user.role === 'PRESIDENT' ? 'selected' : '' %>>National President</option>
+              <option value="ADMIN" <%= user.role === 'ADMIN' ? 'selected' : '' %>>Admin</option>
+            <% } %>
           </select>
         </div>
         <%# The current organization is always shown and is what Save sends unless

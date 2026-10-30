@@ -28,7 +28,7 @@ const SCOPES = [
         Pick an event to open its desk, entrance, halls and seat map &mdash; or read what happened at one.
       </p>
     </div>
-    <% if (currentUser && currentUser.role === 'ADMIN') { %>
+    <% if (currentUser && ['ADMIN', 'PRESIDENT'].includes(currentUser.role)) { %>
       <a href="/admin/check-in/staff" class="btn-secondary">Manage check-in staff</a>
     <% } %>
   </div>

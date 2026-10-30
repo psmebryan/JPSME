@@ -56,7 +56,7 @@
 
       <div class="flex items-center gap-3">
         <% if (locals.currentUser) { %>
-          <% const canAccessAdmin = currentUser.role === 'ADMIN' || currentUser.role === 'CHAPTER_ADMIN'; %>
+          <% const canAccessAdmin = ['ADMIN', 'CHAPTER_ADMIN', 'PRESIDENT'].includes(currentUser.role); %>
           <div class="relative hidden sm:block" id="userMenuDropdown">
             <button type="button" id="userMenuBtn"
                     class="flex h-11 items-center gap-2.5 rounded-lg px-2 text-sm font-semibold text-mist-200 transition-colors hover:bg-white/[.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-400"
@@ -79,7 +79,7 @@
               <a href="/profile#registrations">My Registrations</a>
               <% if (canAccessAdmin) { %>
                 <div class="my-1.5 h-px bg-white/10"></div>
-                <a href="/admin/dashboard" class="text-gold-300"><%= currentUser.role === 'CHAPTER_ADMIN' ? 'Chapter Admin' : 'Admin Dashboard' %></a>
+                <a href="/admin/dashboard" class="text-gold-300"><%= currentUser.role === 'CHAPTER_ADMIN' ? 'Chapter Admin' : (currentUser.role === 'PRESIDENT' ? 'President Admin' : 'Admin Dashboard') %></a>
               <% } %>
               <div class="my-1.5 h-px bg-white/10"></div>
               <a href="/logout">Log Out</a>
@@ -140,8 +140,8 @@
           <div class="flex flex-col gap-0.5">
             <a href="/profile" class="jp-mobile-link">My Profile</a>
             <a href="/profile#registrations" class="jp-mobile-link">My Registrations</a>
-            <% if (currentUser.role === 'ADMIN' || currentUser.role === 'CHAPTER_ADMIN') { %>
-              <a href="/admin/dashboard" class="jp-mobile-link text-gold-300"><%= currentUser.role === 'CHAPTER_ADMIN' ? 'Chapter Admin' : 'Admin Dashboard' %></a>
+            <% if (['ADMIN', 'CHAPTER_ADMIN', 'PRESIDENT'].includes(currentUser.role)) { %>
+              <a href="/admin/dashboard" class="jp-mobile-link text-gold-300"><%= currentUser.role === 'CHAPTER_ADMIN' ? 'Chapter Admin' : (currentUser.role === 'PRESIDENT' ? 'President Admin' : 'Admin Dashboard') %></a>
             <% } %>
             <a href="/logout" class="jp-mobile-link">Log Out</a>
           </div>

@@ -563,6 +563,9 @@
   .jp-badge-full {
     @apply bg-[#8a3a3a]/10 text-[#803636];
   }
+  .jp-badge-ended {
+    @apply bg-pen-900/[.08] text-pen-500;
+  }
   /* On the dark bands. */
   .jp-badge-dark {
     @apply border border-gold-400/45 bg-ink-950/50 text-gold-300;

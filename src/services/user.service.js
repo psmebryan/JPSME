@@ -243,7 +243,11 @@ async function getById(userId) {
 // guarantee — a chapter admin cannot mint an ADMIN, whatever they post — while
 // letting the person who already holds the role hand it to someone else, which
 // previously required a database they cannot reach.
-async function updateUser(userId, data, { allowAdminRole = false, actorId = null } = {}) {
+// `allowPresidentRole`: only the main admin may make someone National President.
+// `allowMemberType`: a national admin (main admin or President), not a chapter admin.
+async function updateUser(userId, data, {
+  allowAdminRole = false, allowPresidentRole = false, allowMemberType = allowAdminRole, actorId = null,
+} = {}) {
   const target = await prisma.user.findUnique({
     where: { id: Number(userId) },
     select: { id: true, role: true, email: true, organizationId: true },
@@ -253,6 +257,10 @@ async function updateUser(userId, data, { allowAdminRole = false, actorId = null
   const wantsAdmin = data.role === 'ADMIN';
   if (wantsAdmin && !allowAdminRole) {
     throw new AppError('Cannot assign ADMIN role via chapter member management', 403);
+  }
+
+  if (data.role === 'PRESIDENT' && !allowPresidentRole) {
+    throw new AppError('Only the main admin can make someone National President', 403);
   }
 
   const losesAdmin = target.role === 'ADMIN' && data.role && data.role !== 'ADMIN';
@@ -299,12 +307,13 @@ async function updateUser(userId, data, { allowAdminRole = false, actorId = null
     const assignable = allowAdminRole
       ? ['ADMIN', 'CHAPTER_ADMIN', 'USER']
       : ['CHAPTER_ADMIN', 'USER'];
+    if (allowPresidentRole) assignable.push('PRESIDENT');
     if (assignable.includes(roleVal)) allowed.role = roleVal;
   }
   // Member type, from the Master List. Main admins only: the scoped (chapter
   // admin) path never passes allowAdminRole, and its payload is already cut
   // down to name and contact fields before it gets here.
-  if (allowAdminRole && Object.prototype.hasOwnProperty.call(data, 'memberTypeId')) {
+  if (allowMemberType && Object.prototype.hasOwnProperty.call(data, 'memberTypeId')) {
     const raw = data.memberTypeId;
     const value = raw === '' || raw === null || raw === undefined ? null : Number(raw);
     if (value !== null && !Number.isInteger(value)) throw new AppError('Invalid member type', 400);

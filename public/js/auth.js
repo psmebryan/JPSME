@@ -29,7 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // tenth time wants the site, not their own profile page — landing
         // them on /profile every time just adds a click.
         let destination = '/';
-        if (loginContext === 'admin' && ['ADMIN', 'CHAPTER_ADMIN'].includes(user.role)) {
+        if (loginContext === 'admin' && ['ADMIN', 'CHAPTER_ADMIN', 'PRESIDENT'].includes(user.role)) {
           destination = '/admin/dashboard';
         } else if (loginContext !== 'admin') {
           // Only a same-site relative path is ever honored — a bare "/next"

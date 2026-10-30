@@ -15,6 +15,7 @@ const apiRoutes = require('./routes/api');
 const { issueCsrfToken } = require('./middleware/csrf.middleware');
 const AppError = require('./utils/AppError');
 const settingsService = require('./services/settings.service');
+const adminAccessService = require('./services/adminAccess.service');
 const sessionStore = require('./config/sessionStore');
 
 const app = express();
@@ -311,6 +312,19 @@ app.use((req, res, next) => {
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
   ));
   next();
+});
+
+// The admin modules this person may open, for the admin sidebar: everything
+// for the main admin, the ticked ones for a National President (see
+// config/adminModules). Only for admin pages, and only a President costs a
+// lookup. The routes enforce it; the sidebar only hides what would be refused.
+app.use('/admin', async (req, res, next) => {
+  try {
+    res.locals.adminModules = await adminAccessService.modulesFor(req.session.user);
+    next();
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Page routes render the site logo in the navbar, so resolve it once here.
