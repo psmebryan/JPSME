@@ -44,10 +44,14 @@ async function listByStatus(status, { awaitingApproval = false } = {}) {
 // beneath it. `organizationId` alone filters to exactly one organization,
 // which is what the admin's filter dropdown passes.
 async function listMembersForAdmin({
-  status, organizationId, organizationIds, search, membership, paymentStatus, page = 1, pageSize = 25,
+  status, organizationId, organizationIds, search, membership, memberType, paymentStatus, page = 1, pageSize = 25,
 } = {}) {
   const where = { role: { not: 'ADMIN' } };
   if (status) where.status = status;
+
+  // Member type from the Master List; NONE = no type (non-members and guests).
+  if (memberType === 'NONE') where.memberTypeId = null;
+  else if (memberType && Number.isInteger(Number(memberType))) where.memberTypeId = Number(memberType);
 
   // Membership is derived from membershipExpiresAt rather than stored, so the
   // filter has to express the same comparison the badge does: inside its year

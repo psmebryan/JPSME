@@ -255,6 +255,14 @@ async function createNextPaymentAttempt(paymentId) {
 // PayMongo call happens after this transaction commits, further below) —
 // holding a DB transaction open across a third-party network call would pin
 // row locks for an unbounded time.
+// The payer's details for PayMongo's checkout page, so it doesn't ask for
+// them again. Only fields the profile actually has; null = send nothing.
+function billingFor(user) {
+  const name = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  if (!name || !user.email) return null;
+  return { name, email: user.email, ...(user.phone && String(user.phone).trim() ? { phone: String(user.phone).trim() } : {}) };
+}
+
 async function createCheckout({ userId, purpose, eventId, amount, description, referencePrefix, successUrl, cancelUrl, alreadyPaidMessage, allowRenewal = false, withinTransaction }) {
   if (!(await settingsService.getPaymentsEnabled())) {
     throw new AppError('Payments are temporarily unavailable. Please try again later.', 503);
@@ -347,6 +355,7 @@ async function createCheckout({ userId, purpose, eventId, amount, description, r
       successUrl,
       cancelUrl,
       metadata: { paymentId: String(payment.id), userId: String(user.id), ...(eventId ? { eventId: String(eventId) } : {}) },
+      billing: billingFor(user),
     });
 
     await prisma.payment.update({ where: { id: payment.id }, data: { gatewayCheckoutId: checkoutId } });

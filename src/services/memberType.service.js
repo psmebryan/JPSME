@@ -15,9 +15,7 @@ const AppError = require('../utils/AppError');
 //   or renew it (from the RENEWAL rates); it decides what they pay and how
 //   long it lasts. An admin can change it any time.
 //
-//   Each event can set a fee per type. A registrant picks one of the event's
-//   options (a type with a fee, or "everyone else" at the event's own fee).
-//   Nobody checks that a Student really is one; the desk does.
+//   Event fees are separate: see eventFee.service (Master List -> Event Fee).
 //
 //   Switching a type off hides it from new choices only: members who have it
 //   keep it, and past registrations and payments keep what they recorded.
@@ -26,7 +24,6 @@ const MAX_TOTAL = 50;
 const VALIDITY_CHOICES = [1, 2, 3, 5, null]; // years; null = lifetime
 const MAX_NAME = 60;
 const MAX_CENTAVOS = 100000000; // PHP 1,000,000, the same cap as the event fee
-const STANDARD_OPTION = 'standard';
 
 // PayMongo's channel fee on an amount, from the rate in Site Settings. The
 // same calculation checkout charges with. Required lazily: payment.service
@@ -141,16 +138,16 @@ async function updateMemberType(id, { name, membershipFee, isActive, sortOrder, 
   }
 }
 
-// Members of this type become "no type"; the type's event fees go with it.
-// Past registrations keep the type name and fee they were recorded with.
+// Members of this type become "no type" and choose again when they next
+// avail membership. Past payments keep what they recorded.
 async function deleteMemberType(id) {
   const existing = await prisma.memberType.findUnique({
     where: { id: Number(id) },
-    include: { _count: { select: { users: true, eventFees: true } } },
+    include: { _count: { select: { users: true } } },
   });
   if (!existing) throw new AppError('Member type not found', 404);
   await prisma.memberType.delete({ where: { id: existing.id } });
-  return { id: existing.id, membersCleared: existing._count.users, eventFeesRemoved: existing._count.eventFees };
+  return { id: existing.id, membersCleared: existing._count.users };
 }
 
 // An admin may set any type, on or off; null clears it.
@@ -202,80 +199,9 @@ async function membershipQuote(userId) {
   };
 }
 
-// --- event fees -------------------------------------------------------------------
-
-// { [memberTypeId]: feeCentavos } for one event, every type on or off.
-async function getEventFees(eventId) {
-  const rows = await prisma.eventFee.findMany({ where: { eventId: Number(eventId) } });
-  return Object.fromEntries(rows.map((r) => [r.memberTypeId, r.feeCentavos]));
-}
-
-// Reads the event form's boxes: memberTypeFee_<typeId> = pesos, blank for
-// "no option for this type". Returns { [typeId]: centavos | null }.
-function parseFeeFields(body) {
-  const fees = {};
-  Object.keys(body || {}).forEach((key) => {
-    const m = /^memberTypeFee_(\d+)$/.exec(key);
-    if (!m) return;
-    const text = String(body[key] == null ? '' : body[key]).trim();
-    fees[m[1]] = text === '' ? null : parsePesos(text, 'Each member type fee');
-  });
-  return fees;
-}
-
-// A number sets that type's fee, null removes it. Types not mentioned are left
-// as they are, and ids that are not real member types are ignored.
-async function setEventFees(eventId, fees) {
-  const ids = Object.keys(fees || {}).map(Number).filter((n) => Number.isInteger(n) && n > 0);
-  if (!ids.length) return getEventFees(eventId);
-  const real = new Set((await prisma.memberType.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((t) => t.id));
-
-  await prisma.$transaction(ids.filter((id) => real.has(id)).map((typeId) => {
-    const value = fees[typeId];
-    if (value === null || value === undefined) {
-      return prisma.eventFee.deleteMany({ where: { eventId: Number(eventId), memberTypeId: typeId } });
-    }
-    return prisma.eventFee.upsert({
-      where: { eventId_memberTypeId: { eventId: Number(eventId), memberTypeId: typeId } },
-      create: { eventId: Number(eventId), memberTypeId: typeId, feeCentavos: value },
-      update: { feeCentavos: value },
-    });
-  }));
-  return getEventFees(eventId);
-}
-
-// What a registrant can choose from for one event: every switched-on type that
-// has a fee for it, then "everyone else" at the event's own fee. An empty list
-// means the event has no options and everyone pays the event's own fee.
-async function listEventOptions(event) {
-  const rows = await prisma.eventFee.findMany({
-    where: { eventId: Number(event.id), memberType: { isActive: true } },
-    include: { memberType: { select: { id: true, name: true, sortOrder: true } } },
-  });
-  if (!rows.length) return [];
-  rows.sort((a, b) => (a.memberType.sortOrder - b.memberType.sortOrder) || (a.memberType.id - b.memberType.id));
-  return [
-    ...rows.map((r) => ({ value: String(r.memberType.id), label: r.memberType.name, feeCentavos: r.feeCentavos, memberTypeName: r.memberType.name })),
-    { value: STANDARD_OPTION, label: 'Everyone else', feeCentavos: Number(event.feeCentavos) || 0, memberTypeName: null },
-  ];
-}
-
-// The fee for the option a registrant picked, checked against the event's
-// real options. Never trusts an amount from the request.
-async function resolveEventChoice(event, choice) {
-  const options = await listEventOptions(event);
-  if (!options.length) {
-    return { feeCentavos: Number(event.feeCentavos) || 0, memberTypeName: null, optionLabel: null };
-  }
-  const picked = options.find((o) => o.value === String(choice == null ? '' : choice));
-  if (!picked) throw new AppError('Choose one of the registration options for this event', 422);
-  return { feeCentavos: picked.feeCentavos, memberTypeName: picked.memberTypeName, optionLabel: picked.label };
-}
-
 module.exports = {
   MAX_TOTAL,
   VALIDITY_CHOICES,
-  STANDARD_OPTION,
   listMemberTypes,
   createMemberType,
   updateMemberType,
@@ -284,9 +210,4 @@ module.exports = {
   choicesFor,
   assertChoosable,
   membershipQuote,
-  getEventFees,
-  parseFeeFields,
-  setEventFees,
-  listEventOptions,
-  resolveEventChoice,
 };

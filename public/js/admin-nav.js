@@ -25,6 +25,7 @@ const openEmailSubmenu = makeSubmenuToggle('email-management-toggle', 'email-sub
 const openInvitationSubmenu = makeSubmenuToggle('invitation-management-toggle', 'invitation-submenu', 'invitation-management-chevron');
 const openCheckinSubmenu = makeSubmenuToggle('checkin-management-toggle', 'checkin-submenu', 'checkin-management-chevron');
 const openMasterSubmenu = makeSubmenuToggle('master-management-toggle', 'master-submenu', 'master-management-chevron');
+const openReportSubmenu = makeSubmenuToggle('report-management-toggle', 'report-submenu', 'report-management-chevron');
 
 function openSubmenuForPath(path) {
   if (path.startsWith('/admin/organizations') || path.startsWith('/admin/organization-members') || path.startsWith('/admin/organization-admins')) {
@@ -48,6 +49,9 @@ function openSubmenuForPath(path) {
   }
   if (path.startsWith('/admin/master')) {
     openMasterSubmenu(true);
+  }
+  if (path.startsWith('/admin/reports')) {
+    openReportSubmenu(true);
   }
   // Also opens on the per-event scanner and report pages, which live under
   // /admin/events/:id/ but belong to this module as far as a reader is
@@ -125,6 +129,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('master-management-toggle')?.addEventListener('click', (e) => {
     openMasterSubmenu(e.currentTarget.getAttribute('aria-expanded') !== 'true');
+  });
+  document.getElementById('report-management-toggle')?.addEventListener('click', (e) => {
+    openReportSubmenu(e.currentTarget.getAttribute('aria-expanded') !== 'true');
   });
 
   nav.addEventListener('click', (e) => {

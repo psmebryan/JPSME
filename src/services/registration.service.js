@@ -99,13 +99,13 @@ async function countActiveRegistrations(eventId, client = prisma) {
 // events go through upsertPendingPaymentRegistration + payment.service.js's
 // createEventCheckout instead — this function is the free-event path only,
 // called when Event.feeCentavos === 0.)
-// fee, when given, is what applied to this registrant (memberType.service
-// resolveEventFee) and is recorded on the registration: { feeCentavos,
-// memberTypeName }. A paid event lands here too while online payment is off,
+// fee, when given, is what applied to this registrant (eventFee.service
+// resolveEventChoice) and is recorded on the registration: { feeCentavos,
+// feeOptionName }. A paid event lands here too while online payment is off,
 // registered straight away with the fee recorded for collecting offline.
 async function registerForEvent(user, eventId, invitation = null, fee = null) {
   const feeSnapshot = fee
-    ? { feeCentavos: Number(fee.feeCentavos) || 0, memberTypeName: fee.memberTypeName || null }
+    ? { feeCentavos: Number(fee.feeCentavos) || 0, feeOptionName: fee.feeOptionName || null }
     : {};
   const event = await prisma.event.findUnique({ where: { id: Number(eventId) } });
   if (!event) throw new AppError('Event not found', 404);

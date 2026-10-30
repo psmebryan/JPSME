@@ -49,9 +49,9 @@
   <% const registered = typeof isRegistered !== 'undefined' && isRegistered; %>
   <% const eventOver = typeof locals.hasEnded !== 'undefined' && locals.hasEnded; %>
   <% const status = typeof registrationStatus !== 'undefined' ? registrationStatus : null; %>
-  <%# Fees. With options (member types that have a fee for this event, then
-      "everyone else"), the registrant picks one below the list; without, the
-      event's single fee. See memberType.service listEventOptions. %>
+  <%# Fees. With options (this event's own fee options, Master List -> Event
+      Fee), the registrant picks one below the list; without, its single fee.
+      See eventFee.service listEventOptions. %>
   <% const feeOptions = locals.feeOptions || []; %>
   <% const peso = (c) => (c / 100).toFixed(2); %>
   <% const anyFee = event.feeCentavos > 0 || feeOptions.some((o) => o.feeCentavos > 0); %>
@@ -62,7 +62,7 @@
       <p class="text-lg font-semibold text-gray-900">Registration options</p>
       <ul class="mt-1 text-sm text-gray-600">
         <% feeOptions.forEach((o) => { %>
-          <li><%= o.label %>: <%= o.feeCentavos > 0 ? '\u20B1' + peso(o.feeCentavos) : 'Free' %></li>
+          <li><%= o.label %>: <%= o.feeCentavos > 0 ? '\u20B1' + peso(o.feeCentavos) : 'Free' %><% if (o.audience !== 'EVERYONE') { %> <span class="text-xs text-gray-400">(<%= o.audienceLabel %>)</span><% } %></li>
         <% }) %>
       </ul>
       <% if (anyFee && !locals.paymentsEnabled) { %>
@@ -130,15 +130,20 @@
     <% if (feeOptions.length && !registered && locals.currentUser) { %>
       <fieldset class="mb-4" data-fee-options>
         <legend class="text-sm font-medium text-gray-700 mb-2">Choose your registration option</legend>
+        <%# Options for members only / non-members only are shown but cannot be
+            picked by someone they are not for; the server refuses them too. %>
         <div class="space-y-2">
           <% feeOptions.forEach((o) => { %>
-            <label class="flex items-center gap-3 rounded-md border border-gray-200 px-3 py-2 hover:bg-gray-50">
-              <input type="radio" name="feeOption" value="<%= o.value %>">
-              <span class="flex-1 text-sm text-gray-800"><%= o.label %></span>
+            <label class="flex items-center gap-3 rounded-md border border-gray-200 px-3 py-2 <%= o.allowed === false ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50' %>">
+              <input type="radio" name="feeOption" value="<%= o.value %>" <%= o.allowed === false ? 'disabled' : '' %>>
+              <span class="flex-1 text-sm text-gray-800"><%= o.label %><% if (o.audience !== 'EVERYONE') { %> <span class="text-xs text-gray-500">&middot; <%= o.audienceLabel %></span><% } %></span>
               <span class="text-sm font-semibold text-gray-900"><%= o.feeCentavos > 0 ? '\u20B1' + peso(o.feeCentavos) : 'Free' %></span>
             </label>
           <% }) %>
         </div>
+        <% if (!feeOptions.some((o) => o.allowed !== false)) { %>
+          <p class="mt-2 text-sm text-amber-700"><%= feeOptions.every((o) => o.audience === 'MEMBERS') ? 'This event is for PSME members only. Avail a membership to register.' : "None of this event's registration options is open to you." %></p>
+        <% } %>
       </fieldset>
     <% } %>
     <button

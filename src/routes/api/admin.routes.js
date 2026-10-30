@@ -6,6 +6,7 @@ const certificateApi = require('../../controllers/api/certificate.api');
 const adminPaymentApi = require('../../controllers/api/adminPayment.api');
 const memberTypeApi = require('../../controllers/api/memberType.api');
 const studentOrgApi = require('../../controllers/api/studentOrg.api');
+const eventFeeApi = require('../../controllers/api/eventFee.api');
 const adminEmailApi = require('../../controllers/api/adminEmail.api');
 const adminBroadcastApi = require('../../controllers/api/adminBroadcast.api');
 const invitationApi = require('../../controllers/api/invitation.api');
@@ -124,6 +125,8 @@ router.get(
   query('organizationId').optional({ checkFalsy: true }).isInt().withMessage('Invalid organizationId filter'),
   query('status').optional({ checkFalsy: true }).isIn(['PENDING', 'APPROVED', 'REJECTED']).withMessage('Invalid status filter'),
   query('membership').optional({ checkFalsy: true }).isIn(['MEMBER', 'NON_MEMBER', 'LAPSED', 'NEVER']).withMessage('Invalid membership filter'),
+  // A member type id from the Master List, or NONE for members without one.
+  query('memberType').optional({ checkFalsy: true }).matches(/^(NONE|[1-9]\d*)$/).withMessage('Invalid member type filter'),
   query('paymentStatus').optional({ checkFalsy: true }).isIn(['UNPAID', 'PAID', 'PENDING', 'PROCESSING', 'FAILED', 'EXPIRED', 'CANCELLED', 'REFUNDED']).withMessage('Invalid payment filter'),
   adminApi.listMembers
 );
@@ -245,6 +248,15 @@ router.get('/member-types', memberTypeApi.list);
 router.post('/member-types', verifyCsrfToken, memberTypeApi.create);
 router.put('/member-types/:id', verifyCsrfToken, param('id').isInt({ min: 1 }), checkRouteInput, memberTypeApi.update);
 router.delete('/member-types/:id', verifyCsrfToken, param('id').isInt({ min: 1 }), checkRouteInput, memberTypeApi.remove);
+
+// Master List: each event's own registration fee options. Main admin only,
+// inherited from router.use(apiAdmin) above. Validation is in eventFee.service.
+const eventFeeParams = [param('eventId').isInt({ min: 1 }), checkRouteInput];
+const eventFeeOptionParams = [param('eventId').isInt({ min: 1 }), param('optionId').isInt({ min: 1 }), checkRouteInput];
+router.get('/event-fees/:eventId/options', eventFeeParams, eventFeeApi.list);
+router.post('/event-fees/:eventId/options', verifyCsrfToken, eventFeeParams, eventFeeApi.create);
+router.put('/event-fees/:eventId/options/:optionId', verifyCsrfToken, eventFeeOptionParams, eventFeeApi.update);
+router.delete('/event-fees/:eventId/options/:optionId', verifyCsrfToken, eventFeeOptionParams, eventFeeApi.remove);
 
 // Master List: student organizations and their officers. Main admin only,
 // inherited from router.use(apiAdmin) above.

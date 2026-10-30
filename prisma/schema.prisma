@@ -503,8 +503,9 @@ model Event {
   updatedAt   DateTime  @updatedAt
 
   registrations       EventRegistration[]
-  // One fee per member type. feeCentavos above is what everyone else pays.
-  fees                EventFee[]
+  // This event's own registration fee options (Master List -> Event Fee).
+  // With no active ones, everyone pays feeCentavos above.
+  feeOptions          EventFeeOption[]
   certificateTemplate CertificateTemplate?
   certificates        EventCertificate[]
   emailTemplates      EmailTemplate[]
@@ -774,9 +775,11 @@ model EventRegistration {
   checkedInAt        DateTime?
   invitationId       Int?               @unique
   // A snapshot taken at registration: the fee that applied to them and the
-  // member type it came from (null = the event's own fee). Later changes to a
-  // type or a fee never rewrite what somebody was told they owed.
+  // event fee option they picked (null = the event's single fee). Later
+  // changes never rewrite what somebody was told they owed. memberTypeName is
+  // from the short-lived per-member-type event fees and is kept for old rows.
   feeCentavos        Int?
+  feeOptionName      String?            @db.VarChar(60)
   memberTypeName     String?            @db.VarChar(60)
   createdAt          DateTime           @default(now())
 
@@ -1061,13 +1064,34 @@ model Article {
   authorName  String?
   coverImage  String?
   body        String    @db.Text
+  // A short teaser for cards; without one the start of the body is used.
+  summary     String?   @db.VarChar(300)
+  // An external link shown as a button, e.g. the full newsletter flip-book.
+  linkUrl     String?   @db.VarChar(500)
+  linkLabel   String?   @db.VarChar(100)
   isPublished Boolean   @default(false)
   publishedAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  images ArticleImage[]
+
   @@index([isPublished, publishedAt])
   @@map("articles")
+}
+
+// Extra photos shown as a gallery under an article, in order.
+model ArticleImage {
+  id        Int      @id @default(autoincrement())
+  articleId Int
+  url       String   @db.VarChar(500)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId])
+  @@map("article_images")
 }
 
 // Key/value store for site-wide content the admin can change, e.g. site_logo path.
@@ -1385,27 +1409,30 @@ model MemberType {
   updatedAt DateTime   @updatedAt
 
   users     User[]
-  eventFees EventFee[]
 
   @@map("member_types")
 }
 
-// What a member type pays for one event. A registrant with no type, or a type
-// with no row here, pays Event.feeCentavos.
-model EventFee {
-  id           Int        @id @default(autoincrement())
-  eventId      Int
-  memberTypeId Int
-  feeCentavos  Int        @default(0)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+// One registration fee option of one event, e.g. "Student" PHP 300. Each
+// event keeps its own list (Master List -> Event Fee); a registrant picks one
+// of the event's active options.
+model EventFeeOption {
+  id          Int      @id @default(autoincrement())
+  eventId     Int
+  name        String   @db.VarChar(60)
+  feeCentavos Int      @default(0)
+  // Off = hidden from registrants; registrations already made keep it.
+  isActive    Boolean  @default(true)
+  // Who may pick it: EVERYONE, MEMBERS (active membership) or NON_MEMBERS.
+  audience    String   @default("EVERYONE") @db.VarChar(12)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  event      Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  memberType MemberType @relation(fields: [memberTypeId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
-  @@unique([eventId, memberTypeId])
-  @@index([memberTypeId])
-  @@map("event_fees")
+  @@unique([eventId, name])
+  @@map("event_fee_options")
 }
 
 // A failed sign-in, counted per account and per address so the login form can

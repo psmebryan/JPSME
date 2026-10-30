@@ -1,0 +1,201 @@
+<%#
+  Transaction Report (Reports). Two tabs: Event Registration (every event
+  registration, with its online payment if there was one) and Membership
+  Registration (every membership payment). Filters live in the URL; Export
+  downloads every matching row with the same filters. See reports.service.
+%>
+<%
+  const f = filters;
+  const isEvent = f.kind === 'EVENT';
+  const money = (c) => '₱' + Number((Number(c) || 0) / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const when = (d) => (d ? new Date(d).toLocaleString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—');
+  const qs = (over) => {
+    const p = { kind: f.kind === 'MEMBERSHIP' ? 'membership' : null, from: f.from, to: f.to, payment: f.payment, status: f.status, org: f.org, event: f.event, q: f.q, page: 1, ...over };
+    return Object.keys(p).filter((k) => p[k] !== null && p[k] !== undefined && p[k] !== '' && !(k === 'page' && Number(p[k]) === 1))
+      .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(p[k])}`).join('&');
+  };
+  const link = (over) => { const s = qs(over); return '/admin/reports/transactions' + (s ? `?${s}` : ''); };
+  const exportQs = qs({ page: 1 });
+  const statusBadge = { PAID: 'badge-green', PENDING: 'badge-amber', TO_COLLECT: 'badge-blue', FREE: 'badge-slate', FAILED: 'badge-red', REFUNDED: 'badge-purple', CANCELLED: 'badge-slate' };
+  const from = total ? (page - 1) * pageSize + 1 : 0;
+  const to = Math.min(total, page * pageSize);
+  const tab = (active) => `inline-flex items-center border-b-2 px-4 py-3 text-sm font-semibold ${active ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`;
+%>
+<div class="w-full">
+  <div class="admin-card overflow-hidden">
+    <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-6 pt-5">
+      <div class="pb-2">
+        <h1 class="admin-h1">Transaction Report</h1>
+        <p class="admin-subtitle">Event and membership registrations and their payments</p>
+      </div>
+      <a href="/admin/reports/transactions/export.xlsx<%= exportQs ? '?' + exportQs : '' %>" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-export>
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg>
+        Export XLS
+      </a>
+      <nav class="-mb-px flex w-full gap-2" aria-label="Transaction type">
+        <a href="/admin/reports/transactions" class="<%= tab(isEvent) %>" <%- isEvent ? 'aria-current="page"' : '' %>><%= kinds.EVENT %></a>
+        <a href="/admin/reports/transactions?kind=membership" class="<%= tab(!isEvent) %>" <%- !isEvent ? 'aria-current="page"' : '' %>><%= kinds.MEMBERSHIP %></a>
+      </nav>
+    </div>
+
+    <div class="px-6 py-5 space-y-5">
+      <div class="grid grid-cols-2 gap-3 <%= isEvent ? 'lg:grid-cols-4' : 'lg:grid-cols-3' %>" data-summary>
+        <div class="rounded-lg border border-slate-200 px-4 py-3" data-sum="count">
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Transactions</p>
+          <p class="mt-1 text-2xl font-semibold tabular-nums text-slate-900"><%= summary.count.toLocaleString('en-PH') %></p>
+        </div>
+        <div class="rounded-lg border border-slate-200 px-4 py-3" data-sum="paid">
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Paid</p>
+          <p class="mt-1 text-2xl font-semibold tabular-nums text-emerald-700"><%= money(summary.paidAmount) %></p>
+          <p class="text-xs text-slate-500"><%= summary.paidCount.toLocaleString('en-PH') %> transactions</p>
+        </div>
+        <div class="rounded-lg border border-slate-200 px-4 py-3" data-sum="pending">
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Pending</p>
+          <p class="mt-1 text-2xl font-semibold tabular-nums text-amber-700"><%= summary.pendingCount.toLocaleString('en-PH') %></p>
+          <p class="text-xs text-slate-500"><%= money(summary.pendingAmount) %></p>
+        </div>
+        <% if (isEvent) { %>
+          <div class="rounded-lg border border-slate-200 px-4 py-3" data-sum="collect">
+            <p class="text-xs font-medium uppercase tracking-wide text-slate-500">To collect (offline)</p>
+            <p class="mt-1 text-2xl font-semibold tabular-nums text-blue-700"><%= money(summary.toCollectAmount) %></p>
+            <p class="text-xs text-slate-500"><%= summary.toCollectCount.toLocaleString('en-PH') %> registrations</p>
+          </div>
+        <% } %>
+      </div>
+
+      <form method="get" action="/admin/reports/transactions" id="report-filters" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 xl:items-end">
+        <% if (!isEvent) { %><input type="hidden" name="kind" value="membership"><% } %>
+        <div>
+          <label for="rf-from" class="form-label">Date from</label>
+          <input id="rf-from" name="from" type="date" value="<%= f.from || '' %>" class="form-input" data-autosubmit>
+        </div>
+        <div>
+          <label for="rf-to" class="form-label">Date to</label>
+          <input id="rf-to" name="to" type="date" value="<%= f.to || '' %>" class="form-input" data-autosubmit>
+        </div>
+        <div>
+          <label for="rf-payment" class="form-label">Payment</label>
+          <select id="rf-payment" name="payment" class="form-input" data-autosubmit>
+            <option value="">All payments</option>
+            <% Object.keys(channels).forEach((k) => { if (!isEvent && k !== 'ONLINE') return; %>
+              <option value="<%= k %>" <%= f.payment === k ? 'selected' : '' %>><%= channels[k] %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div>
+          <label for="rf-status" class="form-label">Payment status</label>
+          <select id="rf-status" name="status" class="form-input" data-autosubmit>
+            <option value="">All statuses</option>
+            <% Object.keys(statuses).forEach((k) => { if (!isEvent && ['TO_COLLECT', 'FREE', 'CANCELLED'].includes(k)) return; %>
+              <option value="<%= k %>" <%= f.status === k ? 'selected' : '' %>><%= statuses[k] %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="xl:col-span-2">
+          <label for="rf-org" class="form-label">Student organization</label>
+          <select id="rf-org" name="org" class="form-input" data-autosubmit data-searchable data-search-placeholder="Search student organizations">
+            <option value="">All organizations</option>
+            <option value="NONE" <%= f.org === 'NONE' ? 'selected' : '' %>>No organization</option>
+            <% orgGroups.forEach((g) => { %>
+              <optgroup label="<%= g.region %>">
+                <% g.units.forEach((u) => { %><option value="<%= u.id %>" <%= f.org === u.id ? 'selected' : '' %>><%= u.name %></option><% }) %>
+              </optgroup>
+            <% }) %>
+          </select>
+        </div>
+        <% if (isEvent) { %>
+          <div class="xl:col-span-2">
+            <label for="rf-event" class="form-label">Event</label>
+            <select id="rf-event" name="event" class="form-input" data-autosubmit data-searchable data-search-placeholder="Search events">
+              <option value="">All events</option>
+              <% events.forEach((e) => { %><option value="<%= e.id %>" <%= f.event === e.id ? 'selected' : '' %>><%= e.title %></option><% }) %>
+            </select>
+          </div>
+        <% } %>
+        <div class="<%= isEvent ? 'sm:col-span-2 lg:col-span-3 xl:col-span-6' : 'sm:col-span-2 lg:col-span-3 xl:col-span-6' %>">
+          <label for="rf-q" class="form-label">Search</label>
+          <div class="relative">
+            <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke-width="2" stroke-linecap="round"/></svg>
+            <input id="rf-q" name="q" type="search" value="<%= f.q %>" maxlength="100" placeholder="Name, email, reference<%= isEvent ? ', event' : '' %>" class="form-input pl-9">
+          </div>
+        </div>
+        <span class="flex gap-2 sm:col-span-2 lg:col-span-1 xl:col-span-2">
+          <button type="submit" class="btn-primary px-4 py-2">Search</button>
+          <a href="<%= isEvent ? '/admin/reports/transactions' : '/admin/reports/transactions?kind=membership' %>" class="btn-secondary px-3 py-2">Clear</a>
+        </span>
+      </form>
+
+      <div class="overflow-x-auto">
+        <table class="admin-table" id="report-table">
+          <thead class="admin-table-head">
+            <tr>
+              <th class="admin-th">Date</th>
+              <th class="admin-th">Reference</th>
+              <th class="admin-th">Name</th>
+              <th class="admin-th">Student organization</th>
+              <% if (isEvent) { %><th class="admin-th">Event</th><th class="admin-th">Fee option</th><% } else { %><th class="admin-th">Member type</th><% } %>
+              <th class="admin-th text-right">Amount</th>
+              <th class="admin-th">Payment</th>
+              <th class="admin-th">Payment status</th>
+              <th class="admin-th">Paid on</th>
+            </tr>
+          </thead>
+          <tbody class="admin-tbody">
+            <% rows.forEach((r) => { %>
+              <tr class="admin-tr" data-row>
+                <td class="admin-td whitespace-nowrap tabular-nums"><%= when(r.date) %></td>
+                <td class="admin-td whitespace-nowrap font-mono text-xs"><%= r.reference %></td>
+                <td class="admin-td"><span class="font-medium text-slate-900"><%= r.name %></span><span class="block text-xs text-slate-500"><%= r.email %></span></td>
+                <td class="admin-td max-w-[220px] truncate" title="<%= r.organization || '' %>"><%= r.organization || '—' %></td>
+                <% if (isEvent) { %>
+                  <td class="admin-td max-w-[220px] truncate" title="<%= r.event %>"><%= r.event %></td>
+                  <td class="admin-td whitespace-nowrap"><%= r.option || '—' %></td>
+                <% } else { %>
+                  <td class="admin-td whitespace-nowrap"><%= r.option || '—' %></td>
+                <% } %>
+                <td class="admin-td whitespace-nowrap text-right tabular-nums"><%= r.amount ? money(r.amount) : '—' %></td>
+                <td class="admin-td whitespace-nowrap"><%= channels[r.channel] %></td>
+                <td class="admin-td"><span class="<%= statusBadge[r.status] %>"><%= statuses[r.status] %></span></td>
+                <td class="admin-td whitespace-nowrap tabular-nums"><%= when(r.paidAt) %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <% if (!rows.length) { %>
+          <p class="py-8 text-center text-sm text-slate-500">No transactions match these filters.</p>
+        <% } %>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+        <p>Showing <%= from.toLocaleString('en-PH') %>–<%= to.toLocaleString('en-PH') %> of <%= total.toLocaleString('en-PH') %></p>
+        <% if (totalPages > 1) { %>
+          <nav class="flex items-center gap-2" aria-label="Pages">
+            <% if (page > 1) { %><a href="<%= link({ page: page - 1 }) %>" class="btn-secondary px-3 py-1.5">Previous</a><% } %>
+            <span class="tabular-nums">Page <%= page %> of <%= totalPages %></span>
+            <% if (page < totalPages) { %><a href="<%= link({ page: page + 1 }) %>" class="btn-secondary px-3 py-1.5">Next</a><% } %>
+          </nav>
+        <% } %>
+      </div>
+
+      <p class="text-xs text-slate-500">
+        <% if (isEvent) { %>
+          The date is when they registered. <strong>Online</strong> amounts are what PayMongo charged, channel fee included.
+          <strong>To collect</strong> is a paid event's fee recorded while online payment was off, to be paid to the organizers.
+          The student organization is the one recorded when they registered.
+        <% } else { %>
+          The date is when the membership payment was started. Amounts are what PayMongo charged, channel fee included.
+          Member type and student organization are the member's current ones.
+        <% } %>
+      </p>
+    </div>
+  </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  // Picking a filter applies it at once; the search box waits for Enter or Search.
+  const form = document.getElementById('report-filters');
+  if (!form) return;
+  form.querySelectorAll('[data-autosubmit]').forEach((el) => el.addEventListener('change', () => form.submit()));
+}());
+</script>

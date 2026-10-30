@@ -1,3 +1,5 @@
+// Event fees are tested separately (eventFees.test.js).
+//
 // Tests for the Master List's member types: their membership amount (the
 // only membership fee; PayMongo's channel fee goes on top), the on/off switch, members choosing a type when they avail
 // membership, and registrants picking an event's fee option.
@@ -210,46 +212,6 @@ async function main() {
       await prisma.user.update({ where: { id: alice.id }, data: { membershipExpiresAt: null } });
     });
 
-    await test('admins set event fee options; switched-off types are not offered', async () => {
-      const form = new FormData();
-      form.append('title', event.title);
-      form.append('startDate', event.startDate.toISOString());
-      form.append('feePhp', '500');
-      form.append(`memberTypeFee_${student.id}`, '300');
-      form.append(`memberTypeFee_${offType.id}`, '100');
-      form.append(`memberTypeFee_${regular.id}`, '');
-      const r = await A.put(`/api/events/${event.id}`, form);
-      assert.strictEqual(r.status, 200, `event update: ${r.status} ${r.json && r.json.message}`);
-      const options = await memberTypes.listEventOptions(event);
-      assert.deepStrictEqual(options.map((o) => [o.label, o.feeCentavos]),
-        [[`${TAG} Student`, 30000], ['Everyone else', 50000]], 'Student and everyone else only');
-      const page = await Bob.get(`/events/${event.id}`);
-      assert(page.text.includes('Choose your registration option') && page.text.includes('300.00'), 'options on the event page');
-      assert(!page.text.includes(`${TAG} Off`), 'switched-off type hidden');
-    });
-
-    await test('registering requires a valid option and records the one picked', async () => {
-      let r = await Bob.post(`/api/events/${event.id}/register`, {});
-      assert.strictEqual(r.status, 422, 'no option picked');
-      r = await Bob.post(`/api/events/${event.id}/register`, { feeOption: String(offType.id) });
-      assert.strictEqual(r.status, 422, 'a switched-off type is refused');
-      r = await Bob.post(`/api/events/${event.id}/register`, { feeOption: String(student.id) });
-      assert.strictEqual(r.status, 201, `register: ${r.status} ${r.json && r.json.message}`);
-      assert(/PHP 300\.00/.test(r.json.message), `tells them their fee: ${r.json.message}`);
-      const reg = await regFor(bob.id, event.id);
-      assert.deepStrictEqual([reg.status, reg.feeCentavos, reg.memberTypeName], ['REGISTERED', 30000, `${TAG} Student`]);
-    });
-
-    await test('"everyone else" records the standard fee; an event without options needs no pick', async () => {
-      let r = await Alice.post(`/api/events/${event.id}/register`, { feeOption: memberTypes.STANDARD_OPTION });
-      assert.strictEqual(r.status, 201, `register: ${r.status} ${r.json && r.json.message}`);
-      const reg = await regFor(alice.id, event.id);
-      assert.deepStrictEqual([reg.feeCentavos, reg.memberTypeName], [50000, null]);
-      r = await Alice.post(`/api/events/${freeEvent.id}/register`, {});
-      assert.strictEqual(r.status, 201);
-      assert.strictEqual((await regFor(alice.id, freeEvent.id)).feeCentavos, 0);
-    });
-
     await test('admins assign any type (on or off); chapter admins and members cannot manage types', async () => {
       let r = await A.put(`/api/admin/users/${bob.id}`, { memberTypeId: String(offType.id) });
       assert.strictEqual(r.status, 200, 'admin may set a switched-off type');
@@ -266,6 +228,21 @@ async function main() {
       await A.put(`/api/admin/member-types/${student.id}`, { membershipFee: '300' });
     });
 
+    await test('the users list filters by member type, or by no type (non-member / guest)', async () => {
+      const ids = async (q) => {
+        const r = await A.get(`/api/admin/members?search=${encodeURIComponent(TAG)}&${q}`);
+        assert.strictEqual(r.status, 200, `${q}: ${r.status} ${r.json && r.json.message}`);
+        return r.json.data.users.map((u) => u.id).sort();
+      };
+      assert.deepStrictEqual(await ids(`memberType=${offType.id}`), [bob.id], 'by a type');
+      assert.deepStrictEqual(await ids(`memberType=${student.id}`), [alice.id], 'by another type');
+      const none = await ids('memberType=NONE');
+      assert(none.includes(chapterAdmin.id) && !none.includes(alice.id) && !none.includes(bob.id), 'no type');
+      assert.strictEqual((await A.get('/api/admin/members?memberType=abc')).status, 422, 'bad value refused');
+      const page = await A.get('/admin/users/all');
+      assert(page.text.includes('name="memberType"') && page.text.includes('Non-Member / Guest'), 'filter on the page');
+    });
+
     await test('the admin and member pages render', async () => {
       for (const p of ['/admin/master/member-types', `/admin/users/${bob.id}/edit`, '/admin/events/new',
         `/admin/events/${event.id}/edit`, `/admin/events/${event.id}/registrations`]) {
@@ -276,13 +253,10 @@ async function main() {
       assert(['Add Member Type', 'Search member types', 'data-toggle-active', 'Channel fee', 'Lifetime', `${TAG} Student - RENEWAL`].every((x) => ml.text.includes(x)), 'member type master shows the add button, search, toggles, validity and rows');
     });
 
-    await test('removing a type clears it from members and events, not from past registrations', async () => {
+    await test('removing a type clears it from the members who had it', async () => {
       await memberTypes.deleteMemberType(student.id);
       createdTypeIds.splice(createdTypeIds.indexOf(student.id), 1);
       assert.strictEqual((await prisma.user.findUnique({ where: { id: alice.id } })).memberTypeId, null);
-      assert.strictEqual((await memberTypes.getEventFees(event.id))[student.id], undefined);
-      const reg = await regFor(bob.id, event.id);
-      assert.deepStrictEqual([reg.feeCentavos, reg.memberTypeName], [30000, `${TAG} Student`]);
     });
   } finally {
     server.close();

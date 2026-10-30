@@ -123,6 +123,17 @@ router.get('/admin/settings', ensureMainAdminOnly, pages.adminSettingsPage);
 // address still works.
 router.get('/admin/master/member-types', ensureMainAdminOnly, pages.adminMasterListPage);
 router.get('/admin/master/student-organizations', ensureMainAdminOnly, pages.adminStudentOrgMasterPage);
+router.get('/admin/master/event-fees', ensureMainAdminOnly, pages.adminEventFeeMasterPage);
+router.get('/admin/master/memberships', ensureMainAdminOnly, pages.adminMembershipMasterPage);
+router.get('/admin/master/memberships/export.xlsx', ensureMainAdminOnly, pages.adminMembershipMasterExport);
+// Reports: read-only, main admin only.
+router.get('/admin/reports', ensureMainAdminOnly, (req, res) => res.redirect('/admin/reports/transactions'));
+router.get('/admin/reports/transactions', ensureMainAdminOnly, pages.adminTransactionReportPage);
+router.get('/admin/reports/transactions/export.xlsx', ensureMainAdminOnly, pages.adminTransactionReportExport);
+router.get('/admin/reports/organization-members', ensureMainAdminOnly, pages.adminOrgMemberReportPage);
+router.get('/admin/reports/organization-members/export.xlsx', ensureMainAdminOnly, pages.adminOrgMemberReportExport);
+router.get('/admin/reports/organization-events', ensureMainAdminOnly, pages.adminOrgEventReportPage);
+router.get('/admin/reports/organization-events/export.xlsx', ensureMainAdminOnly, pages.adminOrgEventReportExport);
 router.get('/admin/master-list', ensureMainAdminOnly, (req, res) => res.redirect('/admin/master/member-types'));
 router.get('/admin/sponsors', ensureMainAdminOnly, pages.adminSponsorsPage);
 

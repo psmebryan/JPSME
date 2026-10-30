@@ -1,7 +1,73 @@
 @tailwind base;
 @tailwind components;
 
+/* The hidden attribute always wins. Without !important, a component class that
+   sets display (.btn is inline-flex) overrides it, and an element the page
+   hides, such as a Cancel button shown only while editing, stays on screen. */
+@layer base {
+  [hidden]:where(:not([hidden=until-found])) {
+    display: none !important;
+  }
+}
+
 @layer components {
+  /* Article text, from utils/articleFormat: headings, lists, quotes, links.
+     Light by default (the admin preview); .article-prose-dark on the public
+     site's dark pages. */
+  .article-prose {
+    @apply text-[15px] leading-7 text-slate-700;
+  }
+  .article-prose > * + * {
+    @apply mt-4;
+  }
+  .article-prose h2 {
+    @apply mt-8 text-2xl font-bold tracking-tight text-slate-900;
+  }
+  .article-prose h3 {
+    @apply mt-6 text-xl font-semibold text-slate-900;
+  }
+  .article-prose h4 {
+    @apply mt-5 text-base font-semibold uppercase tracking-wide text-slate-800;
+  }
+  .article-prose ul {
+    @apply list-disc space-y-1 pl-6;
+  }
+  .article-prose ol {
+    @apply list-decimal space-y-1 pl-6;
+  }
+  .article-prose a {
+    @apply break-words font-medium text-indigo-600 underline decoration-indigo-300 underline-offset-2 hover:text-indigo-800;
+  }
+  .article-prose strong {
+    @apply font-semibold text-slate-900;
+  }
+  .article-prose blockquote {
+    @apply rounded-r-lg border-l-4 border-amber-400 bg-amber-50 px-4 py-3 text-slate-700;
+  }
+  .article-prose hr {
+    @apply my-8 border-slate-200;
+  }
+  .article-prose-dark {
+    @apply text-slate-300;
+  }
+  .article-prose-dark h2,
+  .article-prose-dark h3,
+  .article-prose-dark strong {
+    @apply text-white;
+  }
+  .article-prose-dark h4 {
+    @apply text-amber-300;
+  }
+  .article-prose-dark a {
+    @apply text-amber-300 decoration-amber-500/40 hover:text-amber-200;
+  }
+  .article-prose-dark blockquote {
+    @apply border-amber-400 bg-[#111b3a] text-slate-200;
+  }
+  .article-prose-dark hr {
+    @apply border-[#263b70];
+  }
+
   /* Page headers */
   .admin-h1 {
     @apply text-2xl font-semibold tracking-tight text-slate-900;

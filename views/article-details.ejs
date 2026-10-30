@@ -1,18 +1,126 @@
-<div class="max-w-2xl mx-auto">
-  <a href="/articles" class="text-sm text-indigo-600 hover:underline">&larr; Back to articles</a>
+<%#
+  One article. Breadcrumb, title, date and category, the cover shown whole on
+  a blurred copy of itself, the formatted body (bodyHtml, from
+  utils/articleFormat, escaped there), the external link button, the photo
+  gallery (opens full size), then Explore More.
+%>
+<%
+  const a = article;
+  const date = a.publishedAt ? new Date(a.publishedAt).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' }) : '';
+  const images = a.images || [];
+%>
+<article class="mx-auto max-w-4xl">
+  <nav class="flex flex-wrap items-center gap-2 text-sm text-slate-400" aria-label="Breadcrumb">
+    <a href="/" class="hover:text-amber-300">Home</a>
+    <span aria-hidden="true">&rsaquo;</span>
+    <a href="/articles" class="hover:text-amber-300">News</a>
+    <% if (a.category) { %>
+      <span aria-hidden="true">&rsaquo;</span>
+      <a href="/articles?category=<%= encodeURIComponent(a.category) %>" class="hover:text-amber-300"><%= a.category %></a>
+    <% } %>
+    <span aria-hidden="true">&rsaquo;</span>
+    <span class="text-slate-500">Article</span>
+  </nav>
 
-  <% if (article.category) { %>
-    <span class="inline-block text-xs font-medium px-2 py-0.5 rounded-full mt-4 bg-sky-100 text-sky-700"><%= article.category %></span>
-  <% } %>
-  <h1 class="text-3xl font-bold mt-3 mb-2"><%= article.title %></h1>
-  <p class="text-gray-500 mb-6">
-    <% if (article.authorName) { %><%= article.authorName %> &middot; <% } %>
-    <%= new Date(article.publishedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) %>
+  <h1 class="mt-6 text-3xl font-bold leading-tight text-white sm:text-4xl"><%= a.title %></h1>
+  <p class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+    <span class="inline-flex items-center gap-1.5 font-medium text-amber-400">
+      <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><path fill-rule="evenodd" d="M5.75 2a.75.75 0 01.75.75V4h7V2.75a.75.75 0 011.5 0V4h.25A2.75 2.75 0 0118 6.75v8.5A2.75 2.75 0 0115.25 18H4.75A2.75 2.75 0 012 15.25v-8.5A2.75 2.75 0 014.75 4H5V2.75A.75.75 0 015.75 2zm-1 5.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25v-6.5c0-.69-.56-1.25-1.25-1.25H4.75z" clip-rule="evenodd"/></svg>
+      <%= date %>
+    </span>
+    <% if (a.category) { %><span class="text-slate-600" aria-hidden="true">|</span><a href="/articles?category=<%= encodeURIComponent(a.category) %>" class="text-slate-300 hover:text-amber-300"><%= a.category %></a><% } %>
+    <% if (a.authorName) { %><span class="text-slate-600" aria-hidden="true">|</span><span class="text-slate-400">By <%= a.authorName %></span><% } %>
   </p>
 
-  <% if (article.coverImage) { %>
-    <img src="<%= article.coverImage %>" alt="" class="w-full rounded-lg mb-6 object-cover max-h-96">
+  <% if (a.coverImage) { %>
+    <%# The whole cover, never cropped, on a blurred, dimmed copy of itself. %>
+    <figure class="relative mt-8 overflow-hidden rounded-2xl border border-[#263b70] bg-[#0b1430]">
+      <img src="<%= a.coverImage %>" alt="" aria-hidden="true" class="absolute inset-0 h-full w-full scale-110 object-cover opacity-50 blur-2xl">
+      <div class="absolute inset-0 bg-[#080f29]/30"></div>
+      <img src="<%= a.coverImage %>" alt="<%= a.title %>" class="relative mx-auto max-h-[28rem] w-auto object-contain">
+    </figure>
   <% } %>
 
-  <p class="text-gray-700 whitespace-pre-line leading-relaxed"><%= article.body %></p>
-</div>
+  <% if (a.summary) { %>
+    <p class="mt-8 border-l-4 border-amber-400 pl-4 text-lg font-medium leading-relaxed text-slate-200"><%= a.summary %></p>
+  <% } %>
+
+  <div class="article-prose article-prose-dark mt-8" data-article-body>
+    <%- bodyHtml %>
+  </div>
+
+  <% if (a.linkUrl) { %>
+    <a href="<%= a.linkUrl %>" target="_blank" rel="noopener noreferrer"
+       class="mt-8 inline-flex items-center gap-2 rounded-lg bg-amber-400 px-5 py-3 text-sm font-semibold text-[#071126] hover:bg-amber-300" data-article-link>
+      <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>
+      <%= a.linkLabel || 'Read more' %>
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 6H18m0 0v4.5M18 6l-7.5 7.5M9 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-3"/></svg>
+    </a>
+  <% } %>
+
+  <% if (images.length) { %>
+    <section class="mt-10" aria-label="Photos">
+      <h2 class="mb-4 text-lg font-semibold text-white">Photos</h2>
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" data-gallery>
+        <% images.forEach((img, i) => { %>
+          <button type="button" class="group relative aspect-[4/3] overflow-hidden rounded-xl border border-[#263b70] bg-[#0b1430]" data-gallery-open="<%= i %>" aria-label="Open photo <%= i + 1 %> of <%= images.length %>">
+            <img src="<%= img.url %>" alt="" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-105" data-gallery-src="<%= img.url %>">
+          </button>
+        <% }) %>
+      </div>
+    </section>
+
+    <dialog class="m-auto max-h-[95vh] max-w-[95vw] overflow-visible bg-transparent p-0 backdrop:bg-black/85" data-lightbox>
+      <img src="" alt="" class="max-h-[85vh] max-w-[90vw] rounded-lg object-contain shadow-2xl" data-lightbox-img>
+      <div class="mt-3 flex items-center justify-between gap-4 text-sm text-slate-200">
+        <button type="button" class="rounded-full bg-white/10 px-4 py-2 hover:bg-white/20" data-lightbox-prev>&larr; Previous</button>
+        <span data-lightbox-count></span>
+        <button type="button" class="rounded-full bg-white/10 px-4 py-2 hover:bg-white/20" data-lightbox-next>Next &rarr;</button>
+      </div>
+      <button type="button" class="absolute -right-3 -top-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-xl text-slate-900 shadow" data-lightbox-close aria-label="Close">&times;</button>
+    </dialog>
+  <% } %>
+</article>
+
+<% if (related && related.length) { %>
+  <section class="-mx-4 mt-16 border-t border-[#26365f] bg-[#0b1430] px-4 py-12 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+    <div class="mx-auto max-w-6xl">
+      <h2 class="mb-6 text-2xl font-bold text-white">Explore More</h2>
+      <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <% related.forEach((r) => { %><%- include('partials/article-card', { article: r, showCategory: true }) %><% }) %>
+      </div>
+    </div>
+  </section>
+<% } %>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  const box = document.querySelector('[data-lightbox]');
+  if (!box) return;
+  const srcs = Array.from(document.querySelectorAll('[data-gallery-src]')).map((img) => img.getAttribute('data-gallery-src'));
+  const img = box.querySelector('[data-lightbox-img]');
+  const count = box.querySelector('[data-lightbox-count]');
+  let at = 0;
+  function show(i) {
+    at = (i + srcs.length) % srcs.length;
+    img.src = srcs[at];
+    count.textContent = `${at + 1} / ${srcs.length}`;
+    box.querySelector('[data-lightbox-prev]').hidden = srcs.length < 2;
+    box.querySelector('[data-lightbox-next]').hidden = srcs.length < 2;
+  }
+  document.querySelector('[data-gallery]').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-gallery-open]');
+    if (!btn) return;
+    show(Number(btn.getAttribute('data-gallery-open')));
+    box.showModal();
+  });
+  box.querySelector('[data-lightbox-prev]').addEventListener('click', () => show(at - 1));
+  box.querySelector('[data-lightbox-next]').addEventListener('click', () => show(at + 1));
+  box.querySelector('[data-lightbox-close]').addEventListener('click', () => box.close());
+  box.addEventListener('click', (e) => { if (e.target === box) box.close(); });
+  box.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') show(at - 1);
+    if (e.key === 'ArrowRight') show(at + 1);
+  });
+}());
+</script>

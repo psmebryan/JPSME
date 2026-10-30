@@ -1,0 +1,153 @@
+<%#
+  Student Organization Member Summary (Reports). Totals for the filter (members,
+  regions, provinces, student organizations), the top 5 student organizations
+  by members, then every student organization in the filter. Filters: region
+  and student organization, in the URL; Export uses the same filters.
+  See reports.service memberSummary.
+%>
+<%
+  const f = filters;
+  const qs = (over) => {
+    const p = { region: f.region, org: f.org, page: 1, ...over };
+    return Object.keys(p).filter((k) => p[k] !== null && p[k] !== undefined && p[k] !== '' && !(k === 'page' && Number(p[k]) === 1))
+      .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(p[k])}`).join('&');
+  };
+  const link = (over) => { const s = qs(over); return '/admin/reports/organization-members' + (s ? `?${s}` : ''); };
+  const exportQs = qs({ page: 1 });
+  const n = (v) => Number(v || 0).toLocaleString('en-PH');
+  const topMax = top.length ? top[0].members : 0;
+  const cards = [
+    { key: 'members', label: 'Total members', value: totals.members, tone: 'text-slate-900' },
+    { key: 'regions', label: 'Total regions', value: totals.regions, tone: 'text-indigo-700' },
+    { key: 'provinces', label: 'Total provinces', value: totals.provinces, tone: 'text-sky-700' },
+    { key: 'studentOrgs', label: 'Total student organizations', value: totals.studentOrgs, tone: 'text-emerald-700' },
+  ];
+  const from = total ? (page - 1) * pageSize + 1 : 0;
+  const to = Math.min(total, page * pageSize);
+%>
+<div class="w-full">
+  <div class="admin-card overflow-hidden">
+    <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+      <div>
+        <h1 class="admin-h1">Student Organization Member Summary</h1>
+        <p class="admin-subtitle">Members per student organization, by region and province</p>
+      </div>
+      <a href="/admin/reports/organization-members/export.xlsx<%= exportQs ? '?' + exportQs : '' %>" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-export>
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg>
+        Export XLS
+      </a>
+    </div>
+
+    <div class="px-6 py-5 space-y-6">
+      <form method="get" action="/admin/reports/organization-members" id="report-filters" class="grid gap-3 sm:grid-cols-[1fr_1.5fr_auto] sm:items-end">
+        <div>
+          <label for="rm-region" class="form-label">Region</label>
+          <select id="rm-region" name="region" class="form-input" data-autosubmit>
+            <option value="">All regions</option>
+            <% regions.forEach((r) => { %><option value="<%= r.id %>" <%= f.region === r.id ? 'selected' : '' %>><%= r.name %></option><% }) %>
+          </select>
+        </div>
+        <div>
+          <label for="rm-org" class="form-label">Student organization</label>
+          <select id="rm-org" name="org" class="form-input" data-autosubmit data-searchable data-search-placeholder="Search student organizations">
+            <option value="">All student organizations</option>
+            <% orgGroups.forEach((g) => { %>
+              <optgroup label="<%= g.region %>">
+                <% g.units.forEach((u) => { %><option value="<%= u.id %>" <%= f.org === u.id ? 'selected' : '' %>><%= u.name %></option><% }) %>
+              </optgroup>
+            <% }) %>
+          </select>
+        </div>
+        <a href="/admin/reports/organization-members" class="btn-secondary px-3 py-2 text-center">Clear</a>
+      </form>
+
+      <div class="grid grid-cols-2 gap-3 lg:grid-cols-4" data-totals>
+        <% cards.forEach((c) => { %>
+          <div class="rounded-lg border border-slate-200 px-4 py-3" data-total="<%= c.key %>">
+            <p class="text-xs font-medium uppercase tracking-wide text-slate-500"><%= c.label %></p>
+            <p class="mt-1 text-3xl font-semibold tabular-nums <%= c.tone %>"><%= n(c.value) %></p>
+          </div>
+        <% }) %>
+      </div>
+
+      <section>
+        <h2 class="text-base font-semibold text-slate-900">Top 5 student organizations by members</h2>
+        <% if (!top.length) { %>
+          <p class="mt-2 text-sm text-slate-500">No members in these student organizations yet.</p>
+        <% } else { %>
+          <ol class="mt-3 space-y-2" data-top>
+            <% top.forEach((t, i) => { %>
+              <li class="grid grid-cols-[2rem_1fr_auto] items-center gap-3">
+                <span class="flex h-7 w-7 items-center justify-center rounded-full <%= i === 0 ? 'bg-amber-400 text-white' : 'bg-slate-100 text-slate-600' %> text-sm font-semibold"><%= i + 1 %></span>
+                <div class="min-w-0">
+                  <p class="truncate text-sm font-medium text-slate-900" title="<%= t.name %>"><%= t.name %></p>
+                  <p class="text-xs text-slate-500"><%= [t.province, t.region].filter(Boolean).join(', ') || '—' %></p>
+                  <div class="mt-1 h-2 rounded-full bg-slate-100">
+                    <%# Width set by the script below: the CSP refuses style attributes. %>
+                    <div class="h-2 w-0 rounded-full bg-indigo-500" data-bar="<%= topMax ? Math.max(4, Math.round((t.members / topMax) * 100)) : 0 %>"></div>
+                  </div>
+                </div>
+                <span class="text-sm font-semibold tabular-nums text-slate-900"><%= n(t.members) %> <span class="font-normal text-slate-500">members</span></span>
+              </li>
+            <% }) %>
+          </ol>
+        <% } %>
+      </section>
+
+      <section>
+        <h2 class="mb-3 text-base font-semibold text-slate-900">All student organizations</h2>
+        <div class="overflow-x-auto">
+          <table class="admin-table" id="report-table">
+            <thead class="admin-table-head">
+              <tr>
+                <th class="admin-th">#</th>
+                <th class="admin-th">Region</th>
+                <th class="admin-th">Province</th>
+                <th class="admin-th">Student organization</th>
+                <th class="admin-th text-right">Members</th>
+                <th class="admin-th text-right">Active memberships</th>
+              </tr>
+            </thead>
+            <tbody class="admin-tbody">
+              <% rows.forEach((r, i) => { %>
+                <tr class="admin-tr" data-row="<%= r.id %>">
+                  <td class="admin-td tabular-nums text-slate-500"><%= from + i %></td>
+                  <td class="admin-td whitespace-nowrap"><%= r.region || '—' %></td>
+                  <td class="admin-td whitespace-nowrap"><%= r.province || '—' %></td>
+                  <td class="admin-td font-medium text-slate-900"><%= r.name %></td>
+                  <td class="admin-td text-right tabular-nums"><%= n(r.members) %></td>
+                  <td class="admin-td text-right tabular-nums"><%= n(r.activeMembers) %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+          <% if (!rows.length) { %><p class="py-8 text-center text-sm text-slate-500">No student organizations match these filters.</p><% } %>
+        </div>
+        <div class="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+          <p>Showing <%= n(from) %>–<%= n(to) %> of <%= n(total) %></p>
+          <% if (totalPages > 1) { %>
+            <nav class="flex items-center gap-2" aria-label="Pages">
+              <% if (page > 1) { %><a href="<%= link({ page: page - 1 }) %>" class="btn-secondary px-3 py-1.5">Previous</a><% } %>
+              <span class="tabular-nums">Page <%= page %> of <%= totalPages %></span>
+              <% if (page < totalPages) { %><a href="<%= link({ page: page + 1 }) %>" class="btn-secondary px-3 py-1.5">Next</a><% } %>
+            </nav>
+          <% } %>
+        </div>
+      </section>
+
+      <p class="text-xs text-slate-500">
+        Members are accounts attached to a student organization (admins excluded); members attached directly to a
+        province are not counted here. Active memberships are members whose membership has not expired.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  document.querySelectorAll('[data-bar]').forEach((el) => { el.style.width = `${Number(el.getAttribute('data-bar')) || 0}%`; });
+  const form = document.getElementById('report-filters');
+  if (!form) return;
+  form.querySelectorAll('[data-autosubmit]').forEach((el) => el.addEventListener('change', () => form.submit()));
+}());
+</script>

@@ -46,39 +46,52 @@ function makeUpload(allowedMimeTypes, message, maxFileSize) {
     limits: { fileSize: maxFileSize },
   });
 
-  // Only `.single` is wrapped because only `.single` is used. Adding .array or
-  // .fields later means wrapping those too rather than discovering at runtime
-  // that their errors went back to being 500s.
+  // Each multer middleware is wrapped so its errors become AppErrors. Adding
+  // another form (.array) means wrapping it here too rather than discovering
+  // at runtime that its errors went back to being 500s.
+  function wrap(handler, many) {
+    return (req, res, next) => handler(req, res, (err) => {
+      if (!err) return next();
+
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          // Multer aborts the stream at the limit, so req.file.size is the
+          // limit rather than the file's real size. Content-Length is the
+          // whole multipart body — the file plus a few hundred bytes of
+          // boundary — which is close enough to tell somebody how much they
+          // have to shrink, and is said as "about" because it is not exact.
+          // With several files it is all of them together, so it is not said.
+          const declared = Number(req.headers['content-length']);
+          let actual = `That file is over the ${describeSize(maxFileSize)} limit.`;
+          if (many) actual = `One of the images is over the ${describeSize(maxFileSize)} limit for each image.`;
+          else if (Number.isFinite(declared) && declared > maxFileSize) {
+            actual = `That file is about ${describeSize(declared)}, which is over the ${describeSize(maxFileSize)} limit.`;
+          }
+
+          return next(new AppError(
+            `${actual} Try exporting it at a smaller size, or saving it as JPEG or WEBP instead of PNG.`,
+            400
+          ));
+        }
+        if (err.code === 'LIMIT_UNEXPECTED_FILE' || err.code === 'LIMIT_FILE_COUNT') {
+          return next(new AppError('Too many images in one upload.', 400));
+        }
+        return next(new AppError(`That upload could not be read (${err.code}).`, 400));
+      }
+
+      // The fileFilter rejection above, already an AppError; anything else is
+      // genuinely unexpected and keeps its 500.
+      return next(err);
+    });
+  }
+
   return {
     single(field) {
-      const handler = instance.single(field);
-      return (req, res, next) => handler(req, res, (err) => {
-        if (!err) return next();
-
-        if (err instanceof multer.MulterError) {
-          if (err.code === 'LIMIT_FILE_SIZE') {
-            // Multer aborts the stream at the limit, so req.file.size is the
-            // limit rather than the file's real size. Content-Length is the
-            // whole multipart body — the file plus a few hundred bytes of
-            // boundary — which is close enough to tell somebody how much they
-            // have to shrink, and is said as "about" because it is not exact.
-            const declared = Number(req.headers['content-length']);
-            const actual = Number.isFinite(declared) && declared > maxFileSize
-              ? `That file is about ${describeSize(declared)}, which is over the ${describeSize(maxFileSize)} limit.`
-              : `That file is over the ${describeSize(maxFileSize)} limit.`;
-
-            return next(new AppError(
-              `${actual} Try exporting it at a smaller size, or saving it as JPEG or WEBP instead of PNG.`,
-              400
-            ));
-          }
-          return next(new AppError(`That upload could not be read (${err.code}).`, 400));
-        }
-
-        // The fileFilter rejection above, already an AppError; anything else is
-        // genuinely unexpected and keeps its 500.
-        return next(err);
-      });
+      return wrap(instance.single(field), false);
+    },
+    // Several named file inputs in one form, e.g. a cover and a gallery.
+    fields(spec) {
+      return wrap(instance.fields(spec), true);
     },
   };
 }

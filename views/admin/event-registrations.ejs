@@ -98,13 +98,13 @@ function canResend(r) { return r.status === 'REGISTERED' && Boolean(r.qrToken); 
               </td>
               <td class="admin-td whitespace-nowrap"><%= r.phone || '—' %></td>
               <%# The fee recorded when they registered, and the member type it
-                  came from (blank = the event's standard fee). %>
+                  the fee option picked (blank = the event's single fee). %>
               <td class="admin-td whitespace-nowrap">
                 <% if (r.feeCentavos === null || r.feeCentavos === undefined) { %>
                   <span class="text-slate-400">&mdash;</span>
                 <% } else { %>
                   <%= r.feeCentavos > 0 ? '\u20B1' + (r.feeCentavos / 100).toFixed(2) : 'Free' %>
-                  <span class="block text-xs text-slate-500"><%= r.memberTypeName || 'Standard' %></span>
+                  <span class="block text-xs text-slate-500"><%= r.feeOptionName || r.memberTypeName || 'Standard' %></span>
                 <% } %>
               </td>
               <td class="admin-td"><%- regStatusBadge(r.status) %></td>

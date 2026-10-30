@@ -5,7 +5,7 @@ const paymentService = require('../../services/payment.service');
 const eventService = require('../../services/event.service');
 const authService = require('../../services/auth.service');
 const invitationService = require('../../services/invitation.service');
-const memberTypeService = require('../../services/memberType.service');
+const eventFeeService = require('../../services/eventFee.service');
 const settingsService = require('../../services/settings.service');
 const prisma = require('../../config/prisma');
 const AppError = require('../../utils/AppError');
@@ -35,13 +35,13 @@ const registerForEvent = asyncHandler(async (req, res) => {
   // the resulting registration back to it (see resolveInvitationForUser).
   const invitation = await invitationService.resolveInvitationForUser(req.body.inviteToken, event.id, user);
 
-  // What this person pays: the option they picked from the event's options
-  // (a member type with a fee for this event, or "everyone else"), checked
-  // against the database. Only the choice comes from the request, never an
-  // amount. An event with no options charges its own fee.
+  // What this person pays: the fee option they picked from this event's own
+  // options, checked against the database. Only the choice comes from the
+  // request, never an amount. An event with no options charges its single fee.
+  // A members-only option is refused to someone without an active membership.
   let fee;
   try {
-    fee = await memberTypeService.resolveEventChoice(event, req.body.feeOption);
+    fee = await eventFeeService.resolveEventChoice(event, req.body.feeOption, user.id);
   } catch (err) {
     // "Pay now" on a pending payment sends no choice: reuse what was recorded
     // when they first chose.
@@ -49,7 +49,7 @@ const registerForEvent = asyncHandler(async (req, res) => {
       ? await prisma.eventRegistration.findUnique({ where: { userId_eventId: { userId: user.id, eventId: event.id } } })
       : null;
     if (!pending || pending.status !== 'PENDING_PAYMENT' || pending.feeCentavos === null) throw err;
-    fee = { feeCentavos: pending.feeCentavos, memberTypeName: pending.memberTypeName };
+    fee = { feeCentavos: pending.feeCentavos, feeOptionName: pending.feeOptionName };
   }
 
   // Online payment only when it is switched on. While it is off (Admin ->
@@ -59,16 +59,16 @@ const registerForEvent = asyncHandler(async (req, res) => {
     const { checkoutUrl } = await paymentService.createEventCheckout(user.id, event.id, invitation, { amountCentavos: fee.feeCentavos });
     await prisma.eventRegistration.updateMany({
       where: { userId: user.id, eventId: event.id },
-      data: { feeCentavos: fee.feeCentavos, memberTypeName: fee.memberTypeName },
+      data: { feeCentavos: fee.feeCentavos, feeOptionName: fee.feeOptionName },
     });
     return success(res, { checkoutUrl }, 'Redirecting to payment', 201);
   }
 
   const registration = await registrationService.registerForEvent(user, req.params.id, invitation, fee);
   const message = fee.feeCentavos > 0
-    ? `You are registered. Your registration fee is PHP ${(fee.feeCentavos / 100).toFixed(2)}${fee.memberTypeName ? ` (${fee.memberTypeName})` : ''}, paid to the organizers.`
+    ? `You are registered. Your registration fee is PHP ${(fee.feeCentavos / 100).toFixed(2)}${fee.feeOptionName ? ` (${fee.feeOptionName})` : ''}, paid to the organizers.`
     : 'You are registered for this event';
-  return success(res, { registration, feeCentavos: fee.feeCentavos, memberTypeName: fee.memberTypeName }, message, 201);
+  return success(res, { registration, feeCentavos: fee.feeCentavos, feeOptionName: fee.feeOptionName }, message, 201);
 });
 
 const cancelRegistration = asyncHandler(async (req, res) => {

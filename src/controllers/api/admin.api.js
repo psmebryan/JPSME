@@ -68,12 +68,13 @@ const listUsers = asyncHandler(async (req, res) => {
 const listMembers = asyncHandler(async (req, res) => {
   if (!checkValidation(req, res)) return;
 
-  const { status, organizationId, search, membership, paymentStatus, page } = req.query;
+  const { status, organizationId, search, membership, memberType, paymentStatus, page } = req.query;
   const result = await userService.listMembersForAdmin({
     status: status || undefined,
     organizationId: organizationId || undefined,
     search: search || undefined,
     membership: membership || undefined,
+    memberType: memberType || undefined,
     paymentStatus: paymentStatus || undefined,
     page: Math.max(1, Number(page) || 1),
   });

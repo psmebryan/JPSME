@@ -1,0 +1,302 @@
+<%#
+  Event Fee master (Master List). Every event, each with its own registration
+  fee options (e.g. Student PHP 300, Professional PHP 800). The Fees button
+  opens one event's options: add, edit, switch on/off, remove. A registrant
+  picks one of the event's active options; an event with none charges its
+  single registration fee. Every change goes through
+  /api/admin/event-fees/:eventId/options.
+%>
+<% const money = (c) => '₱' + Number(c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); %>
+<div class="w-full">
+  <div class="admin-card overflow-hidden">
+    <div class="border-b border-slate-200 px-6 py-5">
+      <h1 class="admin-h1">Event Fee Master</h1>
+      <p class="admin-subtitle">Set each event's own registration fee options</p>
+    </div>
+
+    <div class="px-6 py-5">
+      <div class="mb-4 flex justify-end">
+        <label class="relative w-full max-w-xs">
+          <span class="sr-only">Search events</span>
+          <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke-width="2" stroke-linecap="round"/></svg>
+          <input type="search" id="event-search" placeholder="Search events" class="form-input pl-9">
+        </label>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="admin-table" id="event-table">
+          <thead class="admin-table-head">
+            <tr>
+              <th class="admin-th"><button type="button" class="inline-flex items-center gap-1 uppercase" data-sort="title">Event <span aria-hidden="true">&#8645;</span></button></th>
+              <th class="admin-th"><button type="button" class="inline-flex items-center gap-1 uppercase" data-sort="date">Date <span aria-hidden="true">&#8645;</span></button></th>
+              <th class="admin-th">Status</th>
+              <th class="admin-th"><button type="button" class="inline-flex items-center gap-1 uppercase" data-sort="fee">Registration fee <span aria-hidden="true">&#8645;</span></button></th>
+              <th class="admin-th">Fee options</th>
+            </tr>
+          </thead>
+          <tbody class="admin-tbody">
+            <% events.forEach((e) => { %>
+              <tr class="admin-tr" data-event="<%= e.id %>" data-title="<%= e.title %>"
+                  data-date="<%= new Date(e.startDate).getTime() %>" data-fee="<%= e.feeCentavos %>">
+                <td class="admin-td font-medium text-slate-900"><%= e.title %></td>
+                <td class="admin-td whitespace-nowrap"><%= new Date(e.startDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) %></td>
+                <td class="admin-td"><%- e.isPublished ? '<span class="badge-green">Published</span>' : '<span class="badge-slate">Draft</span>' %></td>
+                <td class="admin-td whitespace-nowrap tabular-nums" data-single-fee>
+                  <% if (e.activeOptionCount) { %>
+                    <span class="text-slate-400" title="Not used: registrants pick a fee option">Not used</span>
+                  <% } else { %>
+                    <%= e.feeCentavos > 0 ? money(e.feeCentavos) : 'Free' %>
+                  <% } %>
+                </td>
+                <td class="admin-td">
+                  <button type="button" class="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-700" data-fees>
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5a1.99 1.99 0 011.41.59l7 7a2 2 0 010 2.82l-7 7a2 2 0 01-2.82 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z"/></svg>
+                    Fees
+                    <span class="rounded-full bg-white/20 px-1.5 text-xs tabular-nums" data-option-count><%= e.activeOptionCount %></span>
+                  </button>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <p id="event-empty" class="<%= events.length ? 'hidden' : '' %> py-8 text-center text-sm text-slate-500">
+          <%= events.length ? 'No events match your search.' : 'No events yet. Create one under Events first.' %>
+        </p>
+      </div>
+
+      <p class="mt-4 text-xs text-slate-500">
+        Give an event several fee options (e.g. Student, Professional, Early Bird) and each registrant must pick one;
+        mark an option <strong>Members only</strong> or <strong>Non-members only</strong> to price members differently
+        (e.g. Member &#8369;300, Non-member &#8369;800);
+        its single registration fee is then not used. With no active options, everyone pays the registration fee set
+        on the event. PayMongo's channel fee (<%= gatewaySurchargePercent %>%) is added at checkout.
+      </p>
+    </div>
+  </div>
+</div>
+
+<%# One event's fee options. %>
+<dialog id="fees-dialog" class="w-full max-w-3xl rounded-xl p-0 shadow-xl backdrop:bg-slate-900/40">
+  <div class="space-y-4 p-6">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <h2 class="text-lg font-semibold text-slate-900">Fee options</h2>
+        <p class="text-sm text-slate-500" data-fees-event></p>
+      </div>
+      <button type="button" class="text-slate-400 hover:text-slate-600" data-close aria-label="Close">&times;</button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="admin-table">
+        <thead class="admin-table-head">
+          <tr><th class="admin-th">Option</th><th class="admin-th">Amount</th><th class="admin-th">Channel fee</th><th class="admin-th">Who can pick</th><th class="admin-th">Active</th><th class="admin-th text-right">Action</th></tr>
+        </thead>
+        <tbody class="admin-tbody" data-option-rows></tbody>
+      </table>
+    </div>
+    <form id="option-form" class="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_9rem_11rem_auto] sm:items-end">
+      <input type="hidden" name="optionId">
+      <div>
+        <label for="op-name" class="form-label">Option</label>
+        <input id="op-name" name="name" type="text" maxlength="60" required list="option-names" placeholder="e.g. Student" class="form-input">
+        <datalist id="option-names">
+          <option value="Student"><option value="Professional"><option value="Member"><option value="Non-Member">
+          <option value="Early Bird"><option value="Regular"><option value="Walk-in">
+        </datalist>
+      </div>
+      <div>
+        <label for="op-fee" class="form-label">Amount</label>
+        <div class="relative">
+          <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-500">&#8369;</span>
+          <input id="op-fee" name="fee" type="number" min="0" max="1000000" step="0.01" required placeholder="0.00" class="form-input pl-8">
+        </div>
+      </div>
+      <div>
+        <label for="op-audience" class="form-label">Who can pick</label>
+        <select id="op-audience" name="audience" class="form-input">
+          <option value="EVERYONE">Everyone</option>
+          <option value="MEMBERS">Members only</option>
+          <option value="NON_MEMBERS">Non-members only</option>
+        </select>
+      </div>
+      <span class="flex gap-2">
+        <button type="submit" class="btn-primary px-4 py-2" data-option-submit>Add</button>
+        <button type="button" class="btn-secondary px-3 py-2" data-option-cancel hidden>Cancel</button>
+      </span>
+    </form>
+  </div>
+</dialog>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  function onReady(fn) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
+    else fn();
+  }
+  function escapeText(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  const money = (c) => '₱' + Number(c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const AUDIENCE = {
+    EVERYONE: '<span class="text-slate-500">Everyone</span>',
+    MEMBERS: '<span class="badge-green">Members only</span>',
+    NON_MEMBERS: '<span class="badge-slate">Non-members only</span>',
+  };
+  onReady(function () {
+    const table = document.getElementById('event-table');
+    const tbody = table.querySelector('tbody');
+    const empty = document.getElementById('event-empty');
+    const rows = () => Array.from(tbody.querySelectorAll('tr[data-event]'));
+
+    // --- search and sort, in the page --------------------------------------------
+    document.getElementById('event-search').addEventListener('input', (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      let shown = 0;
+      rows().forEach((r) => {
+        r.hidden = Boolean(q) && !r.getAttribute('data-title').toLowerCase().includes(q);
+        if (!r.hidden) shown += 1;
+      });
+      empty.classList.toggle('hidden', shown > 0 || rows().length === 0);
+    });
+    let sortKey = null;
+    let sortDir = 1;
+    table.querySelector('thead').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-sort]');
+      if (!btn) return;
+      const key = btn.getAttribute('data-sort');
+      sortDir = sortKey === key ? -sortDir : 1;
+      sortKey = key;
+      const val = (r) => (key === 'title' ? r.getAttribute('data-title').toLowerCase() : Number(r.getAttribute(`data-${key}`)));
+      rows().sort((a, b) => (val(a) > val(b) ? 1 : val(a) < val(b) ? -1 : 0) * sortDir).forEach((r) => tbody.appendChild(r));
+    });
+
+    // --- one event's options -----------------------------------------------------
+    const dialog = document.getElementById('fees-dialog');
+    const optionRows = dialog.querySelector('[data-option-rows]');
+    const form = document.getElementById('option-form');
+    const el = (n) => form.elements.namedItem(n);
+    let current = null; // { id, row }
+    const base = () => `/api/admin/event-fees/${current.id}/options`;
+
+    function resetForm() {
+      form.reset();
+      el('optionId').value = '';
+      form.querySelector('[data-option-submit]').textContent = 'Add';
+      form.querySelector('[data-option-cancel]').hidden = true;
+    }
+    async function load() {
+      const res = await apiFetch(base());
+      const options = res.data.options;
+      optionRows.innerHTML = options.length
+        ? options.map((o) => `
+          <tr class="admin-tr" data-option='${escapeText(JSON.stringify(o))}'>
+            <td class="admin-td font-medium">${escapeText(o.name)}</td>
+            <td class="admin-td tabular-nums whitespace-nowrap">${money(o.feeCentavos)}</td>
+            <td class="admin-td tabular-nums whitespace-nowrap text-slate-500">${money(o.channelFeeCentavos)}</td>
+            <td class="admin-td whitespace-nowrap">${AUDIENCE[o.audience] || AUDIENCE.EVERYONE}</td>
+            <td class="admin-td">
+              <label class="relative inline-flex cursor-pointer items-center">
+                <input type="checkbox" class="peer sr-only" data-option-active ${o.isActive ? 'checked' : ''} aria-label="${escapeText(o.name)} active">
+                <span class="h-6 w-11 rounded-full bg-slate-300 transition-colors peer-checked:bg-emerald-600"></span>
+                <span class="pointer-events-none absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5"></span>
+              </label>
+            </td>
+            <td class="admin-td text-right whitespace-nowrap">
+              <button type="button" class="text-sm text-indigo-600 hover:underline" data-option-edit>Edit</button>
+              <button type="button" class="ml-3 text-sm text-red-600 hover:underline" data-option-remove>Remove</button>
+            </td>
+          </tr>`).join('')
+        : '<tr><td class="admin-td text-slate-500" colspan="6">No fee options. Everyone pays the event\'s registration fee. Add an option below.</td></tr>';
+      const active = options.filter((o) => o.isActive).length;
+      current.row.querySelector('[data-option-count]').textContent = active;
+    }
+    // After a real change (add, edit, toggle, remove), not after merely
+    // opening the list: closing then refreshes the page's fee column.
+    async function changed() {
+      current.optionsChanged = true;
+      await load();
+    }
+    async function openFees(row) {
+      current = { id: row.getAttribute('data-event'), row };
+      dialog.querySelector('[data-fees-event]').textContent = row.getAttribute('data-title');
+      resetForm();
+      optionRows.innerHTML = '<tr><td class="admin-td text-slate-400" colspan="6">Loading…</td></tr>';
+      dialog.showModal();
+      try { await load(); } catch (err) { showToast(err.message, 'error'); }
+    }
+    tbody.addEventListener('click', (e) => {
+      const row = e.target.closest('tr[data-event]');
+      if (row && e.target.closest('[data-fees]')) openFees(row);
+    });
+    dialog.querySelector('[data-close]').addEventListener('click', () => dialog.close());
+    // Cancel while editing an option goes back to adding one; it does not close.
+    // The single-fee column depends on whether options are active, so refresh
+    // the page after a change once the dialog is closed.
+    // Reloaded without ?event=, so arriving from an event's Edit page does not
+    // reopen the same list after it has been closed.
+    dialog.addEventListener('close', () => {
+      if (current && current.optionsChanged) window.location.href = window.location.pathname;
+    });
+
+    optionRows.addEventListener('click', async (e) => {
+      const tr = e.target.closest('tr[data-option]');
+      if (!tr) return;
+      const o = JSON.parse(tr.getAttribute('data-option'));
+      if (e.target.closest('[data-option-edit]')) {
+        el('optionId').value = o.id;
+        el('name').value = o.name;
+        el('fee').value = (o.feeCentavos / 100).toFixed(2);
+        el('audience').value = o.audience || 'EVERYONE';
+        form.querySelector('[data-option-submit]').textContent = 'Save';
+        form.querySelector('[data-option-cancel]').hidden = false;
+        el('name').focus();
+        return;
+      }
+      if (e.target.closest('[data-option-remove]')) {
+        if (!confirm(`Remove "${o.name}" from this event? Registrations already made keep what they recorded.`)) return;
+        try {
+          const res = await apiFetch(`${base()}/${o.id}`, { method: 'DELETE' });
+          showToast(res.message);
+          await changed();
+        } catch (err) { showToast(err.message, 'error'); }
+      }
+    });
+    optionRows.addEventListener('change', async (e) => {
+      if (!e.target.matches('[data-option-active]')) return;
+      const box = e.target;
+      const o = JSON.parse(box.closest('tr').getAttribute('data-option'));
+      box.disabled = true;
+      try {
+        const res = await apiFetch(`${base()}/${o.id}`, { method: 'PUT', body: JSON.stringify({ isActive: box.checked }) });
+        showToast(res.message);
+        await changed();
+      } catch (err) {
+        box.checked = !box.checked;
+        box.disabled = false;
+        showToast(err.message, 'error');
+      }
+    });
+    form.querySelector('[data-option-cancel]').addEventListener('click', resetForm);
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const optionId = el('optionId').value;
+      const body = { name: el('name').value.trim(), fee: el('fee').value, audience: el('audience').value };
+      try {
+        const res = await apiFetch(optionId ? `${base()}/${optionId}` : base(), {
+          method: optionId ? 'PUT' : 'POST',
+          body: JSON.stringify(body),
+        });
+        showToast(res.message);
+        resetForm();
+        await changed();
+      } catch (err) { showToast(err.message, 'error'); }
+    });
+
+    // Arriving from an event's Edit page (?event=ID) opens that event's options.
+    const openId = '<%= openEventId || "" %>';
+    if (openId) {
+      const row = tbody.querySelector(`tr[data-event="${openId}"]`);
+      if (row) openFees(row);
+    }
+  });
+}());
+</script>

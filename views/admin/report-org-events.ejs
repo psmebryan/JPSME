@@ -1,0 +1,133 @@
+<%#
+  Student Organization Event Registration (Reports). Per student organization:
+  total registrants (every registration) and total individuals (each person
+  once), for one event or all. Filters: event, region, student organization, in
+  the URL; Export uses the same filters. See reports.service.
+%>
+<%
+  const f = filters;
+  const qs = (over) => {
+    const p = { event: f.event, region: f.region, org: f.org, page: 1, ...over };
+    return Object.keys(p).filter((k) => p[k] !== null && p[k] !== undefined && p[k] !== '' && !(k === 'page' && Number(p[k]) === 1))
+      .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(p[k])}`).join('&');
+  };
+  const link = (over) => { const s = qs(over); return '/admin/reports/organization-events' + (s ? `?${s}` : ''); };
+  const exportQs = qs({ page: 1 });
+  const n = (v) => Number(v || 0).toLocaleString('en-PH');
+  const from = total ? (page - 1) * pageSize + 1 : 0;
+  const to = Math.min(total, page * pageSize);
+  const cards = [
+    { key: 'registrants', label: 'Total registrants', value: totals.registrants, tone: 'text-slate-900' },
+    { key: 'individuals', label: 'Total individuals', value: totals.individuals, tone: 'text-indigo-700' },
+    { key: 'studentOrgs', label: 'Student organizations', value: totals.studentOrgs, tone: 'text-emerald-700' },
+  ];
+%>
+<div class="w-full">
+  <div class="admin-card overflow-hidden">
+    <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+      <div>
+        <h1 class="admin-h1">Student Organization Event Registration</h1>
+        <p class="admin-subtitle">Registrants and individuals per student organization</p>
+      </div>
+      <a href="/admin/reports/organization-events/export.xlsx<%= exportQs ? '?' + exportQs : '' %>" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-export>
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg>
+        Export XLS
+      </a>
+    </div>
+
+    <div class="px-6 py-5 space-y-6">
+      <form method="get" action="/admin/reports/organization-events" id="report-filters" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1.4fr_auto] lg:items-end">
+        <div>
+          <label for="re-event" class="form-label">Event</label>
+          <select id="re-event" name="event" class="form-input" data-autosubmit data-searchable data-search-placeholder="Search events">
+            <option value="">All events</option>
+            <% events.forEach((e) => { %><option value="<%= e.id %>" <%= f.event === e.id ? 'selected' : '' %>><%= e.title %></option><% }) %>
+          </select>
+        </div>
+        <div>
+          <label for="re-region" class="form-label">Region</label>
+          <select id="re-region" name="region" class="form-input" data-autosubmit>
+            <option value="">All regions</option>
+            <% regions.forEach((r) => { %><option value="<%= r.id %>" <%= f.region === r.id ? 'selected' : '' %>><%= r.name %></option><% }) %>
+          </select>
+        </div>
+        <div>
+          <label for="re-org" class="form-label">Student organization</label>
+          <select id="re-org" name="org" class="form-input" data-autosubmit data-searchable data-search-placeholder="Search student organizations">
+            <option value="">All student organizations</option>
+            <% orgGroups.forEach((g) => { %>
+              <optgroup label="<%= g.region %>">
+                <% g.units.forEach((u) => { %><option value="<%= u.id %>" <%= f.org === u.id ? 'selected' : '' %>><%= u.name %></option><% }) %>
+              </optgroup>
+            <% }) %>
+          </select>
+        </div>
+        <a href="/admin/reports/organization-events" class="btn-secondary px-3 py-2 text-center">Clear</a>
+      </form>
+
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-3" data-totals>
+        <% cards.forEach((c) => { %>
+          <div class="rounded-lg border border-slate-200 px-4 py-3" data-total="<%= c.key %>">
+            <p class="text-xs font-medium uppercase tracking-wide text-slate-500"><%= c.label %></p>
+            <p class="mt-1 text-3xl font-semibold tabular-nums <%= c.tone %>"><%= n(c.value) %></p>
+          </div>
+        <% }) %>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="admin-table" id="report-table">
+          <thead class="admin-table-head">
+            <tr>
+              <th class="admin-th">#</th>
+              <th class="admin-th">Region</th>
+              <th class="admin-th">Province</th>
+              <th class="admin-th">Student organization</th>
+              <th class="admin-th text-right">Total registrants</th>
+              <th class="admin-th text-right">Total individuals</th>
+              <% if (!f.event) { %><th class="admin-th text-right">Events</th><% } %>
+            </tr>
+          </thead>
+          <tbody class="admin-tbody">
+            <% rows.forEach((r, i) => { %>
+              <tr class="admin-tr" data-row="<%= r.id %>">
+                <td class="admin-td tabular-nums text-slate-500"><%= from + i %></td>
+                <td class="admin-td whitespace-nowrap"><%= r.region || '—' %></td>
+                <td class="admin-td whitespace-nowrap"><%= r.province || '—' %></td>
+                <td class="admin-td font-medium text-slate-900"><%= r.name %></td>
+                <td class="admin-td text-right tabular-nums"><%= n(r.registrants) %></td>
+                <td class="admin-td text-right tabular-nums"><%= n(r.individuals) %></td>
+                <% if (!f.event) { %><td class="admin-td text-right tabular-nums"><%= n(r.events) %></td><% } %>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <% if (!rows.length) { %><p class="py-8 text-center text-sm text-slate-500">No registrations from student organizations match these filters.</p><% } %>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+        <p>Showing <%= n(from) %>–<%= n(to) %> of <%= n(total) %></p>
+        <% if (totalPages > 1) { %>
+          <nav class="flex items-center gap-2" aria-label="Pages">
+            <% if (page > 1) { %><a href="<%= link({ page: page - 1 }) %>" class="btn-secondary px-3 py-1.5">Previous</a><% } %>
+            <span class="tabular-nums">Page <%= page %> of <%= totalPages %></span>
+            <% if (page < totalPages) { %><a href="<%= link({ page: page + 1 }) %>" class="btn-secondary px-3 py-1.5">Next</a><% } %>
+          </nav>
+        <% } %>
+      </div>
+
+      <p class="text-xs text-slate-500">
+        <strong>Total registrants</strong> counts every registration, so one person registered for three events counts
+        three times. <strong>Total individuals</strong> counts each person once. Only confirmed registrations count
+        (not cancelled, not awaiting payment). The student organization is the one recorded when they registered.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  const form = document.getElementById('report-filters');
+  if (!form) return;
+  form.querySelectorAll('[data-autosubmit]').forEach((el) => el.addEventListener('change', () => form.submit()));
+}());
+</script>
