@@ -112,14 +112,13 @@
         </select>
       </div>
       <div>
-        <label for="mt-validity" class="form-label">Validity</label>
-        <select id="mt-validity" name="validityYears" class="form-input">
-          <option value="1">1 year</option>
-          <option value="2">2 years</option>
-          <option value="3">3 years</option>
-          <option value="5">5 years</option>
-          <option value="lifetime">Lifetime</option>
-        </select>
+        <label for="mt-validity" class="form-label">Validity (years)</label>
+        <div class="flex items-center gap-3">
+          <input id="mt-validity" name="validityYears" type="number" min="1" max="99" step="1" inputmode="numeric" placeholder="e.g. 4" class="form-input w-28">
+          <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" name="lifetime" data-lifetime> Lifetime
+          </label>
+        </div>
       </div>
       <div>
         <label for="mt-amount" class="form-label">Amount</label>
@@ -191,7 +190,10 @@
       el('id').value = t ? t.id : '';
       el('name').value = t ? t.name : '';
       el('renewable').value = t && t.renewable ? 'true' : 'false';
-      el('validityYears').value = t ? (t.validityYears === null ? 'lifetime' : String(t.validityYears)) : '1';
+      const life = Boolean(t && t.validityYears === null);
+      el('lifetime').checked = life;
+      el('validityYears').value = life ? '' : String(t ? t.validityYears : 1);
+      el('validityYears').disabled = life;
       el('membershipFee').value = t ? t.membershipFee : '';
       el('isActive').checked = t ? t.isActive : true;
       dialog.querySelector('[data-dialog-title]').textContent = t ? 'Edit Member Type' : 'Add Member Type';
@@ -202,6 +204,12 @@
       el('name').focus();
     }
     document.querySelector('[data-open-add]').addEventListener('click', () => openDialog(null));
+    // Lifetime means no number of years.
+    el('lifetime').addEventListener('change', () => {
+      el('validityYears').disabled = el('lifetime').checked;
+      if (el('lifetime').checked) el('validityYears').value = '';
+      else if (!el('validityYears').value) el('validityYears').value = '1';
+    });
     dialog.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => dialog.close()));
 
     form.addEventListener('submit', async (e) => {
@@ -210,7 +218,7 @@
       const body = {
         name: el('name').value.trim(),
         renewable: el('renewable').value === 'true',
-        validityYears: el('validityYears').value,
+        validityYears: el('lifetime').checked ? 'lifetime' : el('validityYears').value,
         membershipFee: el('membershipFee').value,
         isActive: el('isActive').checked,
       };

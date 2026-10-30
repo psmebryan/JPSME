@@ -140,7 +140,9 @@ async function main() {
       assert(activeBefore + 4 > 3, 'more than three can be switched on at once');
       await rejects(() => memberTypes.createMemberType({ name: `${TAG} Student`, membershipFee: '300' }), 409, 'duplicate name');
       await rejects(() => memberTypes.updateMemberType(student.id, { membershipFee: '-5' }), 422, 'negative amount');
-      await rejects(() => memberTypes.updateMemberType(student.id, { validityYears: '4' }), 422, 'validity not offered');
+      assert.strictEqual((await memberTypes.updateMemberType(student.id, { validityYears: '4' })).validityYears, 4, 'any whole number of years');
+      for (const bad of ['0', '100', '2.5', 'abc', '']) await rejects(() => memberTypes.updateMemberType(student.id, { validityYears: bad }), 422, `validity ${bad || 'empty'} refused`);
+      await memberTypes.updateMemberType(student.id, { validityYears: '1' });
     });
 
     await test('first-timers see NEW rates, lapsed members see RENEWAL rates', async () => {

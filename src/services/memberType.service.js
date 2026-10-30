@@ -21,7 +21,7 @@ const AppError = require('../utils/AppError');
 //   keep it, and past registrations and payments keep what they recorded.
 
 const MAX_TOTAL = 50;
-const VALIDITY_CHOICES = [1, 2, 3, 5, null]; // years; null = lifetime
+const MAX_VALIDITY_YEARS = 99; // validity is 1 to 99 whole years; null = lifetime
 const MAX_NAME = 60;
 const MAX_CENTAVOS = 100000000; // PHP 1,000,000, the same cap as the event fee
 
@@ -56,12 +56,15 @@ function parsePesos(text, label) {
   return Math.round(pesos * 100);
 }
 
-// '' or 'lifetime' -> null (lifetime); otherwise one of VALIDITY_CHOICES.
+// 'lifetime' -> null (lifetime); otherwise a whole number of years, 1 to 99.
 function parseValidity(raw) {
   if (raw === undefined) return undefined;
-  if (raw === null || raw === '' || String(raw).toLowerCase() === 'lifetime') return null;
-  const years = Number(raw);
-  if (!VALIDITY_CHOICES.includes(years)) throw new AppError('Choose a validity of 1, 2, 3 or 5 years, or lifetime', 422);
+  if (raw === null || String(raw).trim().toLowerCase() === 'lifetime') return null;
+  const text = String(raw).trim();
+  const years = Number(text);
+  if (!/^\d+$/.test(text) || years < 1 || years > MAX_VALIDITY_YEARS) {
+    throw new AppError(`Enter the validity as whole years from 1 to ${MAX_VALIDITY_YEARS}, or choose lifetime`, 422);
+  }
   return years;
 }
 
@@ -201,7 +204,7 @@ async function membershipQuote(userId) {
 
 module.exports = {
   MAX_TOTAL,
-  VALIDITY_CHOICES,
+  MAX_VALIDITY_YEARS,
   listMemberTypes,
   createMemberType,
   updateMemberType,

@@ -4,7 +4,7 @@ const memberTypeService = require('../../services/memberType.service');
 
 // The Master List's member types. Main admin only (router.use(apiAdmin) in
 // admin.routes.js). The service does the validation: a name of 1-60
-// characters, unique, an amount from 0 to 1,000,000, validity 1/2/3/5 years or lifetime.
+// characters, unique, an amount from 0 to 1,000,000, validity 1 to 99 years or lifetime.
 // The channel fee is PayMongo's rate from Site Settings, not set here.
 
 const list = asyncHandler(async (req, res) => {
