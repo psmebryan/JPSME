@@ -1,49 +1,129 @@
-<div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
-  <div>
-    <h1 class="admin-h1">Manage Articles</h1>
-    <p class="admin-subtitle">Public articles and news posted on the website.</p>
+<%#
+  Admin -> Articles. Every article with its cover, category, status and date;
+  search, category and status filters run in the page. Delete is handled in
+  public/js/admin.js (data-delete-article).
+%>
+<%
+  const day = (d) => (d ? new Date(d).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric' }) : '—');
+  const published = articles.filter((a) => a.isPublished).length;
+  const categories = Array.from(new Set(articles.map((a) => a.category).filter(Boolean))).sort();
+%>
+<div class="w-full">
+  <div class="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+    <div>
+      <h1 class="admin-h1">Manage Articles</h1>
+      <p class="admin-subtitle">News, circulars and newsletters on the public News page.</p>
+    </div>
+    <div class="flex gap-2">
+      <a href="/articles" target="_blank" rel="noopener" class="btn-secondary px-4 py-2">View News page</a>
+      <a href="/admin/articles/new" class="btn-primary inline-flex items-center gap-2 px-4 py-2"><span aria-hidden="true" class="text-lg leading-none">+</span> Add Article</a>
+    </div>
   </div>
-  <a href="/admin/articles/new" class="btn-primary">Add Article</a>
+
+  <% if (!articles || articles.length === 0) { %>
+    <div class="admin-card p-4">
+      <%- include('../partials/empty-state', {
+        title: 'No articles yet',
+        hint: 'Articles appear on the public News page. Publish one to share news, circulars or newsletters with members.',
+        action: { href: '/admin/articles/new', label: 'Write an article' },
+      }) %>
+    </div>
+  <% } else { %>
+    <div class="mb-5 grid grid-cols-3 gap-3 sm:max-w-xl">
+      <div class="admin-card px-4 py-3"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Total</p><p class="mt-1 text-2xl font-semibold tabular-nums text-slate-900"><%= articles.length %></p></div>
+      <div class="admin-card px-4 py-3"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Published</p><p class="mt-1 text-2xl font-semibold tabular-nums text-emerald-700"><%= published %></p></div>
+      <div class="admin-card px-4 py-3"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Drafts</p><p class="mt-1 text-2xl font-semibold tabular-nums text-slate-500"><%= articles.length - published %></p></div>
+    </div>
+
+    <div class="admin-card overflow-hidden">
+      <div class="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center">
+        <label class="relative flex-1">
+          <span class="sr-only">Search articles</span>
+          <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke-width="2" stroke-linecap="round"/></svg>
+          <input type="search" id="article-search" placeholder="Search title, category or author" class="form-input pl-9">
+        </label>
+        <select id="article-category" class="form-input sm:w-48" aria-label="Category">
+          <option value="">All categories</option>
+          <% categories.forEach((c) => { %><option value="<%= c %>"><%= c %></option><% }) %>
+          <option value="__none">No category</option>
+        </select>
+        <select id="article-status" class="form-input sm:w-40" aria-label="Status">
+          <option value="">All statuses</option>
+          <option value="published">Published</option>
+          <option value="draft">Draft</option>
+        </select>
+      </div>
+      <div class="overflow-x-auto">
+        <table id="articles-table" class="admin-table">
+          <thead class="admin-table-head">
+            <tr>
+              <th class="admin-th">Article</th>
+              <th class="admin-th">Category</th>
+              <th class="admin-th">Author</th>
+              <th class="admin-th">Status</th>
+              <th class="admin-th">Date</th>
+              <th class="admin-th text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="admin-tbody">
+            <% articles.forEach(article => { %>
+              <tr class="admin-tr" data-article-row
+                  data-search="<%= [article.title, article.category, article.authorName].filter(Boolean).join(' ').toLowerCase() %>"
+                  data-category="<%= article.category || '__none' %>" data-status="<%= article.isPublished ? 'published' : 'draft' %>">
+                <td class="admin-td">
+                  <div class="flex items-center gap-3">
+                    <% if (article.coverImage) { %>
+                      <img src="<%= article.coverImage %>" alt="" loading="lazy" class="h-12 w-16 shrink-0 rounded-md object-cover ring-1 ring-slate-200">
+                    <% } else { %>
+                      <div class="flex h-12 w-16 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-300"><svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3 20.25h18A1.5 1.5 0 0022.5 18.75V5.25A1.5 1.5 0 0021 3.75H3a1.5 1.5 0 00-1.5 1.5v13.5A1.5 1.5 0 003 20.25z"/></svg></div>
+                    <% } %>
+                    <div class="min-w-0 max-w-[420px]">
+                      <a href="/admin/articles/<%= article.id %>/edit" class="block truncate font-medium text-slate-900 hover:text-indigo-700" title="<%= article.title %>"><%= article.title %></a>
+                      <p class="truncate text-xs text-slate-500"><%= article.teaser %></p>
+                      <% if (article._count && article._count.images) { %><p class="text-xs text-slate-400"><%= article._count.images %> photo<%= article._count.images === 1 ? '' : 's' %><%= article.linkUrl ? ' · link' : '' %></p><% } else if (article.linkUrl) { %><p class="text-xs text-slate-400">link</p><% } %>
+                    </div>
+                  </div>
+                </td>
+                <td class="admin-td whitespace-nowrap"><%= article.category || '—' %></td>
+                <td class="admin-td whitespace-nowrap"><%= article.authorName || '—' %></td>
+                <td class="admin-td"><span class="<%= article.isPublished ? 'badge-green' : 'badge-slate' %>"><%= article.isPublished ? 'Published' : 'Draft' %></span></td>
+                <td class="admin-td whitespace-nowrap tabular-nums"><%= day(article.publishedAt || article.createdAt) %></td>
+                <td class="admin-td relative text-right">
+                  <%- include('../partials/row-menu', { items: [
+                    `<a href="/admin/articles/${article.id}/edit" class="${MENU_ITEM}">Edit</a>`,
+                    ...(article.isPublished ? [`<a href="/articles/${article.id}" target="_blank" rel="noopener" class="${MENU_ITEM}">View on site</a>`] : []),
+                    `<button type="button" class="${MENU_ITEM} text-red-600" data-delete-article="${article.id}" data-article-title="${esc(article.title)}">Delete</button>`,
+                  ] }) %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <p id="article-empty" class="hidden py-8 text-center text-sm text-slate-500">No articles match these filters.</p>
+      </div>
+    </div>
+  <% } %>
 </div>
 
-<% if (!articles || articles.length === 0) { %>
-  <div class="admin-card p-4">
-    <%- include('../partials/empty-state', {
-      title: 'No articles yet',
-      hint: 'Articles appear on the public site. Publish one to share news or announcements with members.',
-      action: { href: '/admin/articles/new', label: 'Write an article' },
-    }) %>
-  </div>
-<% } else { %>
-  <div class="admin-table-wrap">
-    <table id="articles-table" class="admin-table">
-      <thead class="admin-table-head">
-        <tr>
-          <th class="admin-th">Title</th>
-          <th class="admin-th">Category</th>
-          <th class="admin-th">Author</th>
-          <th class="admin-th">Status</th>
-          <th class="admin-th">Date</th>
-          <th class="admin-th text-right">Actions</th>
-        </tr>
-      </thead>
-      <tbody class="admin-tbody">
-        <% articles.forEach(article => { %>
-          <tr class="admin-tr">
-            <td class="admin-td max-w-[240px] truncate"><%= article.title %></td>
-            <td class="admin-td"><%= article.category || '-' %></td>
-            <td class="admin-td"><%= article.authorName || '-' %></td>
-            <td class="admin-td"><span class="<%= article.isPublished ? 'badge-green' : 'badge-slate' %>"><%= article.isPublished ? 'Published' : 'Draft' %></span></td>
-            <td class="admin-td whitespace-nowrap"><%= new Date(article.publishedAt || article.createdAt).toLocaleDateString() %></td>
-            <td class="admin-td text-right relative">
-              <%- include('../partials/row-menu', { items: [
-                `<a href="/admin/articles/${article.id}/edit" class="${MENU_ITEM}">Edit</a>`,
-                `<button type="button" class="${MENU_ITEM} text-red-600" data-delete-article="${article.id}" data-article-title="${esc(article.title)}">Delete</button>`,
-              ] }) %>
-            </td>
-          </tr>
-        <% }) %>
-      </tbody>
-    </table>
-  </div>
-<% } %>
+<script nonce="<%= cspNonce %>">
+(function () {
+  const search = document.getElementById('article-search');
+  if (!search) return;
+  const category = document.getElementById('article-category');
+  const status = document.getElementById('article-status');
+  const empty = document.getElementById('article-empty');
+  function apply() {
+    const words = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    let shown = 0;
+    document.querySelectorAll('tr[data-article-row]').forEach((row) => {
+      const ok = words.every((w) => row.dataset.search.includes(w))
+        && (!category.value || row.dataset.category === category.value)
+        && (!status.value || row.dataset.status === status.value);
+      row.hidden = !ok;
+      if (ok) shown += 1;
+    });
+    empty.classList.toggle('hidden', shown > 0);
+  }
+  [search, category, status].forEach((el) => el.addEventListener(el === search ? 'input' : 'change', apply));
+}());
+</script>

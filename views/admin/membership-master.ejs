@@ -1,0 +1,166 @@
+<%#
+  Membership Master (Master List). Every member's membership: member type,
+  student organization, when it was approved (paid), when it expires, and the
+  account and membership status. Filters live in the URL, so a filtered view
+  can be bookmarked, and Export downloads exactly what is filtered (every page).
+  See membershipMaster.service.
+%>
+<%
+  const day = (d) => (d ? new Date(d).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : '—');
+  const qs = (over) => {
+    const p = { q: filters.q, org: filters.org, type: filters.type, status: filters.status, page: 1, ...over };
+    return Object.keys(p).filter((k) => p[k] !== null && p[k] !== undefined && p[k] !== '' && !(k === 'page' && Number(p[k]) === 1))
+      .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(p[k])}`).join('&');
+  };
+  const link = (over) => { const s = qs(over); return '/admin/master/memberships' + (s ? `?${s}` : ''); };
+  const exportQs = qs({ page: 1 });
+  const membershipBadge = { ACTIVE: 'badge-green', PENDING: 'badge-amber', EXPIRED: 'badge-red', NONE: 'badge-slate' };
+  const accountBadge = { APPROVED: 'badge-green', PENDING: 'badge-amber', REJECTED: 'badge-red' };
+  const cards = [
+    { key: null, label: 'All members', count: counts.ALL, tone: 'text-slate-900' },
+    { key: 'ACTIVE', label: 'Active', count: counts.ACTIVE, tone: 'text-emerald-700' },
+    { key: 'PENDING', label: 'Pending', count: counts.PENDING, tone: 'text-amber-700' },
+    { key: 'EXPIRED', label: 'Expired', count: counts.EXPIRED, tone: 'text-red-700' },
+    { key: 'NONE', label: 'No membership', count: counts.NONE, tone: 'text-slate-500' },
+  ];
+  const from = total ? (page - 1) * pageSize + 1 : 0;
+  const to = Math.min(total, page * pageSize);
+%>
+<div class="w-full">
+  <div class="admin-card overflow-hidden">
+    <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+      <div>
+        <h1 class="admin-h1">Membership Master</h1>
+        <p class="admin-subtitle">Every member's membership, by student organization and member type</p>
+      </div>
+      <a href="/admin/master/memberships/export.xlsx<%= exportQs ? '?' + exportQs : '' %>" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-export>
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg>
+        Export XLS
+      </a>
+    </div>
+
+    <div class="px-6 py-5 space-y-5">
+      <%# Counts for the current organization / type / search; click one to filter by it. %>
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-5" data-counts>
+        <% cards.forEach((c) => { const on = (filters.status || null) === c.key; %>
+          <a href="<%= link({ status: c.key }) %>" data-count="<%= c.key || 'ALL' %>"
+             class="rounded-lg border px-4 py-3 transition-colors <%= on ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50' %>">
+            <p class="text-xs font-medium uppercase tracking-wide text-slate-500"><%= c.label %></p>
+            <p class="mt-1 text-2xl font-semibold tabular-nums <%= c.tone %>"><%= c.count.toLocaleString('en-PH') %></p>
+          </a>
+        <% }) %>
+      </div>
+
+      <form method="get" action="/admin/master/memberships" id="membership-filters" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1.3fr_auto] lg:items-end">
+        <div>
+          <label for="mf-org" class="form-label">Student organization</label>
+          <select id="mf-org" name="org" class="form-input" data-autosubmit data-searchable data-search-placeholder="Search student organizations">
+            <option value="">All organizations</option>
+            <option value="NONE" <%= filters.org === 'NONE' ? 'selected' : '' %>>No organization</option>
+            <% organizations.forEach((o) => { %>
+              <option value="<%= o.id %>" <%= filters.org === o.id ? 'selected' : '' %>><%= o.name %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div>
+          <label for="mf-type" class="form-label">Member type</label>
+          <select id="mf-type" name="type" class="form-input" data-autosubmit>
+            <option value="">All member types</option>
+            <% memberTypes.forEach((t) => { %>
+              <option value="<%= t.id %>" <%= filters.type === t.id ? 'selected' : '' %>><%= t.name %><%= t.isActive ? '' : ' (off)' %></option>
+            <% }) %>
+            <option value="NONE" <%= filters.type === 'NONE' ? 'selected' : '' %>>Non-Member / Guest (no type)</option>
+          </select>
+        </div>
+        <div>
+          <label for="mf-status" class="form-label">Membership status</label>
+          <select id="mf-status" name="status" class="form-input" data-autosubmit>
+            <option value="">All statuses</option>
+            <% Object.keys(statusLabels).forEach((k) => { %>
+              <option value="<%= k %>" <%= filters.status === k ? 'selected' : '' %>><%= statusLabels[k] %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div>
+          <label for="mf-q" class="form-label">Search member</label>
+          <div class="relative">
+            <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke-width="2" stroke-linecap="round"/></svg>
+            <input id="mf-q" name="q" type="search" value="<%= filters.q %>" maxlength="100" placeholder="Name or email" class="form-input pl-9">
+          </div>
+        </div>
+        <span class="flex gap-2">
+          <button type="submit" class="btn-primary px-4 py-2">Search</button>
+          <a href="/admin/master/memberships" class="btn-secondary px-3 py-2">Clear</a>
+        </span>
+      </form>
+
+      <div class="overflow-x-auto">
+        <table class="admin-table" id="membership-table">
+          <thead class="admin-table-head">
+            <tr>
+              <th class="admin-th">First name</th>
+              <th class="admin-th">Middle name</th>
+              <th class="admin-th">Last name</th>
+              <th class="admin-th">Email</th>
+              <th class="admin-th">Member type</th>
+              <th class="admin-th">Student organization</th>
+              <th class="admin-th">Approved</th>
+              <th class="admin-th">Expiration</th>
+              <th class="admin-th">Account status</th>
+              <th class="admin-th">Membership status</th>
+              <th class="admin-th text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody class="admin-tbody">
+            <% members.forEach((m) => { %>
+              <tr class="admin-tr" data-member="<%= m.id %>">
+                <td class="admin-td font-medium text-slate-900"><%= m.firstName %></td>
+                <td class="admin-td"><%= m.middleName || '—' %></td>
+                <td class="admin-td font-medium text-slate-900"><%= m.lastName %></td>
+                <td class="admin-td max-w-[240px] truncate" title="<%= m.email %>"><%= m.email %></td>
+                <td class="admin-td whitespace-nowrap"><%= m.memberType || '—' %></td>
+                <td class="admin-td max-w-[220px] truncate" title="<%= m.organization || '' %>"><%= m.organization || '—' %></td>
+                <td class="admin-td whitespace-nowrap tabular-nums"><%= day(m.approvedAt) %></td>
+                <td class="admin-td whitespace-nowrap tabular-nums"><%= m.lifetime ? 'Lifetime' : day(m.expiresAt) %></td>
+                <td class="admin-td"><span class="<%= accountBadge[m.accountStatus] || 'badge-slate' %>"><%= accountLabels[m.accountStatus] || m.accountStatus %></span></td>
+                <td class="admin-td"><span class="<%= membershipBadge[m.membershipStatus] %>"><%= m.membershipLabel %></span></td>
+                <td class="admin-td text-right">
+                  <a href="/admin/users/<%= m.id %>/edit" class="inline-flex items-center rounded-md bg-orange-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-600">Edit</a>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <% if (!members.length) { %>
+          <p class="py-8 text-center text-sm text-slate-500">No members match these filters.</p>
+        <% } %>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+        <p data-showing>Showing <%= from.toLocaleString('en-PH') %>–<%= to.toLocaleString('en-PH') %> of <%= total.toLocaleString('en-PH') %></p>
+        <% if (totalPages > 1) { %>
+          <nav class="flex items-center gap-2" aria-label="Pages">
+            <% if (page > 1) { %><a href="<%= link({ page: page - 1 }) %>" class="btn-secondary px-3 py-1.5">Previous</a><% } %>
+            <span class="tabular-nums">Page <%= page %> of <%= totalPages %></span>
+            <% if (page < totalPages) { %><a href="<%= link({ page: page + 1 }) %>" class="btn-secondary px-3 py-1.5">Next</a><% } %>
+          </nav>
+        <% } %>
+      </div>
+
+      <p class="text-xs text-slate-500">
+        <strong>Approved</strong> is when the latest membership payment was confirmed. <strong>Pending</strong> means a
+        membership payment has been started but PayMongo has not confirmed it yet. Counts follow the organization,
+        member type and search filters. Export downloads every matching member, not just this page.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  // Picking a filter applies it at once; the search box waits for Enter or Search.
+  const form = document.getElementById('membership-filters');
+  if (!form) return;
+  form.querySelectorAll('[data-autosubmit]').forEach((el) => el.addEventListener('change', () => form.submit()));
+}());
+</script>

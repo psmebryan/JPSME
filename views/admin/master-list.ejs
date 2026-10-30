@@ -1,0 +1,270 @@
+<%#
+  Member Types (Master List). Each type is a NEW rate (first membership) or a
+  RENEWAL rate (a lapsed member renewing), with an amount, a channel fee added
+  on top, a validity, and an Active switch. Members choose from the active
+  types of the right kind on the membership page; events can set a fee per
+  type. Search and sorting run in the page; every change goes through
+  /api/admin/member-types.
+%>
+<%
+  const peso = (c) => (c === null || c === undefined ? '' : (c / 100).toFixed(2));
+  const money = (c) => '₱' + Number(c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const validityLabel = (y) => (y === null ? 'Lifetime' : `${y} year${y === 1 ? '' : 's'}`);
+%>
+<div class="w-full">
+  <div class="admin-card overflow-hidden">
+    <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+      <div>
+        <h1 class="admin-h1">Member Type Master</h1>
+        <p class="admin-subtitle">Configure membership categories and pricing</p>
+      </div>
+      <button type="button" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-open-add>
+        <span aria-hidden="true" class="text-lg leading-none">+</span> Add Member Type
+      </button>
+    </div>
+
+    <div class="px-6 py-5">
+      <div class="mb-4 flex justify-end">
+        <label class="relative w-full max-w-xs">
+          <span class="sr-only">Search member types</span>
+          <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke-width="2" stroke-linecap="round"/></svg>
+          <input type="search" id="member-type-search" placeholder="Search member types" class="form-input pl-9">
+        </label>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="admin-table" id="member-type-table">
+          <thead class="admin-table-head">
+            <tr>
+              <th class="admin-th"><button type="button" class="inline-flex items-center gap-1 uppercase" data-sort="name">Member type <span aria-hidden="true">&#8645;</span></button></th>
+              <th class="admin-th">Renewable</th>
+              <th class="admin-th">Validity</th>
+              <th class="admin-th"><button type="button" class="inline-flex items-center gap-1 uppercase" data-sort="amount">Amount <span aria-hidden="true">&#8645;</span></button></th>
+              <th class="admin-th"><button type="button" class="inline-flex items-center gap-1 uppercase" data-sort="channel">Channel fee <span aria-hidden="true">&#8645;</span></button></th>
+              <th class="admin-th">Members</th>
+              <th class="admin-th">Active</th>
+              <th class="admin-th text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody class="admin-tbody">
+            <% memberTypes.forEach((t) => { %>
+              <tr class="admin-tr" data-member-type="<%= t.id %>"
+                  data-name="<%= t.name %>"
+                  data-amount="<%= t.membershipFeeCentavos === null ? -1 : t.membershipFeeCentavos %>"
+                  data-channel="<%= t.channelFeeCentavos %>"
+                  data-json="<%= JSON.stringify({ id: t.id, name: t.name, renewable: t.renewable, validityYears: t.validityYears, membershipFee: peso(t.membershipFeeCentavos), isActive: t.isActive, memberCount: t.memberCount }) %>">
+                <td class="admin-td font-medium text-slate-900"><%= t.name %></td>
+                <td class="admin-td"><%= t.renewable ? 'Yes' : 'No' %></td>
+                <td class="admin-td whitespace-nowrap"><%= validityLabel(t.validityYears) %></td>
+                <td class="admin-td whitespace-nowrap tabular-nums"><%= t.membershipFeeCentavos === null ? 'Not set' : money(t.membershipFeeCentavos) %></td>
+                <td class="admin-td whitespace-nowrap tabular-nums" title="PayMongo rate, <%= gatewaySurchargePercent %>%"><%= t.channelFeeCentavos === null ? '\u2014' : money(t.channelFeeCentavos) %></td>
+                <td class="admin-td tabular-nums"><%= t.memberCount %></td>
+                <td class="admin-td">
+                  <label class="relative inline-flex cursor-pointer items-center" title="<%= t.isActive ? 'Active: members can choose it' : 'Off: hidden from new choices' %>">
+                    <input type="checkbox" class="peer sr-only" data-toggle-active <%= t.isActive ? 'checked' : '' %> aria-label="<%= t.name %> active">
+                    <span class="h-6 w-11 rounded-full bg-slate-300 transition-colors peer-checked:bg-emerald-600 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-400"></span>
+                    <span class="pointer-events-none absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5"></span>
+                  </label>
+                </td>
+                <td class="admin-td text-right">
+                  <button type="button" class="inline-flex items-center gap-1.5 rounded-md bg-orange-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-600" data-edit>
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.4-9.6a2 2 0 112.8 2.8L11.8 15.4 8 16l.6-3.8 9-9z"/></svg>
+                    Edit
+                  </button>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <p id="member-type-empty" class="<%= memberTypes.length ? 'hidden' : '' %> py-8 text-center text-sm text-slate-500">
+          <%= memberTypes.length ? 'No member types match your search.' : 'No member types yet. Click "Add Member Type" to create the first one.' %>
+        </p>
+      </div>
+
+      <p class="mt-4 text-xs text-slate-500">
+        Members availing membership for the first time choose from the active types with Renewable = No;
+        members renewing a lapsed membership choose from Renewable = Yes. They pay the amount plus PayMongo's channel
+        fee, and the validity sets how long it lasts. The channel fee follows the PayMongo rate
+        (<%= gatewaySurchargePercent %>%) in <a href="/admin/settings" class="text-indigo-600 hover:underline">Site Settings</a>.
+        Turning a type off hides it from new choices; members who already have it keep it.
+      </p>
+    </div>
+  </div>
+</div>
+
+<dialog id="member-type-dialog" class="w-full max-w-lg rounded-xl p-0 shadow-xl backdrop:bg-slate-900/40">
+  <form id="member-type-form" class="space-y-4 p-6" method="dialog">
+    <div class="flex items-start justify-between gap-4">
+      <h2 class="text-lg font-semibold text-slate-900" data-dialog-title>Add Member Type</h2>
+      <button type="button" class="text-slate-400 hover:text-slate-600" data-close aria-label="Close">&times;</button>
+    </div>
+    <input type="hidden" name="id">
+    <div>
+      <label for="mt-name" class="form-label">Member type</label>
+      <input id="mt-name" name="name" type="text" maxlength="60" required placeholder="e.g. Regular (1 Year) - NEW" class="form-input">
+    </div>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <label for="mt-renewable" class="form-label">Renewable</label>
+        <select id="mt-renewable" name="renewable" class="form-input">
+          <option value="false">No &mdash; new membership</option>
+          <option value="true">Yes &mdash; renewal</option>
+        </select>
+      </div>
+      <div>
+        <label for="mt-validity" class="form-label">Validity</label>
+        <select id="mt-validity" name="validityYears" class="form-input">
+          <option value="1">1 year</option>
+          <option value="2">2 years</option>
+          <option value="3">3 years</option>
+          <option value="5">5 years</option>
+          <option value="lifetime">Lifetime</option>
+        </select>
+      </div>
+      <div>
+        <label for="mt-amount" class="form-label">Amount</label>
+        <div class="relative">
+          <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-500">&#8369;</span>
+          <input id="mt-amount" name="membershipFee" type="number" min="0" max="1000000" step="0.01" placeholder="0.00" required class="form-input pl-8">
+        </div>
+      </div>
+      <div class="flex items-end">
+        <p class="text-xs text-slate-500">The channel fee is PayMongo's rate (<%= gatewaySurchargePercent %>%), added on top automatically.</p>
+      </div>
+    </div>
+    <label class="inline-flex items-center gap-2 text-sm">
+      <input type="checkbox" name="isActive" checked> Active (members can choose it)
+    </label>
+    <div class="flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
+      <button type="button" class="text-sm text-red-600 hover:underline" data-delete hidden>Remove this type</button>
+      <span class="ml-auto flex gap-2">
+        <button type="button" class="btn-secondary px-4 py-2" data-close>Cancel</button>
+        <button type="submit" class="btn-primary px-4 py-2">Save</button>
+      </span>
+    </div>
+  </form>
+</dialog>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  function onReady(fn) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
+    else fn();
+  }
+  onReady(function () {
+    const table = document.getElementById('member-type-table');
+    const tbody = table.querySelector('tbody');
+    const empty = document.getElementById('member-type-empty');
+    const dialog = document.getElementById('member-type-dialog');
+    const form = document.getElementById('member-type-form');
+    const reload = () => setTimeout(() => window.location.reload(), 500);
+    // form.id and form.name are the form's own attributes, so inputs are looked up by name.
+    const el = (n) => form.elements.namedItem(n);
+
+    // --- search and sort, in the page -------------------------------------------
+    const rows = () => Array.from(tbody.querySelectorAll('tr[data-member-type]'));
+    document.getElementById('member-type-search').addEventListener('input', (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      let shown = 0;
+      rows().forEach((r) => {
+        const hit = !q || r.getAttribute('data-name').toLowerCase().includes(q);
+        r.hidden = !hit;
+        if (hit) shown += 1;
+      });
+      empty.classList.toggle('hidden', shown > 0 || rows().length === 0);
+    });
+    let sortKey = null;
+    let sortDir = 1;
+    table.querySelector('thead').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-sort]');
+      if (!btn) return;
+      const key = btn.getAttribute('data-sort');
+      sortDir = sortKey === key ? -sortDir : 1;
+      sortKey = key;
+      const val = (r) => (key === 'name' ? r.getAttribute('data-name').toLowerCase() : Number(r.getAttribute(`data-${key}`)));
+      rows().sort((a, b) => (val(a) > val(b) ? 1 : val(a) < val(b) ? -1 : 0) * sortDir).forEach((r) => tbody.appendChild(r));
+    });
+
+    // --- add and edit, in the dialog ---------------------------------------------
+    function openDialog(t) {
+      form.reset();
+      el('id').value = t ? t.id : '';
+      el('name').value = t ? t.name : '';
+      el('renewable').value = t && t.renewable ? 'true' : 'false';
+      el('validityYears').value = t ? (t.validityYears === null ? 'lifetime' : String(t.validityYears)) : '1';
+      el('membershipFee').value = t ? t.membershipFee : '';
+      el('isActive').checked = t ? t.isActive : true;
+      dialog.querySelector('[data-dialog-title]').textContent = t ? 'Edit Member Type' : 'Add Member Type';
+      const del = form.querySelector('[data-delete]');
+      del.hidden = !t;
+      del.dataset.memberCount = t ? t.memberCount : 0;
+      dialog.showModal();
+      el('name').focus();
+    }
+    document.querySelector('[data-open-add]').addEventListener('click', () => openDialog(null));
+    dialog.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => dialog.close()));
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = el('id').value;
+      const body = {
+        name: el('name').value.trim(),
+        renewable: el('renewable').value === 'true',
+        validityYears: el('validityYears').value,
+        membershipFee: el('membershipFee').value,
+        isActive: el('isActive').checked,
+      };
+      try {
+        const res = await apiFetch(id ? `/api/admin/member-types/${id}` : '/api/admin/member-types', {
+          method: id ? 'PUT' : 'POST',
+          body: JSON.stringify(body),
+        });
+        showToast(res.message);
+        dialog.close();
+        reload();
+      } catch (err) { showToast(err.message, 'error'); }
+    });
+
+    form.querySelector('[data-delete]').addEventListener('click', async (e) => {
+      const id = el('id').value;
+      const name = el('name').value;
+      const count = Number(e.currentTarget.dataset.memberCount) || 0;
+      const warning = (count
+        ? `Remove "${name}"? ${count} member(s) will have no type and pay the site-wide membership fee.`
+        : `Remove "${name}"?`) + ' Its event fees are removed too. To only hide it, turn Active off instead.';
+      if (!confirm(warning)) return;
+      try {
+        const res = await apiFetch(`/api/admin/member-types/${id}`, { method: 'DELETE' });
+        showToast(res.message);
+        dialog.close();
+        reload();
+      } catch (err) { showToast(err.message, 'error'); }
+    });
+
+    // --- row actions ------------------------------------------------------------
+    tbody.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-edit]');
+      if (!btn) return;
+      openDialog(JSON.parse(btn.closest('tr').getAttribute('data-json')));
+    });
+    tbody.addEventListener('change', async (e) => {
+      if (!e.target.matches('[data-toggle-active]')) return;
+      const box = e.target;
+      const id = box.closest('tr').getAttribute('data-member-type');
+      box.disabled = true;
+      try {
+        const res = await apiFetch(`/api/admin/member-types/${id}`, { method: 'PUT', body: JSON.stringify({ isActive: box.checked }) });
+        showToast(res.message);
+        const t = JSON.parse(box.closest('tr').getAttribute('data-json'));
+        t.isActive = box.checked;
+        box.closest('tr').setAttribute('data-json', JSON.stringify(t));
+      } catch (err) {
+        box.checked = !box.checked;
+        showToast(err.message, 'error');
+      } finally {
+        box.disabled = false;
+      }
+    });
+  });
+}());
+</script>

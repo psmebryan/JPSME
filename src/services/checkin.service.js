@@ -732,7 +732,9 @@ async function listRecentScans(eventId, limit) {
           // happened to remember. Without it, moving that list to the server
           // would quietly drop the seat number — which at a seated event is
           // the one thing the operator reads back to the attendee.
-          seat: { select: { label: true } },
+          // Only while seating is switched on (SEATING_FEATURE); otherwise
+          // nobody has a seat and the table is not read.
+          ...(config.seatingFeature ? { seat: { select: { label: true } } } : {}),
         },
       },
     },

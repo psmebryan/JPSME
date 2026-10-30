@@ -129,16 +129,6 @@ async function setOgImageUrl(publicPath) {
   return setSetting(OG_IMAGE_KEY, publicPath);
 }
 
-async function getMembershipFeeCentavos() {
-  const value = await getSetting(MEMBERSHIP_FEE_KEY, String(DEFAULT_MEMBERSHIP_FEE_CENTAVOS));
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : DEFAULT_MEMBERSHIP_FEE_CENTAVOS;
-}
-
-async function setMembershipFeeCentavos(centavos) {
-  return setSetting(MEMBERSHIP_FEE_KEY, String(Math.trunc(centavos)));
-}
-
 async function getPaymentsEnabled() {
   const value = await getSetting(PAYMENTS_ENABLED_KEY, 'true');
   return value !== 'false';
@@ -198,8 +188,6 @@ module.exports = {
   setHeroImageUrl,
   getOgImageUrl,
   setOgImageUrl,
-  getMembershipFeeCentavos,
-  setMembershipFeeCentavos,
   getPaymentsEnabled,
   setPaymentsEnabled,
   getMembershipPaymentRequired,

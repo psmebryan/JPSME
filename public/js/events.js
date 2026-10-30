@@ -24,6 +24,15 @@ document.addEventListener('DOMContentLoaded', () => {
       // If the button is disabled (aria-disabled), don't attempt registration
       if (button.disabled || button.getAttribute('aria-disabled') === 'true') return;
 
+      // The event's registration options, when it has any: one must be picked.
+      const options = document.querySelector('[data-fee-options]');
+      const picked = options ? options.querySelector('input[name="feeOption"]:checked') : null;
+      if (options && !picked) {
+        showToast('Choose your registration option first.', 'error');
+        options.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+
       button.disabled = true;
       const originalText = button.textContent;
       button.textContent = 'Registering...';
@@ -35,7 +44,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // registration itself stays PENDING_PAYMENT until PayMongo confirms.
         const res = await apiFetch(`/api/events/${eventId}/register`, {
           method: 'POST',
-          body: inviteToken ? JSON.stringify({ inviteToken }) : undefined,
+          body: JSON.stringify({
+            ...(inviteToken ? { inviteToken } : {}),
+            ...(picked ? { feeOption: picked.value } : {}),
+          }),
         });
         if (res.data && res.data.checkoutUrl) {
           button.textContent = 'Redirecting to GCash...';

@@ -4,6 +4,9 @@ const eventService = require('../services/event.service');
 const userService = require('../services/user.service');
 const authService = require('../services/auth.service');
 const loginThrottle = require('../services/loginThrottle.service');
+const memberTypeService = require('../services/memberType.service');
+const studentOrgService = require('../services/studentOrg.service');
+const eventFeeService = require('../services/eventFee.service');
 const organizationService = require('../services/organization.service');
 const organizationAdminService = require('../services/organizationAdmin.service');
 const settingsService = require('../services/settings.service');
@@ -26,6 +29,9 @@ const auditService = require('../services/audit.service');
 const integrationKeyService = require('../services/integrationKey.service');
 const passwordResetService = require('../services/passwordReset.service');
 const articleService = require('../services/article.service');
+const articleFormat = require('../utils/articleFormat');
+const membershipMasterService = require('../services/membershipMaster.service');
+const reportsService = require('../services/reports.service');
 const AppError = require('../utils/AppError');
 const config = require('../config');
 
@@ -207,10 +213,16 @@ const eventDetailPage = asyncHandler(async (req, res) => {
 
   // Previewed before "Register & Pay" so the total on PayMongo's own checkout
   // page (fee + this same surcharge, itemized) isn't a surprise.
-  const surchargeCentavos = event.feeCentavos > 0 ? await paymentService.calculateGatewaySurcharge(event.feeCentavos) : 0;
+  // This event's active fee options; empty when it has a single fee.
+  const viewerId = req.session.user && req.session.user.role !== 'ADMIN' ? req.session.user.id : null;
+  const feeOptions = await eventFeeService.listEventOptions(event, { userId: viewerId });
+  const paymentsEnabled = await settingsService.getPaymentsEnabled();
+  const surchargeCentavos = paymentsEnabled && !feeOptions.length && event.feeCentavos > 0
+    ? await paymentService.calculateGatewaySurcharge(event.feeCentavos) : 0;
 
   res.render('event-details', {
     title: event.title, event, isRegistered, registrationStatus, surchargeCentavos,
+    feeOptions, paymentsEnabled,
     // Computed from the same helper registration.service enforces with, so the
     // page and the server can never disagree about whether this is still open.
     hasEnded: eventService.hasEventEnded(event),
@@ -333,18 +345,29 @@ const submitRsvpFromEmailPage = asyncHandler(async (req, res) => {
   res.redirect(`/events/${req.params.id}/invite/${req.params.token}`);
 });
 
+// News. With no filter, the landing page: each category's latest and the
+// years. "View All", a category, a year or a search gives the paged list.
 const articlesPage = asyncHandler(async (req, res) => {
-  const category = (req.query.category || '').toString().trim();
-  const [articles, categories] = await Promise.all([
-    articleService.listPublishedArticles(category || undefined),
-    articleService.listCategories(),
+  const category = String(req.query.category || '').trim().slice(0, 60);
+  const year = /^\d{4}$/.test(String(req.query.year || '')) ? Number(req.query.year) : null;
+  const q = String(req.query.q || '').trim().slice(0, 100);
+  const all = req.query.view === 'all';
+  const filtered = Boolean(category || year || q || all);
+  const [landing, listing] = await Promise.all([
+    articleService.newsLanding(4),
+    filtered ? articleService.listPublishedArticles({ category, year, q, page: req.query.page }) : null,
   ]);
-  res.render('articles', { title: 'Articles', articles, categories, activeCategory: category });
+  res.render('articles', {
+    title: 'News', ...landing, listing, filters: { category, year, q, all }, filtered,
+  });
 });
 
 const articleDetailPage = asyncHandler(async (req, res) => {
   const article = await articleService.getPublishedArticleById(req.params.id);
-  res.render('article-details', { title: article.title, article });
+  const related = await articleService.relatedArticles(article, 4);
+  res.render('article-details', {
+    title: article.title, article, related, bodyHtml: articleFormat.render(article.body),
+  });
 });
 
 const profilePage = asyncHandler(async (req, res) => {
@@ -371,7 +394,8 @@ const profilePage = asyncHandler(async (req, res) => {
   // Seats, keyed by registration. One query for the whole list rather than one
   // per row — a member with a dozen registrations should not cost a dozen
   // lookups to render a page that mostly says "no seat".
-  const seatRows = await prisma.seat.findMany({
+  // Not read at all while seating is switched off (SEATING_FEATURE).
+  const seatRows = !config.seatingFeature ? [] : await prisma.seat.findMany({
     where: { assignedRegistrationId: { in: registrations.length ? registrations.map((r) => r.id) : [0] } },
     include: { section: { include: { room: { select: { name: true } } } } },
   });
@@ -393,15 +417,26 @@ const profilePage = asyncHandler(async (req, res) => {
 });
 
 const membershipPaymentPage = asyncHandler(async (req, res) => {
+  // The member's type decides the amount (memberType.service membershipQuote);
+  // the active types are what they may pick from when availing or renewing.
+  const [quote, membershipNow] = await Promise.all([
+    memberTypeService.membershipQuote(req.session.user.id),
+    paymentService.getMembershipStatus(req.session.user.id),
+  ]);
+  // NEW rates for a first membership, RENEWAL rates for a lapsed one.
+  const memberTypeChoices = await memberTypeService.choicesFor(membershipNow.state);
+  res.locals.memberQuote = quote;
+  res.locals.memberTypeChoices = memberTypeChoices;
   const [payment, feeCentavos, membershipPaymentRequired, membership] = await Promise.all([
     paymentService.getLatestMembershipPayment(req.session.user.id),
-    settingsService.getMembershipFeeCentavos(),
+    Promise.resolve(quote.amountCentavos || 0),
     settingsService.getMembershipPaymentRequired(),
     paymentService.getMembershipStatus(req.session.user.id),
   ]);
   // Shown before they click "Continue to Payment" so the total on PayMongo's
   // own checkout page (fee + this same surcharge, itemized) isn't a surprise.
-  const surchargeCentavos = await paymentService.calculateGatewaySurcharge(feeCentavos);
+  // PayMongo's channel fee on the type's amount; nothing until a type is chosen.
+  const surchargeCentavos = quote.amountCentavos === null ? 0 : quote.channelFeeCentavos;
   res.render('membership-payment', {
     title: 'Membership Payment', payment, feeCentavos, surchargeCentavos, membershipPaymentRequired, membership,
   });
@@ -474,7 +509,9 @@ const adminUsersPage = asyncHandler(async (req, res) => {
   const currentUser = req.session.user
     ? { role: req.session.user.role, organizationId: req.session.user.organizationId }
     : { role: null, organizationId: null };
-  renderAdmin(req, res, 'admin/users', { title, viewMode, organizations, currentUser });
+  // For the Member type filter.
+  const memberTypes = await memberTypeService.listMemberTypes();
+  renderAdmin(req, res, 'admin/users', { title, viewMode, organizations, currentUser, memberTypes });
 });
 
 // The Activations page. Which members have an invitation out, which bounced,
@@ -523,13 +560,99 @@ const adminEventsPage = asyncHandler(async (req, res) => {
   });
 });
 
+// The Master List: member types, and how many members each has.
+const adminMasterListPage = asyncHandler(async (req, res) => {
+  const memberTypes = await memberTypeService.listMemberTypes();
+  renderAdmin(req, res, 'admin/master-list', {
+    title: 'Member Types', memberTypes, gatewaySurchargePercent: await settingsService.getGatewaySurchargePercent(),
+  });
+});
+
+// Master List: every event, each with its own registration fee options.
+const adminEventFeeMasterPage = asyncHandler(async (req, res) => {
+  const [events, gatewaySurchargePercent] = await Promise.all([
+    eventFeeService.listEventsWithFees(),
+    settingsService.getGatewaySurchargePercent(),
+  ]);
+  renderAdmin(req, res, 'admin/event-fee-master', {
+    title: 'Event Fees', events, gatewaySurchargePercent,
+    openEventId: Number(req.query.event) || null,
+  });
+});
+
+// Master List: the student units, their place in the tree, and leadership.
+// Master List: every member's membership, filtered, counted and exportable.
+const adminMembershipMasterPage = asyncHandler(async (req, res) => {
+  const [result, memberTypes, organizations] = await Promise.all([
+    membershipMasterService.listMemberships(req.query),
+    memberTypeService.listMemberTypes(),
+    studentOrgService.listStudentOrganizations(),
+  ]);
+  renderAdmin(req, res, 'admin/membership-master', {
+    title: 'Membership', ...result, memberTypes, organizations,
+    statusLabels: membershipMasterService.STATUS_LABELS,
+    accountLabels: membershipMasterService.ACCOUNT_LABELS,
+  });
+});
+
+// The same filters as the page, every matching row, as .xlsx.
+const adminMembershipMasterExport = asyncHandler(async (req, res) => {
+  const buffer = await membershipMasterService.exportMembershipsExcel(req.query);
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="jpsme-membership-${stamp}.xlsx"`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(Buffer.from(buffer));
+});
+
+// Reports: each page renders from its URL's filters, and its export uses the
+// same filters, so the workbook matches what is on screen (every page).
+function sendWorkbook(res, name, buffer) {
+  res.setHeader('Content-Type', reportsService.XLSX);
+  res.setHeader('Content-Disposition', `attachment; filename="jpsme-${name}-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(buffer);
+}
+
+const adminTransactionReportPage = asyncHandler(async (req, res) => {
+  const report = await reportsService.transactionReport(req.query);
+  renderAdmin(req, res, 'admin/report-transactions', { title: 'Transaction Report', ...report });
+});
+const adminTransactionReportExport = asyncHandler(async (req, res) => {
+  const kind = String(req.query.kind || '').toUpperCase() === 'MEMBERSHIP' ? 'membership' : 'event';
+  sendWorkbook(res, `${kind}-transactions`, await reportsService.exportTransactions(req.query));
+});
+const adminOrgMemberReportPage = asyncHandler(async (req, res) => {
+  const report = await reportsService.memberSummary(req.query);
+  renderAdmin(req, res, 'admin/report-org-members', { title: 'Student Organization Members', ...report });
+});
+const adminOrgMemberReportExport = asyncHandler(async (req, res) => {
+  sendWorkbook(res, 'student-organization-members', await reportsService.exportMemberSummary(req.query));
+});
+const adminOrgEventReportPage = asyncHandler(async (req, res) => {
+  const report = await reportsService.eventRegistrationReport(req.query);
+  renderAdmin(req, res, 'admin/report-org-events', { title: 'Student Organization Event Registration', ...report });
+});
+const adminOrgEventReportExport = asyncHandler(async (req, res) => {
+  sendWorkbook(res, 'student-organization-event-registrations', await reportsService.exportEventRegistrations(req.query));
+});
+
+const adminStudentOrgMasterPage = asyncHandler(async (req, res) => {
+  const [organizations, provinces] = await Promise.all([
+    studentOrgService.listStudentOrganizations(),
+    studentOrgService.listProvinces(),
+  ]);
+  renderAdmin(req, res, 'admin/student-org-master', { title: 'Student Organizations', organizations, provinces });
+});
+
 const adminSettingsPage = asyncHandler(async (req, res) => {
-  const [logoUrl, faviconUrl, heroImageUrl, ogImageUrl, membershipFeeCentavos, paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired, pendingActivations, registrationEmailsEnabled] = await Promise.all([
+  // No membership fee here any more: each member type's amount on the
+  // Master List is the fee.
+  const [logoUrl, faviconUrl, heroImageUrl, ogImageUrl, paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired, pendingActivations, registrationEmailsEnabled] = await Promise.all([
     settingsService.getLogoUrl(),
     settingsService.getFaviconUrl(),
     settingsService.getHeroImageUrl(),
     settingsService.getOgImageUrl(),
-    settingsService.getMembershipFeeCentavos(),
     settingsService.getPaymentsEnabled(),
     settingsService.getGatewaySurchargePercent(),
     settingsService.getMembershipPaymentRequired(),
@@ -542,7 +665,7 @@ const adminSettingsPage = asyncHandler(async (req, res) => {
   renderAdmin(req, res, 'admin/settings', {
     title: 'Site Settings',
     logoUrl, faviconUrl, heroImageUrl, ogImageUrl,
-    membershipFeeCentavos, paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired,
+    paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired,
     pendingActivations, registrationEmailsEnabled,
   });
 });
@@ -796,9 +919,11 @@ const adminEditUserPage = asyncHandler(async (req, res) => {
     currentOrganizationLabel = await organizationService.getOrganizationPathLabel(user.organizationId)
       .catch(() => (user.organization && user.organization.name) || null);
   }
+  const memberTypes = isScopedAdmin ? [] : await memberTypeService.listMemberTypes();
   renderAdmin(req, res, 'admin/user-edit', {
     title: isScopedAdmin ? 'Edit Member' : 'Edit User',
     user,
+    memberTypes,
     currentOrganizationLabel,
     csrfToken: req.session.csrfToken,
     restricted: isScopedAdmin,
@@ -917,8 +1042,11 @@ const adminCreateEventPage = asyncHandler(async (req, res) => {
 
 // Admin edit event page
 const adminEditEventPage = asyncHandler(async (req, res) => {
-  const event = await eventService.getEventById(req.params.id);
-  renderAdmin(req, res, 'admin/event-edit', { title: 'Edit Event', event });
+  const [event, feeOptions] = await Promise.all([
+    eventService.getEventById(req.params.id),
+    eventFeeService.listOptions(req.params.id),
+  ]);
+  renderAdmin(req, res, 'admin/event-edit', { title: 'Edit Event', event, feeOptions });
 });
 
 // Admin view registrations page
@@ -982,7 +1110,8 @@ const adminEventAttendancePage = asyncHandler(async (req, res) => {
 
   // Seats given, and how many of those people are not actually in a hall — the
   // gap the whole desk/entrance/door separation exists to make visible.
-  const seatedRegistrations = await prisma.seat.findMany({
+  // No seats while seating is switched off (SEATING_FEATURE), so not read.
+  const seatedRegistrations = !config.seatingFeature ? [] : await prisma.seat.findMany({
     where: { section: { eventId: event.id }, assignedRegistrationId: { not: null } },
     select: { assignedRegistrationId: true },
   });
@@ -1020,7 +1149,8 @@ const adminEventDeskPage = asyncHandler(async (req, res) => {
   // have a seat at all; "not in the room" is how many of those have arrived and
   // are still not in any hall — the exact gap that is invisible when arrival
   // and room entry are the same scan.
-  const seated = await prisma.seat.count({
+  // No seats while seating is switched off (SEATING_FEATURE), so not read.
+  const seated = !config.seatingFeature ? 0 : await prisma.seat.count({
     where: { section: { eventId: event.id }, assignedRegistrationId: { not: null } },
   });
   const insideIds = await prisma.roomAttendance.findMany({
@@ -1028,7 +1158,7 @@ const adminEventDeskPage = asyncHandler(async (req, res) => {
     select: { eventRegistrationId: true },
   });
   const inside = new Set(insideIds.map((r) => r.eventRegistrationId));
-  const seatedRegistrations = await prisma.seat.findMany({
+  const seatedRegistrations = !config.seatingFeature ? [] : await prisma.seat.findMany({
     where: { section: { eventId: event.id }, assignedRegistrationId: { not: null } },
     select: { assignedRegistrationId: true },
   });
@@ -1263,15 +1393,31 @@ const adminArticlesPage = asyncHandler(async (req, res) => {
 });
 
 const adminCreateArticlePage = asyncHandler(async (req, res) => {
-  renderAdmin(req, res, 'admin/article-new', { title: 'Create Article' });
+  renderAdmin(req, res, 'admin/article-new', {
+    title: 'Create Article', categoryNames: await articleService.listAllCategoryNames(), maxGallery: articleService.MAX_GALLERY,
+  });
 });
 
 const adminEditArticlePage = asyncHandler(async (req, res) => {
-  const article = await articleService.getArticleById(req.params.id);
-  renderAdmin(req, res, 'admin/article-edit', { title: 'Edit Article', article });
+  const [article, categoryNames] = await Promise.all([
+    articleService.getArticleById(req.params.id),
+    articleService.listAllCategoryNames(),
+  ]);
+  renderAdmin(req, res, 'admin/article-edit', { title: 'Edit Article', article, categoryNames, maxGallery: articleService.MAX_GALLERY });
 });
 
 module.exports = {
+  adminMasterListPage,
+  adminEventFeeMasterPage,
+  adminStudentOrgMasterPage,
+  adminMembershipMasterPage,
+  adminMembershipMasterExport,
+  adminTransactionReportPage,
+  adminTransactionReportExport,
+  adminOrgMemberReportPage,
+  adminOrgMemberReportExport,
+  adminOrgEventReportPage,
+  adminOrgEventReportExport,
   forgotPasswordPage,
   resetPasswordPage,
   integrationDemoPage,

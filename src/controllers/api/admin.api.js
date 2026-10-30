@@ -68,12 +68,13 @@ const listUsers = asyncHandler(async (req, res) => {
 const listMembers = asyncHandler(async (req, res) => {
   if (!checkValidation(req, res)) return;
 
-  const { status, organizationId, search, membership, paymentStatus, page } = req.query;
+  const { status, organizationId, search, membership, memberType, paymentStatus, page } = req.query;
   const result = await userService.listMembersForAdmin({
     status: status || undefined,
     organizationId: organizationId || undefined,
     search: search || undefined,
     membership: membership || undefined,
+    memberType: memberType || undefined,
     paymentStatus: paymentStatus || undefined,
     page: Math.max(1, Number(page) || 1),
   });
@@ -257,16 +258,6 @@ const uploadOgImage = makeSiteImageUploader({
 // stored internally as integer centavos to avoid float currency math. This
 // controls what every future applicant is charged, so it's validated directly
 // here rather than trusted from the route-level check alone.
-const updateMembershipFee = asyncHandler(async (req, res) => {
-  const feePhp = Number(req.body.feePhp);
-  if (!Number.isFinite(feePhp) || feePhp < 0 || feePhp > 1000000) {
-    return error(res, 'Enter a valid fee amount', 422);
-  }
-  const centavos = Math.round(feePhp * 100);
-  await settingsService.setMembershipFeeCentavos(centavos);
-  return success(res, { feeCentavos: centavos }, 'Membership fee updated');
-});
-
 const updateGatewaySurchargePercent = asyncHandler(async (req, res) => {
   const percent = Number(req.body.percent);
   if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
@@ -513,4 +504,4 @@ module.exports = {
   sendActivations,
   resendActivation,
   setUserPassword,
-  changeUserEmail, uploadFavicon, uploadHeroImage, uploadOgImage, listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, bulkDeleteUsers, uploadLogo, getLogo, updateMembershipFee, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, getRegistrationEmailsEnabled, updateRegistrationEmailsEnabled, getMembershipPaymentRequired, updateMembershipPaymentRequired, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin, getOrganizationTreeLevel, createChildOrganization, deleteOrganizationApi, setOrganizationActiveApi };
+  changeUserEmail, uploadFavicon, uploadHeroImage, uploadOgImage, listUsers, listMembers, listOrganizationMembers, approveUser, rejectUser, updateUser, deleteUser, bulkDeleteUsers, uploadLogo, getLogo, updateGatewaySurchargePercent, getPaymentsEnabled, updatePaymentsEnabled, getRegistrationEmailsEnabled, updateRegistrationEmailsEnabled, getMembershipPaymentRequired, updateMembershipPaymentRequired, listSponsors, createSponsor, deleteSponsor, listOrganizationAdmins, assignOrganizationAdmin, removeOrganizationAdmin, getOrganizationTreeLevel, createChildOrganization, deleteOrganizationApi, setOrganizationActiveApi };

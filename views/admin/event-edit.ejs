@@ -53,12 +53,24 @@
         </div>
 
         <div>
-          <label for="feePhp" class="form-label">Registration Fee</label>
+          <label for="feePhp" class="form-label">Registration fee</label>
           <div class="relative">
             <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-500">&#8369;</span>
             <input id="feePhp" name="feePhp" type="number" min="0" max="1000000" step="0.01" value="<%= (event.feeCentavos / 100).toFixed(2) %>" class="form-input pl-8" />
           </div>
-          <p class="mt-1 text-xs text-slate-500">Leave blank or 0 for a free event. Paid via GCash, same as membership.</p>
+          <p class="mt-1 text-xs text-slate-500">Leave blank or 0 for a free event. Used when the event has no fee options.</p>
+        </div>
+        <%# This event's own fee options, managed on Master List -> Event Fee. %>
+        <% const fo = locals.feeOptions || []; const foActive = fo.filter((o) => o.isActive); %>
+        <div class="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
+          <p class="form-label">Registration fee options</p>
+          <% if (foActive.length) { %>
+            <p class="text-slate-700"><%= foActive.map((o) => `${o.name} \u20B1${(o.feeCentavos / 100).toFixed(2)}`).join(' \u00B7 ') %></p>
+            <p class="mt-1 text-xs text-slate-500">Registrants pick one of these; the registration fee above is not used.</p>
+          <% } else { %>
+            <p class="text-xs text-slate-500">None. Everyone pays the registration fee above.</p>
+          <% } %>
+          <a href="/admin/master/event-fees?event=<%= event.id %>" class="mt-2 inline-block text-indigo-600 hover:underline">Manage this event's fee options &rarr;</a>
         </div>
 
         <div class="flex items-center gap-3">

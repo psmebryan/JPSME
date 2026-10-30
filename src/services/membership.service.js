@@ -34,9 +34,19 @@ function addYears(date, years) {
 // Paying early therefore never forfeits the remainder of the current year,
 // while renewing after a lapse starts a fresh year rather than back-dating one
 // that has already run out.
-function nextMembershipExpiry(currentExpiry, from = new Date()) {
+// A lifetime membership is stored as an expiry far in the future rather than
+// null (null means "never a member"), and shown as "Lifetime".
+const LIFETIME_EXPIRY = new Date('2999-12-31T00:00:00.000Z');
+
+function isLifetime(expiresAt) {
+  return Boolean(expiresAt) && new Date(expiresAt).getUTCFullYear() >= 2900;
+}
+
+// years: the member type's validity (1 by default); null = lifetime.
+function nextMembershipExpiry(currentExpiry, from = new Date(), years = MEMBERSHIP_VALIDITY_YEARS) {
+  if (years === null) return new Date(LIFETIME_EXPIRY);
   const base = currentExpiry && new Date(currentExpiry) > from ? new Date(currentExpiry) : from;
-  return addYears(base, MEMBERSHIP_VALIDITY_YEARS);
+  return addYears(base, Number(years) || MEMBERSHIP_VALIDITY_YEARS);
 }
 
 // How the app classifies people, and how the three categories relate:
@@ -84,6 +94,7 @@ function classifyMembership(user, latestMembershipPayment) {
     state: active ? 'ACTIVE' : 'EXPIRED',
     expiresAt,
     daysRemaining: Math.ceil(msLeft / 86400000),
+    lifetime: isLifetime(expiresAt),
   };
 }
 
@@ -119,6 +130,8 @@ module.exports = {
   MEMBERSHIP_TIERS,
   addYears,
   nextMembershipExpiry,
+  LIFETIME_EXPIRY,
+  isLifetime,
   classifyMembership,
   getMembershipStatus,
   isActiveMember,

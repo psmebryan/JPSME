@@ -1,0 +1,376 @@
+<%#
+  Student Organization Master (Master List). The student units in the
+  organization tree, with the province and region above them, year founded,
+  president, email and an Active switch, plus each one's officers. Members
+  choose from these same organizations at registration. Search and sorting run
+  in the page; every change goes through /api/admin/student-organizations.
+%>
+<%
+  const byRegion = {};
+  provinces.forEach((p) => { (byRegion[p.region || 'Other'] = byRegion[p.region || 'Other'] || []).push(p); });
+  const regionNames = Object.keys(byRegion).sort();
+%>
+<div class="w-full">
+  <div class="admin-card overflow-hidden">
+    <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+      <div>
+        <h1 class="admin-h1">Student Organization Master</h1>
+        <p class="admin-subtitle">Manage student organization details and officers</p>
+      </div>
+      <button type="button" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-open-add>
+        <span aria-hidden="true" class="text-lg leading-none">+</span> Add Student Organization
+      </button>
+    </div>
+
+    <div class="px-6 py-5">
+      <div class="mb-4 flex justify-end">
+        <label class="relative w-full max-w-xs">
+          <span class="sr-only">Search student organizations</span>
+          <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke-width="2" stroke-linecap="round"/></svg>
+          <input type="search" id="org-search" placeholder="Search student organizations" class="form-input pl-9">
+        </label>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="admin-table" id="org-table">
+          <thead class="admin-table-head">
+            <tr>
+              <th class="admin-th"><button type="button" class="inline-flex items-center gap-1 uppercase" data-sort="name">Student organization <span aria-hidden="true">&#8645;</span></button></th>
+              <th class="admin-th"><button type="button" class="inline-flex items-center gap-1 uppercase" data-sort="region">Region <span aria-hidden="true">&#8645;</span></button></th>
+              <th class="admin-th"><button type="button" class="inline-flex items-center gap-1 uppercase" data-sort="province">Province <span aria-hidden="true">&#8645;</span></button></th>
+              <th class="admin-th"><button type="button" class="inline-flex items-center gap-1 uppercase" data-sort="year">Year <span aria-hidden="true">&#8645;</span></button></th>
+              <th class="admin-th"><button type="button" class="inline-flex items-center gap-1 uppercase" data-sort="president">President <span aria-hidden="true">&#8645;</span></button></th>
+              <th class="admin-th"><button type="button" class="inline-flex items-center gap-1 uppercase" data-sort="email">Email <span aria-hidden="true">&#8645;</span></button></th>
+              <th class="admin-th">Active</th>
+              <th class="admin-th">Officers</th>
+              <th class="admin-th text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody class="admin-tbody">
+            <% organizations.forEach((o) => { %>
+              <tr class="admin-tr" data-org="<%= o.id %>"
+                  data-name="<%= o.name %>" data-region="<%= o.region || '' %>" data-province="<%= o.province || '' %>"
+                  data-year="<%= o.yearFounded || 0 %>" data-president="<%= o.president || '' %>" data-email="<%= o.email || '' %>"
+                  data-json="<%= JSON.stringify({ id: o.id, name: o.name, provinceId: o.provinceId, yearFounded: o.yearFounded, president: o.president, email: o.email, isActive: o.isActive }) %>">
+                <td class="admin-td font-medium text-slate-900"><%= o.name %></td>
+                <td class="admin-td whitespace-nowrap"><%= o.region || '—' %></td>
+                <td class="admin-td whitespace-nowrap"><%= o.province || '—' %></td>
+                <td class="admin-td tabular-nums"><%= o.yearFounded || '—' %></td>
+                <td class="admin-td"><%= o.president || '—' %></td>
+                <td class="admin-td max-w-[240px] truncate" title="<%= o.email || '' %>"><%= o.email || 'N/A' %></td>
+                <td class="admin-td">
+                  <label class="relative inline-flex cursor-pointer items-center" title="<%= o.isActive ? 'Active: members can choose it' : 'Inactive: hidden from registration' %>">
+                    <input type="checkbox" class="peer sr-only" data-toggle-active <%= o.isActive ? 'checked' : '' %> aria-label="<%= o.name %> active">
+                    <span class="h-6 w-11 rounded-full bg-slate-300 transition-colors peer-checked:bg-emerald-600 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-400"></span>
+                    <span class="pointer-events-none absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5"></span>
+                  </label>
+                </td>
+                <td class="admin-td">
+                  <button type="button" class="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-700" data-officers>
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zm10-3v6m3-3h-6"/></svg>
+                    Officers
+                    <span class="rounded-full bg-white/20 px-1.5 text-xs tabular-nums" data-officer-count><%= o.officerCount %></span>
+                  </button>
+                </td>
+                <td class="admin-td text-right">
+                  <button type="button" class="inline-flex items-center gap-1.5 rounded-md bg-orange-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-600" data-edit>
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.4-9.6a2 2 0 112.8 2.8L11.8 15.4 8 16l.6-3.8 9-9z"/></svg>
+                    Edit
+                  </button>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <p id="org-empty" class="<%= organizations.length ? 'hidden' : '' %> py-8 text-center text-sm text-slate-500">
+          <%= organizations.length ? 'No student organizations match your search.' : 'No student organizations yet. Click "Add Student Organization" to create the first one.' %>
+        </p>
+      </div>
+
+      <p class="mt-4 text-xs text-slate-500">
+        <%= organizations.length %> student organization<%= organizations.length === 1 ? '' : 's' %>.
+        These are the organizations members choose at registration. Turning one inactive hides it from
+        that choice; members already in it keep it. Regions and provinces are managed under
+        <a href="/admin/organizations" class="text-indigo-600 hover:underline">Organizations</a>.
+      </p>
+    </div>
+  </div>
+</div>
+
+<%# Add / edit a student organization. %>
+<dialog id="org-dialog" class="w-full max-w-lg rounded-xl p-0 shadow-xl backdrop:bg-slate-900/40">
+  <form id="org-form" class="space-y-4 p-6" method="dialog">
+    <div class="flex items-start justify-between gap-4">
+      <h2 class="text-lg font-semibold text-slate-900" data-dialog-title>Add Student Organization</h2>
+      <button type="button" class="text-slate-400 hover:text-slate-600" data-close aria-label="Close">&times;</button>
+    </div>
+    <input type="hidden" name="id">
+    <div>
+      <label for="so-name" class="form-label">Student organization</label>
+      <input id="so-name" name="name" type="text" maxlength="150" required placeholder="e.g. Bohol Island State University" class="form-input">
+    </div>
+    <div>
+      <label for="so-province" class="form-label">Province</label>
+      <select id="so-province" name="provinceId" required class="form-input">
+        <option value="">Choose a province</option>
+        <% regionNames.forEach((r) => { %>
+          <optgroup label="<%= r %>">
+            <% byRegion[r].forEach((p) => { %>
+              <option value="<%= p.id %>"><%= p.name %><%= p.isActive ? '' : ' (inactive)' %></option>
+            <% }) %>
+          </optgroup>
+        <% }) %>
+      </select>
+    </div>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <label for="so-year" class="form-label">Year founded</label>
+        <input id="so-year" name="yearFounded" type="number" min="1900" max="<%= new Date().getFullYear() + 1 %>" placeholder="e.g. 2011" class="form-input">
+      </div>
+      <div>
+        <label for="so-president" class="form-label">President</label>
+        <input id="so-president" name="president" type="text" maxlength="150" class="form-input">
+      </div>
+    </div>
+    <div>
+      <label for="so-email" class="form-label">Email</label>
+      <input id="so-email" name="email" type="email" maxlength="191" class="form-input">
+    </div>
+    <label class="inline-flex items-center gap-2 text-sm">
+      <input type="checkbox" name="isActive" checked> Active (members can choose it at registration)
+    </label>
+    <div class="flex justify-end gap-2 border-t border-slate-100 pt-4">
+      <button type="button" class="btn-secondary px-4 py-2" data-close>Cancel</button>
+      <button type="submit" class="btn-primary px-4 py-2">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<%# Officers of one organization. %>
+<dialog id="officers-dialog" class="w-full max-w-2xl rounded-xl p-0 shadow-xl backdrop:bg-slate-900/40">
+  <div class="space-y-4 p-6">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <h2 class="text-lg font-semibold text-slate-900">Officers</h2>
+        <p class="text-sm text-slate-500" data-officers-org></p>
+      </div>
+      <button type="button" class="text-slate-400 hover:text-slate-600" data-close aria-label="Close">&times;</button>
+    </div>
+    <table class="admin-table">
+      <thead class="admin-table-head">
+        <tr><th class="admin-th">Name</th><th class="admin-th">Position</th><th class="admin-th">Term</th><th class="admin-th text-right">Action</th></tr>
+      </thead>
+      <tbody class="admin-tbody" data-officer-rows></tbody>
+    </table>
+    <form id="officer-form" class="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_1fr_8rem_auto] sm:items-end">
+      <input type="hidden" name="officerId">
+      <div>
+        <label for="of-name" class="form-label">Name</label>
+        <input id="of-name" name="name" type="text" maxlength="150" required class="form-input">
+      </div>
+      <div>
+        <label for="of-position" class="form-label">Position</label>
+        <input id="of-position" name="position" type="text" maxlength="100" required list="officer-positions" placeholder="e.g. Vice President" class="form-input">
+        <datalist id="officer-positions">
+          <option value="President"><option value="Vice President"><option value="Secretary"><option value="Treasurer">
+          <option value="Auditor"><option value="Public Relations Officer"><option value="Adviser">
+        </datalist>
+      </div>
+      <div>
+        <label for="of-term" class="form-label">Term</label>
+        <input id="of-term" name="termYear" type="text" maxlength="20" placeholder="2026-2027" class="form-input">
+      </div>
+      <span class="flex gap-2">
+        <button type="submit" class="btn-primary px-4 py-2" data-officer-submit>Add</button>
+        <button type="button" class="btn-secondary px-3 py-2" data-officer-cancel hidden>Cancel</button>
+      </span>
+    </form>
+  </div>
+</dialog>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  function onReady(fn) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
+    else fn();
+  }
+  function escapeText(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  onReady(function () {
+    const table = document.getElementById('org-table');
+    const tbody = table.querySelector('tbody');
+    const empty = document.getElementById('org-empty');
+    const reload = () => setTimeout(() => window.location.reload(), 500);
+
+    // --- search and sort, in the page --------------------------------------------
+    const rows = () => Array.from(tbody.querySelectorAll('tr[data-org]'));
+    document.getElementById('org-search').addEventListener('input', (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      let shown = 0;
+      rows().forEach((r) => {
+        const text = ['name', 'region', 'province', 'president', 'email'].map((k) => r.getAttribute(`data-${k}`)).join(' ').toLowerCase();
+        r.hidden = Boolean(q) && !text.includes(q);
+        if (!r.hidden) shown += 1;
+      });
+      empty.classList.toggle('hidden', shown > 0 || rows().length === 0);
+    });
+    let sortKey = null;
+    let sortDir = 1;
+    table.querySelector('thead').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-sort]');
+      if (!btn) return;
+      const key = btn.getAttribute('data-sort');
+      sortDir = sortKey === key ? -sortDir : 1;
+      sortKey = key;
+      const val = (r) => (key === 'year' ? Number(r.getAttribute('data-year')) : r.getAttribute(`data-${key}`).toLowerCase());
+      rows().sort((a, b) => (val(a) > val(b) ? 1 : val(a) < val(b) ? -1 : 0) * sortDir).forEach((r) => tbody.appendChild(r));
+    });
+
+    // --- add / edit ------------------------------------------------------------
+    const dialog = document.getElementById('org-dialog');
+    const form = document.getElementById('org-form');
+    // form.id and form.name are the form's own attributes, so inputs are looked up by name.
+    const el = (n) => form.elements.namedItem(n);
+    function openOrg(o) {
+      form.reset();
+      el('id').value = o ? o.id : '';
+      el('name').value = o ? o.name : '';
+      el('provinceId').value = o && o.provinceId ? String(o.provinceId) : '';
+      el('yearFounded').value = o && o.yearFounded ? o.yearFounded : '';
+      el('president').value = o && o.president ? o.president : '';
+      el('email').value = o && o.email ? o.email : '';
+      el('isActive').checked = o ? o.isActive : true;
+      dialog.querySelector('[data-dialog-title]').textContent = o ? 'Edit Student Organization' : 'Add Student Organization';
+      dialog.showModal();
+      el('name').focus();
+    }
+    document.querySelector('[data-open-add]').addEventListener('click', () => openOrg(null));
+    document.querySelectorAll('dialog [data-close]').forEach((b) => b.addEventListener('click', () => b.closest('dialog').close()));
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = el('id').value;
+      const body = {
+        name: el('name').value.trim(),
+        provinceId: el('provinceId').value,
+        yearFounded: el('yearFounded').value,
+        president: el('president').value,
+        email: el('email').value,
+        isActive: el('isActive').checked,
+      };
+      try {
+        const res = await apiFetch(id ? `/api/admin/student-organizations/${id}` : '/api/admin/student-organizations', {
+          method: id ? 'PUT' : 'POST',
+          body: JSON.stringify(body),
+        });
+        showToast(res.message);
+        dialog.close();
+        reload();
+      } catch (err) { showToast(err.message, 'error'); }
+    });
+
+    tbody.addEventListener('change', async (e) => {
+      if (!e.target.matches('[data-toggle-active]')) return;
+      const box = e.target;
+      const row = box.closest('tr');
+      box.disabled = true;
+      try {
+        const res = await apiFetch(`/api/admin/student-organizations/${row.getAttribute('data-org')}`, {
+          method: 'PUT', body: JSON.stringify({ isActive: box.checked }),
+        });
+        showToast(res.message);
+        const o = JSON.parse(row.getAttribute('data-json'));
+        o.isActive = box.checked;
+        row.setAttribute('data-json', JSON.stringify(o));
+      } catch (err) {
+        box.checked = !box.checked;
+        showToast(err.message, 'error');
+      } finally {
+        box.disabled = false;
+      }
+    });
+
+    // --- officers --------------------------------------------------------------
+    const offDialog = document.getElementById('officers-dialog');
+    const offRows = offDialog.querySelector('[data-officer-rows]');
+    const offForm = document.getElementById('officer-form');
+    const ofEl = (n) => offForm.elements.namedItem(n);
+    let current = null; // { id, row }
+
+    function resetOfficerForm() {
+      offForm.reset();
+      ofEl('officerId').value = '';
+      offForm.querySelector('[data-officer-submit]').textContent = 'Add';
+      offForm.querySelector('[data-officer-cancel]').hidden = true;
+    }
+    async function loadOfficers() {
+      const res = await apiFetch(`/api/admin/student-organizations/${current.id}/officers`);
+      const officers = res.data.officers;
+      offRows.innerHTML = officers.length
+        ? officers.map((o) => `
+          <tr class="admin-tr" data-officer='${escapeText(JSON.stringify(o))}'>
+            <td class="admin-td">${escapeText(o.name)}</td>
+            <td class="admin-td">${escapeText(o.position)}</td>
+            <td class="admin-td">${escapeText(o.termYear || '—')}</td>
+            <td class="admin-td text-right whitespace-nowrap">
+              <button type="button" class="text-sm text-indigo-600 hover:underline" data-officer-edit>Edit</button>
+              <button type="button" class="ml-3 text-sm text-red-600 hover:underline" data-officer-remove>Remove</button>
+            </td>
+          </tr>`).join('')
+        : '<tr><td class="admin-td text-slate-500" colspan="4">No officers yet. Add the first one below.</td></tr>';
+      current.row.querySelector('[data-officer-count]').textContent = officers.length;
+    }
+    tbody.addEventListener('click', async (e) => {
+      const row = e.target.closest('tr[data-org]');
+      if (!row) return;
+      if (e.target.closest('[data-edit]')) return openOrg(JSON.parse(row.getAttribute('data-json')));
+      if (!e.target.closest('[data-officers]')) return undefined;
+      current = { id: row.getAttribute('data-org'), row };
+      offDialog.querySelector('[data-officers-org]').textContent = row.getAttribute('data-name');
+      resetOfficerForm();
+      offRows.innerHTML = '<tr><td class="admin-td text-slate-400" colspan="4">Loading…</td></tr>';
+      offDialog.showModal();
+      try { await loadOfficers(); } catch (err) { showToast(err.message, 'error'); }
+      return undefined;
+    });
+    offRows.addEventListener('click', async (e) => {
+      const tr = e.target.closest('tr[data-officer]');
+      if (!tr) return;
+      const o = JSON.parse(tr.getAttribute('data-officer'));
+      if (e.target.closest('[data-officer-edit]')) {
+        ofEl('officerId').value = o.id;
+        ofEl('name').value = o.name;
+        ofEl('position').value = o.position;
+        ofEl('termYear').value = o.termYear || '';
+        offForm.querySelector('[data-officer-submit]').textContent = 'Save';
+        offForm.querySelector('[data-officer-cancel]').hidden = false;
+        ofEl('name').focus();
+        return;
+      }
+      if (e.target.closest('[data-officer-remove]')) {
+        if (!confirm(`Remove ${o.name} (${o.position})?`)) return;
+        try {
+          const res = await apiFetch(`/api/admin/student-organizations/${current.id}/officers/${o.id}`, { method: 'DELETE' });
+          showToast(res.message);
+          await loadOfficers();
+        } catch (err) { showToast(err.message, 'error'); }
+      }
+    });
+    offForm.querySelector('[data-officer-cancel]').addEventListener('click', resetOfficerForm);
+    offForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const officerId = ofEl('officerId').value;
+      const body = { name: ofEl('name').value.trim(), position: ofEl('position').value.trim(), termYear: ofEl('termYear').value.trim() };
+      try {
+        const res = await apiFetch(
+          officerId ? `/api/admin/student-organizations/${current.id}/officers/${officerId}` : `/api/admin/student-organizations/${current.id}/officers`,
+          { method: officerId ? 'PUT' : 'POST', body: JSON.stringify(body) }
+        );
+        showToast(res.message);
+        resetOfficerForm();
+        await loadOfficers();
+      } catch (err) { showToast(err.message, 'error'); }
+    });
+  });
+}());
+</script>

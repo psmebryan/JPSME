@@ -77,7 +77,7 @@ async function paymongoRequest(method, path, body, idempotencyKey) {
 // before this is called. When surchargeCentavos > 0, it's billed as its own
 // line item — PayMongo's hosted checkout page then itemizes it for the payer
 // (via show_line_items below) rather than silently folding it into one total.
-async function createGcashCheckout({ amountCentavos, surchargeCentavos = 0, description, referenceNumber, successUrl, cancelUrl, metadata }) {
+async function createGcashCheckout({ amountCentavos, surchargeCentavos = 0, description, referenceNumber, successUrl, cancelUrl, metadata, billing }) {
   const lineItems = [
     {
       amount: amountCentavos,
@@ -107,6 +107,9 @@ async function createGcashCheckout({ amountCentavos, surchargeCentavos = 0, desc
         send_email_receipt: false,
         show_line_items: true,
         metadata,
+        // The payer's name, email and mobile from their profile, so PayMongo's
+        // page comes filled in instead of asking again. They can still edit them.
+        ...(billing ? { billing } : {}),
       },
     },
   };

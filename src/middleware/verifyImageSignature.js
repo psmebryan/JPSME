@@ -64,7 +64,20 @@ function verifyRasterImageSignature(req, res, next) {
   next();
 }
 
+// The same check for a form with several file inputs (multer's .fields): every
+// file in req.files is checked, and each is marked with its real type.
+function verifyImageSignatures(req, res, next) {
+  const files = Object.values(req.files || {}).flat();
+  for (const file of files) {
+    const detected = detectImageType(file.buffer);
+    if (!detected) return next(new AppError(`"${file.originalname}" is not a valid image`, 400));
+    file.detectedExtension = detected;
+  }
+  next();
+}
+
 module.exports = verifyImageSignature;
+module.exports.verifyImageSignatures = verifyImageSignatures;
 module.exports.verifyRasterImageSignature = verifyRasterImageSignature;
 module.exports.detectImageType = detectImageType;
 module.exports.matchesKnownImageSignature = matchesKnownImageSignature;

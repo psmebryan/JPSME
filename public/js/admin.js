@@ -1,7 +1,6 @@
 function initAdminPage() {
   initUserApprovals();
   initLogoUpload();
-  initMembershipFeeForm();
   initGatewaySurchargeForm();
   initPaymentsEnabledToggle();
   initRegistrationEmailsToggle();
@@ -1008,6 +1007,7 @@ function memberRowHtml(u, selectedUserIds) {
       <td class="admin-td max-w-[220px] truncate" title="${escapeHtml(u.email)}">${escapeHtml(u.email)}</td>
       <td class="admin-td">${membershipPaymentReference(u)}</td>
       <td class="admin-td max-w-[140px] truncate">${escapeHtml((u.organization && u.organization.name) || '-')}</td>
+      <td class="admin-td whitespace-nowrap">${escapeHtml((u.memberType && u.memberType.name) || '-')}</td>
       <td class="admin-td">${accountStatusBadge(u)}</td>
       <td class="admin-td">${u.emailVerifiedAt ? '<span class="badge-green">Verified</span>' : '<span class="badge-amber">Unverified</span>'}</td>
       <td class="admin-td">${membershipTierBadge(u)}</td>
@@ -1062,7 +1062,7 @@ function renderMembersPagination(pagination, page, totalPages) {
 // Server-side search/filter/pagination for the "Manage Users" (list) view —
 // the full member roster, the one admin table most likely to actually reach
 // thousands of rows, unlike the naturally-small pending-approvals queue.
-const MEMBER_FILTER_KEYS = ['search', 'organizationId', 'status', 'membership', 'paymentStatus'];
+const MEMBER_FILTER_KEYS = ['search', 'organizationId', 'status', 'memberType', 'paymentStatus'];
 
 function initMembersFilterAndPagination(table) {
   const tbody = table.querySelector('tbody');
@@ -1413,27 +1413,6 @@ function initLogoUpload() {
   initSiteImageUpload({
     formId: 'og-form', endpoint: '/api/admin/settings/og-image',
     field: 'ogImageUrl', previewId: 'og-preview', label: 'Link preview',
-  });
-}
-
-// --- Membership fee (admin/settings page) ---
-function initMembershipFeeForm() {
-  const form = document.getElementById('membership-fee-form');
-  if (!form) return;
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const feePhp = document.getElementById('membership-fee-input').value;
-
-    try {
-      await apiFetch('/api/admin/settings/membership-fee', {
-        method: 'PUT',
-        body: JSON.stringify({ feePhp }),
-      });
-      showToast('Membership fee updated');
-    } catch (err) {
-      showToast(err.errors?.[0]?.msg || err.message, 'error');
-    }
   });
 }
 

@@ -377,6 +377,9 @@ async function getAttendeeView(registrationId) {
 }
 
 async function getSeatFor(registrationId) {
+  // Seating is hidden for this release unless SEATING_FEATURE is on: nobody
+  // has a seat, so the table is not even read (tickets, profile, the desk).
+  if (!config.seatingFeature) return null;
   const seat = await prisma.seat.findFirst({
     where: { assignedRegistrationId: Number(registrationId) },
     include: { section: { include: { room: { select: { id: true, name: true } } } } },

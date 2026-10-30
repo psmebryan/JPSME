@@ -25,16 +25,14 @@
         </select>
       </div>
       <div>
-        <label class="form-label">Membership</label>
-        <select name="membership" class="form-input">
+        <%# By member type from the Master List, plus everyone without one. %>
+        <label class="form-label">Member type</label>
+        <select name="memberType" class="form-input">
           <option value="">All</option>
-          <option value="MEMBER">Member</option>
-          <option value="NON_MEMBER">Non-Member</option>
-          <%# Worded in membership terms only. "never paid" here read as a
-              payment status and collided with the Payment filter beside it,
-              which is a different question: a lapsed member has paid. %>
-          <option value="LAPSED">&nbsp;&nbsp;&mdash; expired</option>
-          <option value="NEVER">&nbsp;&nbsp;&mdash; never a member</option>
+          <% (locals.memberTypes || []).forEach((t) => { %>
+            <option value="<%= t.id %>"><%= t.name %><%= t.renewable ? ' \u2014 Renewal' : '' %><%= t.isActive ? '' : ' (off)' %></option>
+          <% }) %>
+          <option value="NONE">Non-Member / Guest (no type)</option>
         </select>
       </div>
       <div>
@@ -109,6 +107,7 @@
           <th class="admin-th">Email</th>
           <th class="admin-th">Payment Ref</th>
           <th class="admin-th">Organization</th>
+          <th class="admin-th">Type</th>
           <th class="admin-th">Status</th>
           <th class="admin-th">Email Status</th>
           <th class="admin-th">Membership</th>

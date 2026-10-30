@@ -3,6 +3,7 @@ const config = require('../config');
 const prisma = require('../config/prisma');
 const AppError = require('../utils/AppError');
 const settingsService = require('./settings.service');
+const memberTypeService = require('./memberType.service');
 const paymongoService = require('./paymongo.service');
 const auditService = require('./audit.service');
 const registrationService = require('./registration.service');
@@ -254,6 +255,14 @@ async function createNextPaymentAttempt(paymentId) {
 // PayMongo call happens after this transaction commits, further below) —
 // holding a DB transaction open across a third-party network call would pin
 // row locks for an unbounded time.
+// The payer's details for PayMongo's checkout page, so it doesn't ask for
+// them again. Only fields the profile actually has; null = send nothing.
+function billingFor(user) {
+  const name = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  if (!name || !user.email) return null;
+  return { name, email: user.email, ...(user.phone && String(user.phone).trim() ? { phone: String(user.phone).trim() } : {}) };
+}
+
 async function createCheckout({ userId, purpose, eventId, amount, description, referencePrefix, successUrl, cancelUrl, alreadyPaidMessage, allowRenewal = false, withinTransaction }) {
   if (!(await settingsService.getPaymentsEnabled())) {
     throw new AppError('Payments are temporarily unavailable. Please try again later.', 503);
@@ -346,6 +355,7 @@ async function createCheckout({ userId, purpose, eventId, amount, description, r
       successUrl,
       cancelUrl,
       metadata: { paymentId: String(payment.id), userId: String(user.id), ...(eventId ? { eventId: String(eventId) } : {}) },
+      billing: billingFor(user),
     });
 
     await prisma.payment.update({ where: { id: payment.id }, data: { gatewayCheckoutId: checkoutId } });
@@ -375,9 +385,19 @@ async function createCheckout({ userId, purpose, eventId, amount, description, r
 }
 
 async function createMembershipCheckout(userId) {
-  const amount = await settingsService.getMembershipFeeCentavos();
+  // The member's type is the fee: its amount, with PayMongo's channel fee
+  // added on top by createCheckout. There is no site-wide fee, so a member
+  // with no type must choose one first.
+  const quote = await memberTypeService.membershipQuote(userId);
+  if (quote.amountCentavos === null) {
+    const open = (await memberTypeService.choicesFor('NONE')).length + (await memberTypeService.choicesFor('EXPIRED')).length;
+    throw open
+      ? new AppError('Choose your member type first.', 422)
+      : new AppError('Membership is not open yet. Please check back soon.', 503);
+  }
+  const amount = quote.amountCentavos;
   if (amount <= 0) {
-    throw new AppError('Membership fee is not configured yet. Please contact an administrator.', 503);
+    throw new AppError('This member type has no fee to pay. Please contact an administrator.', 400);
   }
 
   // Renewal is allowed once the year has run out, or early while still active
@@ -406,11 +426,15 @@ async function createMembershipCheckout(userId) {
 // Holds/reuses the registrant's capacity slot (PENDING_PAYMENT) before
 // creating the checkout, so a user who starts paying can't lose their spot to
 // someone else registering in the meantime.
-async function createEventCheckout(userId, eventId, invitation = null) {
+// amountCentavos is the fee that applies to this registrant (their member
+// type's fee for the event, worked out by the caller on the server). Without
+// it, the event's own fee, as before.
+async function createEventCheckout(userId, eventId, invitation = null, { amountCentavos } = {}) {
   const event = await prisma.event.findUnique({ where: { id: Number(eventId) } });
   if (!event) throw new AppError('Event not found', 404);
   if (!event.isPublished) throw new AppError('This event is not open for registration', 400);
-  if (event.feeCentavos <= 0) throw new AppError('This event does not require a registration fee', 400);
+  const amount = Number.isInteger(amountCentavos) ? amountCentavos : event.feeCentavos;
+  if (amount <= 0) throw new AppError('This event does not require a registration fee', 400);
 
   const user = await prisma.user.findUnique({ where: { id: Number(userId) } });
   if (!user) throw new AppError('User not found', 404);
@@ -419,7 +443,7 @@ async function createEventCheckout(userId, eventId, invitation = null) {
     userId,
     purpose: 'EVENT_REGISTRATION',
     eventId: event.id,
-    amount: event.feeCentavos,
+    amount,
     description: `Event Registration — ${event.title}`,
     referencePrefix: `event-${event.id}`,
     successUrl: `${appUrl()}/events/${event.id}/payment-return`,
@@ -640,15 +664,22 @@ async function applyPaymentPaid(localPayment, { gatewayPaymentId, gatewayFeeCent
   // email above — a failure here must never roll back the payment itself.
   if (localPayment.purpose === 'MEMBERSHIP_REGISTRATION') {
     try {
-      const user = await prisma.user.findUnique({ where: { id: localPayment.userId } });
+      const user = await prisma.user.findUnique({ where: { id: localPayment.userId }, include: { memberType: true } });
 
-      // Start (or extend) the one-year validity. Done before the approval
+      // Start (or extend) the validity: the member type's (1, 3 years, ...,
+      // or lifetime when null), or one year with no type. Done before the approval
       // below so that even if setStatus fails, the member still gets the year
       // they paid for — the two are independent facts.
       if (user) {
         await prisma.user.update({
           where: { id: user.id },
-          data: { membershipExpiresAt: nextMembershipExpiry(user.membershipExpiresAt) },
+          data: {
+            membershipExpiresAt: nextMembershipExpiry(
+              user.membershipExpiresAt,
+              new Date(),
+              user.memberType ? user.memberType.validityYears : undefined,
+            ),
+          },
         });
       }
 

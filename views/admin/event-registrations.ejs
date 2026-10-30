@@ -74,6 +74,7 @@ function canResend(r) { return r.status === 'REGISTERED' && Boolean(r.qrToken); 
             <% } %>
             <th class="admin-th">Name</th>
             <th class="admin-th">Phone</th>
+            <th class="admin-th">Fee</th>
             <th class="admin-th">Status</th>
             <th class="admin-th">Source</th>
             <th class="admin-th">Registered</th>
@@ -96,6 +97,16 @@ function canResend(r) { return r.status === 'REGISTERED' && Boolean(r.qrToken); 
                 <span class="block text-xs text-slate-500 break-all"><%= r.email %></span>
               </td>
               <td class="admin-td whitespace-nowrap"><%= r.phone || '—' %></td>
+              <%# The fee recorded when they registered, and the member type it
+                  the fee option picked (blank = the event's single fee). %>
+              <td class="admin-td whitespace-nowrap">
+                <% if (r.feeCentavos === null || r.feeCentavos === undefined) { %>
+                  <span class="text-slate-400">&mdash;</span>
+                <% } else { %>
+                  <%= r.feeCentavos > 0 ? '\u20B1' + (r.feeCentavos / 100).toFixed(2) : 'Free' %>
+                  <span class="block text-xs text-slate-500"><%= r.feeOptionName || r.memberTypeName || 'Standard' %></span>
+                <% } %>
+              </td>
               <td class="admin-td"><%- regStatusBadge(r.status) %></td>
               <td class="admin-td"><%- r.invitationId ? '<span class="badge-purple">Invited</span>' : '<span class="text-slate-400">Self</span>' %></td>
               <td class="admin-td whitespace-nowrap text-slate-600">
