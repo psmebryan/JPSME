@@ -35,6 +35,7 @@
       <div>
         <h1 class="admin-h1">Store Dashboard</h1>
         <p class="admin-subtitle">Sales are counted on the day PayMongo took the payment (Philippine time)</p>
+        <p class="mt-2 text-sm" data-store-mode="<%= launch.mode %>">Store: <a href="/admin/merch/launch" class="font-semibold <%= launch.mode === 'OPEN' ? 'text-emerald-700' : 'text-amber-700' %> hover:underline"><%= launch.label %></a><% if (launch.feedbackOpen && mc('orders.view')) { %> · <a href="/admin/merch/feedback?status=open" class="font-semibold text-red-700 hover:underline"><%= launch.feedbackOpen %> reported problem<%= launch.feedbackOpen === 1 ? '' : 's' %> open</a><% } %></p>
       </div>
       <% if (mc('reports.view')) { %><a href="/admin/merch/reports" class="btn-secondary px-4 py-2">Sales reports</a><% } %>
     </div>

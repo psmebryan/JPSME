@@ -425,6 +425,8 @@ model User {
   merchOrderEvents       MerchOrderEvent[]
   merchReturns           MerchReturn[]
   adminGrant             AdminGrant?
+  merchTester            MerchTester?
+  merchFeedback          MerchFeedback[]
   merchReconciliations   MerchReconciliation[]
 
   @@index([status])
@@ -2086,4 +2088,34 @@ model MerchReconciliation {
   checkedBy User? @relation(fields: [checkedById], references: [id], onDelete: SetNull)
 
   @@map("merch_reconciliations")
+}
+
+// An account allowed into the Store during the soft launch (phase 5).
+model MerchTester {
+  userId    Int      @id
+  addedById Int?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("merch_testers")
+}
+
+// "Report a problem" from the Store during the soft launch. status OPEN or DONE.
+model MerchFeedback {
+  id           Int       @id @default(autoincrement())
+  userId       Int?
+  orderNumber  String?   @db.VarChar(30)
+  page         String?   @db.VarChar(200)
+  message      String    @db.VarChar(1000)
+  status       String    @default("OPEN") @db.VarChar(10)
+  note         String?   @db.VarChar(300)
+  resolvedById Int?
+  resolvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@map("merch_feedback")
 }

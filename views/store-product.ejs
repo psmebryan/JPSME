@@ -9,7 +9,7 @@
   <a href="/" class="hover:text-amber-300">Home</a><span>&rsaquo;</span><a href="/store" class="hover:text-amber-300">Store</a><span>&rsaquo;</span><span class="text-slate-300"><%= p.name %></span>
 </nav>
 <% if (access.preview) { %>
-  <div class="mb-6 rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">Preview: the Store is closed to members.</div>
+  <div class="mb-6 rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-200"><%= access.soft ? 'Soft launch: open to the National Board only. Orders are real.' : 'Preview: the Store is closed to members.' %></div>
 <% } %>
 
 <div class="grid gap-8 lg:grid-cols-2" id="store-product" data-product-id="<%= p.id %>">
@@ -118,3 +118,5 @@
   show(current);
 }());
 </script>
+
+<%- include('partials/store-feedback') %>

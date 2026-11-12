@@ -26,6 +26,8 @@ router.post('/cart', verifyCsrfToken, body('variantId').isInt({ min: 1 }), body(
 router.put('/cart/:variantId', verifyCsrfToken, variantParam, body('quantity').isInt({ min: 0, max: 100 }), checkInput, storeApi.setQuantity);
 router.delete('/cart/:variantId', verifyCsrfToken, variantParam, storeApi.removeFromCart);
 router.post('/checkout', verifyCsrfToken, storeApi.checkout);
+// Soft launch (phase 5): testers report what is wrong.
+router.post('/feedback', verifyCsrfToken, body('message').isString().isLength({ max: 2000 }), checkInput, storeApi.reportProblem);
 router.get('/orders/:orderNumber', orderParam, storeApi.myOrder);
 router.post('/orders/:orderNumber/pay', verifyCsrfToken, orderParam, storeApi.payOrder);
 router.post('/orders/:orderNumber/cancel', verifyCsrfToken, orderParam, storeApi.cancelOrder);

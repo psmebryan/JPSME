@@ -37,6 +37,7 @@ const merchOrdersService = require('../services/merchOrders.service');
 const merchFulfilmentService = require('../services/merchFulfilment.service');
 const merchReturnsService = require('../services/merchReturns.service');
 const merchFinanceService = require('../services/merchFinance.service');
+const merchLaunchService = require('../services/merchLaunch.service');
 const merchRedact = require('../utils/merchRedact');
 const membershipMasterService = require('../services/membershipMaster.service');
 const reportsService = require('../services/reports.service');
@@ -693,8 +694,10 @@ const storeAddressesPage = asyncHandler(async (req, res) => {
 // address only with addresses.view and while the order still needs it.
 const caps = (req) => req.merchCaps || new Set();
 const adminMerchDashboardPage = asyncHandler(async (req, res) => {
-  const data = await merchFinanceService.dashboard();
-  renderAdmin(req, res, 'admin/merch-dashboard', { title: 'Store Dashboard', ...merchRedact.costs(caps(req), data) });
+  const [data, mode, feedbackOpen] = await Promise.all([
+    merchFinanceService.dashboard(), merchLaunchService.getMode(), prisma.merchFeedback.count({ where: { status: 'OPEN' } }),
+  ]);
+  renderAdmin(req, res, 'admin/merch-dashboard', { title: 'Store Dashboard', ...merchRedact.costs(caps(req), data), launch: { mode, label: merchLaunchService.MODES[mode], feedbackOpen } });
 });
 const adminMerchProductsPage = asyncHandler(async (req, res) => {
   const [products, storeOpen] = await Promise.all([merchService.listProducts(), merchStoreService.isStoreOpen()]);
@@ -777,6 +780,21 @@ const adminMerchMonthEndExport = asyncHandler(async (req, res) => {
 const adminMerchReportsPage = asyncHandler(async (req, res) => {
   const report = await merchFinanceService.salesReport(req.query);
   renderAdmin(req, res, 'admin/merch-reports', { title: 'Merchandise Reports', ...merchRedact.costs(caps(req), report) });
+});
+// Phase 5, the soft launch: Store mode, testers and the go-live checklist;
+// the stock count; reported problems.
+const adminMerchLaunchPage = asyncHandler(async (req, res) => {
+  const [ready, testers] = await Promise.all([merchLaunchService.readiness(), merchLaunchService.listTesters()]);
+  renderAdmin(req, res, 'admin/merch-launch', { title: 'Soft Launch', ...ready, testers, modes: merchLaunchService.MODES });
+});
+const adminMerchCountPage = asyncHandler(async (req, res) => {
+  renderAdmin(req, res, 'admin/merch-count', { title: 'Stock Count', ...(await merchLaunchService.countSheet()) });
+});
+const adminMerchCountPrint = asyncHandler(async (req, res) => {
+  res.render('admin/merch-count-print', { title: 'Stock count sheet', layout: false, ...(await merchLaunchService.countSheet()), printedAt: new Date() });
+});
+const adminMerchFeedbackPage = asyncHandler(async (req, res) => {
+  renderAdmin(req, res, 'admin/merch-feedback', { title: 'Reported Problems', ...(await merchLaunchService.listFeedback(req.query)) });
 });
 const adminMerchReportsExport = asyncHandler(async (req, res) => {
   const { buffer, period } = await merchFinanceService.exportSales(req.query, { withCost: caps(req).has('cost.view') });
@@ -1576,6 +1594,10 @@ module.exports = {
   adminMembershipMasterPage,
   adminMembershipMasterExport,
   adminMerchProductsPage,
+  adminMerchLaunchPage,
+  adminMerchCountPage,
+  adminMerchCountPrint,
+  adminMerchFeedbackPage,
   adminMerchDashboardPage,
   adminMerchReconciliationPage,
   adminMerchMonthEndExport,

@@ -11,6 +11,16 @@ const storageService = require('../../services/storage.service');
 
 const me = (req) => req.session.user;
 
+// "Report a problem" (phase 5): for whoever can see the Store before it opens
+// to everyone (the soft-launch testers and the store's staff).
+const reportProblem = asyncHandler(async (req, res) => {
+  const access = await store.storeAccess(me(req));
+  if (!access.visible || access.open) return error(res, 'Reporting a problem is for the soft launch', 404);
+  // eslint-disable-next-line global-require
+  const f = await require('../../services/merchLaunch.service').createFeedback(me(req), req.body || {});
+  return success(res, { id: f.id }, 'Thanks! The store team will look at it.', 201);
+});
+
 const getCart = asyncHandler(async (req, res) => success(res, { cart: await store.getCart(me(req)) }));
 
 const addToCart = asyncHandler(async (req, res) => {
@@ -118,6 +128,7 @@ const withdrawReturn = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  reportProblem,
   returnForm, requestReturn, withdrawReturn,
   getCart, addToCart, setQuantity, removeFromCart, checkout, payOrder, cancelOrder, myOrder,
   checkoutOptions, deliveryQuote, psgcRegions, psgcProvinces, psgcCities, psgcBarangays,

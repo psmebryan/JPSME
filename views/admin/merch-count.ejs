@@ -1,0 +1,105 @@
+<%#
+  Merchandise -> Stock Count (phase 5). Every variant on one page: count what
+  is on the shelves (items packed or waiting for pickup included), enter it,
+  save all at once. Items already paid for but not yet shipped or handed over
+  are taken out automatically, because the ledger took them off when they
+  were paid. The ledger's numbers are hidden by default so the count is a
+  blind count. The first count of each variant is the opening stock. Saving
+  needs stock.edit (Logistics); the printable sheet is for counting on paper.
+  See merchLaunch.service countSheet / saveCount.
+%>
+<%
+  const canCount = locals.merchCaps ? merchCaps.has('stock.edit') : true;
+  const when = (d) => (d ? new Date(d).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium' }) : 'Never');
+  const firstCount = rows.every((r) => !r.lastCountAt);
+%>
+<div class="w-full" id="merch-count">
+  <div class="admin-card overflow-hidden">
+    <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+      <div>
+        <h1 class="admin-h1">Stock Count</h1>
+        <p class="admin-subtitle">Count everything on the shelves, including items packed or waiting for pickup</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <a href="/admin/merch/count/print" target="_blank" rel="noopener" class="btn-secondary px-4 py-2.5">Print count sheet</a>
+        <label class="btn-secondary inline-flex cursor-pointer items-center gap-2 px-4 py-2.5"><input type="checkbox" data-show-ledger> Show ledger numbers</label>
+      </div>
+    </div>
+    <div class="space-y-4 px-6 py-5">
+      <% if (neverCounted) { %>
+        <p class="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900" data-never><%= neverCounted %> variant<%= neverCounted === 1 ? ' has' : 's have' %> never been counted. The first count is the opening stock.</p>
+      <% } %>
+      <div class="overflow-x-auto">
+        <table class="admin-table">
+          <thead class="admin-table-head">
+            <tr>
+              <th class="admin-th">Product</th><th class="admin-th">Variant</th><th class="admin-th">SKU</th>
+              <th class="admin-th text-right" data-ledger hidden>Ledger on hand</th>
+              <th class="admin-th text-right" data-ledger hidden>Paid, still here</th>
+              <th class="admin-th text-right" data-ledger hidden>Expected on shelf</th>
+              <th class="admin-th">Last counted</th>
+              <% if (canCount) { %><th class="admin-th w-32 text-right">Counted</th><% } %>
+            </tr>
+          </thead>
+          <tbody class="admin-tbody">
+            <% rows.forEach((r) => { %>
+              <tr class="admin-tr <%= r.active ? '' : 'opacity-60' %>" data-row="<%= r.id %>" data-expected="<%= r.expectedOnShelf %>">
+                <td class="admin-td font-medium text-slate-900"><%= r.productName %><% if (!r.active) { %> <span class="badge-slate">Off</span><% } %></td>
+                <td class="admin-td"><%= r.label %></td>
+                <td class="admin-td font-mono text-xs"><%= r.sku %></td>
+                <td class="admin-td text-right tabular-nums" data-ledger hidden><%= r.onHand %></td>
+                <td class="admin-td text-right tabular-nums" data-ledger hidden><%= r.stillHere || '—' %></td>
+                <td class="admin-td text-right tabular-nums font-medium" data-ledger hidden><%= r.expectedOnShelf %></td>
+                <td class="admin-td whitespace-nowrap text-xs <%= r.lastCountAt ? 'text-slate-500' : 'text-amber-700' %>"><%= when(r.lastCountAt) %></td>
+                <% if (canCount) { %><td class="admin-td text-right"><input type="number" min="0" max="100000" step="1" inputmode="numeric" class="form-input w-24 text-right" aria-label="Counted, <%= r.productName %> <%= r.label %>" data-counted></td><% } %>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <% if (!rows.length) { %><p class="py-8 text-center text-sm text-slate-500">No variants yet. Add products first.</p><% } %>
+      </div>
+      <% if (canCount && rows.length) { %>
+        <div class="flex flex-wrap items-end justify-between gap-3 border-t border-slate-100 pt-4">
+          <div class="min-w-[16rem] flex-1">
+            <label for="count-reason" class="form-label">Note for the ledger</label>
+            <input id="count-reason" maxlength="300" value="<%= firstCount ? 'Opening stock count' : 'Stock count' %>" class="form-input" data-reason>
+          </div>
+          <p class="text-xs text-slate-500">Leave a row empty to skip it. A difference is recorded as a count correction.</p>
+          <button type="button" class="btn-primary px-5 py-2.5" data-save-count>Save counts</button>
+        </div>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  const root = document.getElementById('merch-count');
+  root.querySelector('[data-show-ledger]').addEventListener('change', (e) => {
+    root.querySelectorAll('[data-ledger]').forEach((el) => { el.hidden = !e.target.checked; });
+  });
+  const save = root.querySelector('[data-save-count]');
+  if (!save) return;
+  save.addEventListener('click', async () => {
+    const counts = Array.from(root.querySelectorAll('tr[data-row]')).map((tr) => ({ variantId: tr.getAttribute('data-row'), counted: tr.querySelector('[data-counted]').value.trim() }))
+      .filter((c) => c.counted !== '');
+    if (!counts.length) { showToast('Enter at least one count.', 'error'); return; }
+    if (!confirm(`Save ${counts.length} count(s)? Differences from the ledger are recorded as corrections.`)) return;
+    save.disabled = true;
+    try {
+      const res = await apiFetch('/api/admin/merch/count', { method: 'POST', body: JSON.stringify({ counts, reason: root.querySelector('[data-reason]').value }) });
+      if (res.data.failed.length) {
+        res.data.failed.forEach((f) => {
+          const tr = root.querySelector(`tr[data-row="${f.variantId}"]`);
+          if (tr) tr.classList.add('bg-red-50');
+        });
+        showToast(`${res.message} ${res.data.failed[0].message}`, 'error');
+        save.disabled = false;
+      } else {
+        showToast(res.message);
+        setTimeout(() => window.location.reload(), 700);
+      }
+    } catch (err) { showToast(err.message, 'error'); save.disabled = false; }
+  });
+}());
+</script>

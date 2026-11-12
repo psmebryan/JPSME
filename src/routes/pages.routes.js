@@ -158,6 +158,10 @@ router.get('/admin/merch/reconciliation', ...M('reconcile.view'), pages.adminMer
 router.get('/admin/merch/month-end.xlsx', ...M('reconcile.view'), pages.adminMerchMonthEndExport);
 router.get('/admin/merch/reports', ...M('reports.view'), pages.adminMerchReportsPage);
 router.get('/admin/merch/reports/export.xlsx', ...M('reports.view'), pages.adminMerchReportsExport);
+router.get('/admin/merch/launch', ...M('catalog.view'), pages.adminMerchLaunchPage);
+router.get('/admin/merch/count', ...M('stock.view'), pages.adminMerchCountPage);
+router.get('/admin/merch/count/print', ...M('stock.view'), pages.adminMerchCountPrint);
+router.get('/admin/merch/feedback', ...M('orders.view'), pages.adminMerchFeedbackPage);
 
 // Reports: read-only, main admin only.
 router.get('/admin/reports', ensureMainAdminOnly, (req, res) => res.redirect('/admin/reports/transactions'));

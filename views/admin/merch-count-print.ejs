@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock count sheet | JPSME</title>
+  <link rel="stylesheet" href="/css/tailwind.css">
+</head>
+<%#
+  A blank count sheet for counting on paper (phase 5): every variant on sale,
+  with a box for the count. No ledger numbers, so the count is blind.
+  Rendered without the admin layout.
+%>
+<body class="bg-white text-slate-900">
+  <div class="mx-auto max-w-3xl p-8 print:p-0">
+    <div class="mb-6 flex items-center justify-between print:hidden">
+      <p class="text-sm text-slate-500"><%= rows.filter((r) => r.active).length %> variants</p>
+      <button type="button" class="btn-primary px-4 py-2" data-print>Print</button>
+    </div>
+    <h1 class="text-2xl font-bold">JPSME merchandise stock count</h1>
+    <p class="text-sm text-slate-600">Printed <%= printedAt.toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }) %>. Count everything on the shelves, including items packed or set aside for pickup.</p>
+    <table class="mt-4 w-full border-collapse text-sm" data-count-sheet>
+      <thead><tr class="border-b-2 border-slate-800 text-left"><th class="py-1">Product</th><th class="py-1">Variant</th><th class="py-1">SKU</th><th class="w-28 py-1 text-right">Counted</th></tr></thead>
+      <tbody>
+        <% rows.filter((r) => r.active).forEach((r) => { %>
+          <tr class="border-b border-slate-300"><td class="py-2"><%= r.productName %></td><td class="py-2"><%= r.label %></td><td class="py-2 font-mono text-xs"><%= r.sku %></td><td class="py-2"><span class="ml-auto block h-6 w-24 border border-slate-400"></span></td></tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <div class="mt-8 grid grid-cols-2 gap-8 text-sm">
+      <p class="border-t border-slate-500 pt-1">Counted by (name and signature)</p>
+      <p class="border-t border-slate-500 pt-1">Checked by (name and signature)</p>
+    </div>
+  </div>
+  <script nonce="<%= cspNonce %>">
+    document.querySelector('[data-print]').addEventListener('click', () => window.print());
+  </script>
+</body>
+</html>

@@ -1,0 +1,125 @@
+<%#
+  Merchandise -> Soft Launch (phase 5). The Store's mode (Closed, Soft launch,
+  Open), the testers who may buy during the soft launch (the National Board),
+  and the go-live checklist. Changing the mode or the testers needs
+  catalog.edit; everyone with the page can read it. See merchLaunch.service.
+%>
+<%
+  const canEdit = locals.merchCaps ? merchCaps.has('catalog.edit') : true;
+  const when = (d) => new Date(d).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium' });
+  const modeHelp = {
+    CLOSED: 'Only the store\'s own staff can see it, to try it.',
+    SOFT: 'The testers below can also see it and buy, for real. Use this for the Board\'s first orders.',
+    OPEN: 'Every member can see it and buy.',
+  };
+  const roleLabel = { USER: 'Member', CHAPTER_ADMIN: 'Organization admin', PRESIDENT: 'National President', FINANCE_LOGISTICS: 'Finance & Logistics' };
+%>
+<div class="w-full space-y-6" id="merch-launch">
+  <div>
+    <h1 class="admin-h1">Soft Launch</h1>
+    <p class="admin-subtitle">The National Board orders first; fix what they find; then open the Store to every member</p>
+  </div>
+
+  <section class="admin-card p-6" data-mode="<%= mode %>">
+    <h2 class="font-semibold text-slate-900">Store status</h2>
+    <div class="mt-4 grid gap-3 md:grid-cols-3">
+      <% Object.keys(modes).forEach((k) => { %>
+        <label class="flex cursor-pointer items-start gap-3 rounded-lg border p-4 <%= mode === k ? 'border-indigo-400 bg-indigo-50/60' : 'border-slate-200 hover:bg-slate-50' %>">
+          <input type="radio" name="store-mode" value="<%= k %>" class="mt-1" <%= mode === k ? 'checked' : '' %> <%= canEdit ? '' : 'disabled' %>>
+          <span><span class="block font-medium text-slate-900"><%= modes[k] %></span><span class="block text-xs text-slate-500"><%= modeHelp[k] %></span></span>
+        </label>
+      <% }) %>
+    </div>
+    <% if (mode !== 'OPEN' && mustLeft) { %>
+      <p class="mt-3 text-sm text-amber-800" data-not-ready><%= mustLeft %> must-do item<%= mustLeft === 1 ? '' : 's' %> below still open. You can still open the Store, but check them first.</p>
+    <% } %>
+  </section>
+
+  <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_26rem]">
+    <section class="admin-card overflow-hidden" data-checklist>
+      <div class="border-b border-slate-200 px-6 py-4">
+        <h2 class="font-semibold text-slate-900">Go-live checklist</h2>
+        <p class="text-xs text-slate-500"><%= mustLeft %> must-do and <%= shouldLeft %> should-do item(s) left</p>
+      </div>
+      <ul class="divide-y divide-slate-100">
+        <% items.forEach((i) => { %>
+          <li class="flex items-start gap-3 px-6 py-3" data-check-item="<%= i.key %>" data-ok="<%= i.ok ? '1' : '0' %>">
+            <span class="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white <%= i.ok ? 'bg-emerald-600' : (i.level === 'must' ? 'bg-red-600' : 'bg-amber-500') %>" aria-hidden="true"><%= i.ok ? '✓' : '!' %></span>
+            <span class="min-w-0 flex-1">
+              <span class="block text-sm font-medium text-slate-900"><%= i.text %> <% if (!i.ok) { %><span class="text-xs font-normal <%= i.level === 'must' ? 'text-red-700' : 'text-amber-700' %>">(<%= i.level === 'must' ? 'must' : 'should' %>)</span><% } %></span>
+              <span class="block text-xs text-slate-500"><%= i.detail %></span>
+            </span>
+            <% if (!i.ok && i.href) { %><a href="<%= i.href %>" class="shrink-0 text-sm text-indigo-600 hover:underline">Fix</a><% } %>
+          </li>
+        <% }) %>
+      </ul>
+      <p class="border-t border-slate-100 px-6 py-3 text-xs text-slate-500">
+        PayMongo keys are set on the server (.env), not here. The physical count is done on <a href="/admin/merch/count" class="text-indigo-600 hover:underline">Stock Count</a>; the first one becomes the opening stock.
+      </p>
+    </section>
+
+    <section class="admin-card h-fit p-6" data-testers>
+      <h2 class="font-semibold text-slate-900">Soft-launch testers</h2>
+      <p class="mt-1 text-xs text-slate-500">They see the Store and buy for real while it is in soft launch. Use their member accounts: a main admin account cannot buy.</p>
+      <% if (canEdit) { %>
+        <form class="mt-3 flex gap-2" data-add-tester>
+          <label for="tester-email" class="sr-only">Email</label>
+          <input id="tester-email" name="email" type="email" required maxlength="191" placeholder="Their account email" class="form-input">
+          <button type="submit" class="btn-primary shrink-0 px-3 py-2">Add</button>
+        </form>
+      <% } %>
+      <ul class="mt-4 divide-y divide-slate-100 text-sm">
+        <% testers.forEach((t) => { %>
+          <li class="flex items-start justify-between gap-3 py-2" data-tester="<%= t.userId %>">
+            <span class="min-w-0">
+              <span class="block font-medium text-slate-900"><%= t.name %></span>
+              <span class="block truncate text-xs text-slate-500"><%= t.email %> · <%= roleLabel[t.role] || t.role %> · added <%= when(t.addedAt) %></span>
+              <span class="block text-xs <%= t.paidOrders ? 'text-emerald-700' : 'text-slate-400' %>"><%= t.paidOrders %> paid order<%= t.paidOrders === 1 ? '' : 's' %></span>
+            </span>
+            <% if (canEdit) { %><button type="button" class="shrink-0 text-xs text-red-600 hover:underline" data-remove-tester="<%= t.userId %>">Remove</button><% } %>
+          </li>
+        <% }) %>
+      </ul>
+      <% if (!testers.length) { %><p class="mt-3 text-sm text-slate-500">No testers yet.</p><% } %>
+      <p class="mt-4 text-xs text-slate-500">
+        During the soft launch, testers get a <strong>Report a problem</strong> box on the Store. Reports land on
+        <a href="/admin/merch/feedback" class="text-indigo-600 hover:underline">Reported problems</a> (<%= feedbackOpen %> open).
+      </p>
+    </section>
+  </div>
+</div>
+
+<% if (canEdit) { %>
+<script nonce="<%= cspNonce %>">
+(function () {
+  const root = document.getElementById('merch-launch');
+  const reload = () => setTimeout(() => window.location.reload(), 500);
+  const current = root.querySelector('[data-mode]').getAttribute('data-mode');
+  root.querySelectorAll('input[name="store-mode"]').forEach((r) => r.addEventListener('change', async () => {
+    const want = r.value;
+    const notReady = root.querySelector('[data-not-ready]');
+    const ask = want === 'OPEN'
+      ? `Open the Store to every member?${notReady ? ' Some must-do items are still open.' : ''}`
+      : (want === 'SOFT' ? 'Start the soft launch? The testers will see the Store and can buy for real.' : 'Close the Store? Only the store staff will see it.');
+    if (!confirm(ask)) { root.querySelector(`input[value="${current}"]`).checked = true; return; }
+    try {
+      const res = await apiFetch('/api/admin/merch/store-mode', { method: 'PUT', body: JSON.stringify({ mode: want }) });
+      showToast(res.message); reload();
+    } catch (err) { showToast(err.message, 'error'); root.querySelector(`input[value="${current}"]`).checked = true; }
+  }));
+  const add = root.querySelector('[data-add-tester]');
+  add.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const res = await apiFetch('/api/admin/merch/testers', { method: 'POST', body: JSON.stringify({ email: add.elements.namedItem('email').value }) });
+      showToast(res.message); reload();
+    } catch (err) { showToast(err.message, 'error'); }
+  });
+  root.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-remove-tester]');
+    if (!b || !confirm('Remove this tester from the soft launch?')) return;
+    try { const res = await apiFetch(`/api/admin/merch/testers/${b.getAttribute('data-remove-tester')}`, { method: 'DELETE' }); showToast(res.message); reload(); } catch (err) { showToast(err.message, 'error'); }
+  });
+}());
+</script>
+<% } %>

@@ -93,10 +93,12 @@ const recordStock = asyncHandler(async (req, res) => {
   return success(res, out(req, result), `${what}. On hand: ${result.onHand}.`, 201);
 });
 
-// The Store switch: off until launch. While off, only the main admin and a
-// President with Merchandise can see the Store.
+// The Store switch on the Products page: open to members, or closed (which
+// also ends a soft launch). The three modes are on the Soft Launch page.
 const setStoreOpen = asyncHandler(async (req, res) => {
-  const open = await require('../../services/merchStore.service').setStoreOpen(req.body.open === true || req.body.open === 'true'); // eslint-disable-line global-require
+  const want = req.body.open === true || req.body.open === 'true';
+  const mode = await require('../../services/merchLaunch.service').setMode(want ? 'OPEN' : 'CLOSED'); // eslint-disable-line global-require
+  const open = mode === 'OPEN';
   return success(res, { open }, open ? 'The Store is open to members.' : 'The Store is closed to members.');
 });
 

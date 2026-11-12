@@ -17,6 +17,7 @@ const merchApi = require('../../controllers/api/merch.api');
 const merchOrdersApi = require('../../controllers/api/merchOrders.api');
 const merchReturnsApi = require('../../controllers/api/merchReturns.api');
 const merchFinanceApi = require('../../controllers/api/merchFinance.api');
+const merchLaunchApi = require('../../controllers/api/merchLaunch.api');
 const { apiAdmin, apiAdminOrChapterAdmin, presidentTargetGuard, merchCan } = require('../../middleware/auth.middleware');
 const { verifyCsrfToken } = require('../../middleware/csrf.middleware');
 const { uploadLogo, uploadEventImage, uploadSponsorLogo, uploadCertificateBackground, uploadEmailAttachment, uploadDataWorkbook, uploadMerchPhotos } = require('../../middleware/upload.middleware');
@@ -499,5 +500,11 @@ router.put('/merch/return-settings', verifyCsrfToken, merchCan('policy.edit'), m
 const dayParam = [param('day').matches(/^\d{4}-\d{2}-\d{2}$/), checkRouteInput];
 router.post('/merch/reconciliation/:day/check', verifyCsrfToken, merchCan('reconcile.edit'), dayParam, merchFinanceApi.checkDay);
 router.put('/merch/reconciliation/:day/note', verifyCsrfToken, merchCan('reconcile.edit'), dayParam, merchFinanceApi.explainDay);
+// The soft launch (phase 5): Store mode, testers, the stock count, reported problems.
+router.put('/merch/store-mode', verifyCsrfToken, merchCan('catalog.edit'), merchLaunchApi.setMode);
+router.post('/merch/testers', verifyCsrfToken, merchCan('catalog.edit'), merchLaunchApi.addTester);
+router.delete('/merch/testers/:userId', verifyCsrfToken, merchCan('catalog.edit'), param('userId').isInt({ min: 1 }), checkRouteInput, merchLaunchApi.removeTester);
+router.post('/merch/count', verifyCsrfToken, merchCan('stock.edit'), merchLaunchApi.saveCount);
+router.put('/merch/feedback/:id', verifyCsrfToken, merchCan('orders.view'), param('id').isInt({ min: 1 }), checkRouteInput, merchLaunchApi.setFeedback);
 
 module.exports = router;

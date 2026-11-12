@@ -84,10 +84,22 @@ async function canPreview(user) {
   return (await require('./adminAccess.service').merchCapsFor(user)).has('catalog.view');
 }
 
+// Who sees the Store: everyone when it is open; while not, its own staff
+// (canPreview) and, in the soft launch, the testers (the National Board), who
+// buy for real. soft: the Store is in soft launch (phase 5, merchLaunch).
 async function storeAccess(user) {
-  const open = await isStoreOpen();
-  const preview = !open && await canPreview(user);
-  return { open, preview, visible: open || preview };
+  // eslint-disable-next-line global-require
+  const launch = require('./merchLaunch.service');
+  const mode = await launch.getMode();
+  const open = mode === 'OPEN';
+  const soft = mode === 'SOFT';
+  let preview = false;
+  let tester = false;
+  if (!open && user) {
+    preview = await canPreview(user);
+    tester = soft && await launch.isTester(user.id);
+  }
+  return { open, soft, tester, preview: preview || tester, visible: open || preview || tester };
 }
 
 async function assertVisible(user) {

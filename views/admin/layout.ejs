@@ -251,6 +251,9 @@
             <% if (mc('catalog.view')) { %><a href="/admin/merch/fulfilment" data-admin-link class="<%= SUB %>">Delivery &amp; Pickup</a><% } %>
             <% if (mc('reconcile.view')) { %><a href="/admin/merch/reconciliation" data-admin-link class="<%= SUB %>">Daily reconciliation</a><% } %>
             <% if (mc('reports.view')) { %><a href="/admin/merch/reports" data-admin-link class="<%= SUB %>">Sales reports</a><% } %>
+            <% if (mc('stock.view')) { %><a href="/admin/merch/count" data-admin-link class="<%= SUB %>">Stock count</a><% } %>
+            <% if (mc('catalog.view')) { %><a href="/admin/merch/launch" data-admin-link class="<%= SUB %>">Soft launch</a><% } %>
+            <% if (mc('orders.view')) { %><a href="/admin/merch/feedback" data-admin-link class="<%= SUB %>">Reported problems</a><% } %>
           </div>
         </div>
       <% } %>
