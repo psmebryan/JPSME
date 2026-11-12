@@ -38,7 +38,7 @@
 <% if (!products.length) { %>
   <div class="rounded-2xl border border-dashed border-[#263b70] p-10 text-center text-slate-400">Nothing on sale yet. Check back soon.</div>
 <% } else { %>
-  <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4" data-store-grid>
+  <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4" data-store-grid>
     <% products.forEach((p) => { %>
       <a href="/store/products/<%= p.id %>" class="group flex flex-col overflow-hidden rounded-2xl border border-[#263b70] bg-[#111b3a] transition hover:-translate-y-0.5 hover:border-amber-400/60" data-store-product="<%= p.id %>">
         <div class="relative aspect-square overflow-hidden bg-[#0b1430]">

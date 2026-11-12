@@ -39,17 +39,17 @@
     <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">Paused for the address: <%= o.addressNote %>. The buyer was emailed a link to fix it.</div>
   <% } %>
 
-  <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+  <div class="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
     <div class="space-y-6">
       <div class="admin-card overflow-hidden">
-        <table class="admin-table">
+        <div class="relative overflow-x-auto"><table class="admin-table">
           <thead class="admin-table-head"><tr><th class="admin-th">Item</th><th class="admin-th">SKU</th><th class="admin-th text-right">Qty</th><th class="admin-th text-right">Price</th><th class="admin-th text-right">Line</th></tr></thead>
           <tbody class="admin-tbody">
             <% o.items.forEach((i) => { %>
               <tr class="admin-tr"><td class="admin-td font-medium"><%= i.productName %> <span class="text-slate-500">(<%= i.label %>)</span></td><td class="admin-td font-mono text-xs"><%= i.sku %></td><td class="admin-td text-right tabular-nums"><%= i.quantity %></td><td class="admin-td text-right tabular-nums"><%= peso(i.unitPrice) %><%= i.priceType === 'MEMBER' ? ' (M)' : '' %></td><td class="admin-td text-right tabular-nums"><%= peso(i.lineTotal) %></td></tr>
             <% }) %>
           </tbody>
-        </table>
+        </table></div>
         <dl class="grid grid-cols-2 gap-1 border-t border-slate-200 px-5 py-3 text-sm">
           <dt class="text-slate-500">Items</dt><dd class="text-right tabular-nums"><%= peso(o.subtotal) %></dd>
           <dt class="text-slate-500">Delivery</dt><dd class="text-right tabular-nums"><%= o.fulfilment === 'PICKUP' ? 'Pickup' : peso(o.deliveryFee) %></dd>

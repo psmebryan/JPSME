@@ -185,8 +185,8 @@ async function main() {
       assert.strictEqual((await Pr('PUT', '/api/admin/merch/return-settings', { approvalLimit: '1' })).status, 403);
       assert.strictEqual((await Lo('POST', `/api/admin/merch/reconciliation/${DAY}/check`, {})).status, 403);
       const ful = await Lo('GET', '/admin/merch/fulfilment');
-      assert(/<fieldset class="space-y-6"\s*>/.test(ful.text), 'settings editable');
-      assert((await Fi('GET', '/admin/merch/fulfilment')).text.includes('<fieldset class="space-y-6" disabled>'), 'read only for Finance');
+      assert(/<fieldset class="min-w-0 space-y-6"\s*>/.test(ful.text), 'settings editable');
+      assert((await Fi('GET', '/admin/merch/fulfilment')).text.includes('<fieldset class="min-w-0 space-y-6" disabled>'), 'read only for Finance');
     });
 
     await test('costs: only Finance, the main admin, or a President given costs', async () => {

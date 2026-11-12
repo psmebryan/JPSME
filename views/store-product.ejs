@@ -12,7 +12,7 @@
   <div class="mb-6 rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-200"><%= access.soft ? 'Soft launch: open to the National Board only. Orders are real.' : 'Preview: the Store is closed to members.' %></div>
 <% } %>
 
-<div class="grid gap-8 lg:grid-cols-2" id="store-product" data-product-id="<%= p.id %>">
+<div class="grid grid-cols-1 gap-8 lg:grid-cols-2" id="store-product" data-product-id="<%= p.id %>">
   <div>
     <div class="overflow-hidden rounded-2xl border border-[#263b70] bg-[#0b1430]">
       <% if (p.images.length) { %>
@@ -33,7 +33,7 @@
   </div>
 
   <div>
-    <h1 class="text-3xl font-bold text-white"><%= p.name %></h1>
+    <h1 class="break-words text-3xl font-bold text-white"><%= p.name %></h1>
     <p class="mt-3 text-3xl font-bold text-amber-300" data-price><%= first.yourPrice === null ? 'Price coming soon' : peso(first.yourPrice) %></p>
     <p class="mt-1 text-sm text-slate-400" data-price-type>
       <% if (!locals.currentUser) { %>Member price shown after you sign in.<% } else if (member) { %>Member price<% } else { %>Non-member price<% if (first.memberPriceCentavos !== null) { %> · members pay <%= peso(first.memberPriceCentavos) %><% } %><% } %>

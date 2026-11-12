@@ -22,7 +22,7 @@
 
   <section class="admin-card p-6" data-mode="<%= mode %>">
     <h2 class="font-semibold text-slate-900">Store status</h2>
-    <div class="mt-4 grid gap-3 md:grid-cols-3">
+    <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
       <% Object.keys(modes).forEach((k) => { %>
         <label class="flex cursor-pointer items-start gap-3 rounded-lg border p-4 <%= mode === k ? 'border-indigo-400 bg-indigo-50/60' : 'border-slate-200 hover:bg-slate-50' %>">
           <input type="radio" name="store-mode" value="<%= k %>" class="mt-1" <%= mode === k ? 'checked' : '' %> <%= canEdit ? '' : 'disabled' %>>
@@ -35,7 +35,7 @@
     <% } %>
   </section>
 
-  <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_26rem]">
+  <div class="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_26rem]">
     <section class="admin-card overflow-hidden" data-checklist>
       <div class="border-b border-slate-200 px-6 py-4">
         <h2 class="font-semibold text-slate-900">Go-live checklist</h2>
@@ -76,7 +76,7 @@
               <span class="block truncate text-xs text-slate-500"><%= t.email %> · <%= roleLabel[t.role] || t.role %> · added <%= when(t.addedAt) %></span>
               <span class="block text-xs <%= t.paidOrders ? 'text-emerald-700' : 'text-slate-400' %>"><%= t.paidOrders %> paid order<%= t.paidOrders === 1 ? '' : 's' %></span>
             </span>
-            <% if (canEdit) { %><button type="button" class="shrink-0 text-xs text-red-600 hover:underline" data-remove-tester="<%= t.userId %>">Remove</button><% } %>
+            <% if (canEdit) { %><button type="button" class="-m-2 shrink-0 p-2 text-xs text-red-600 hover:underline" data-remove-tester="<%= t.userId %>">Remove</button><% } %>
           </li>
         <% }) %>
       </ul>

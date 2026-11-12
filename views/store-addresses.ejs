@@ -6,7 +6,7 @@
 <nav class="mb-6 flex items-center gap-2 text-sm text-slate-400"><a href="/store" class="hover:text-amber-300">Store</a><span>&rsaquo;</span><span class="text-slate-300">My Addresses</span></nav>
 <h1 class="mb-6 text-3xl font-bold text-white">My Addresses</h1>
 
-<div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]" id="store-addresses">
+<div class="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]" id="store-addresses">
   <div class="space-y-3">
     <% if (!addresses.length) { %>
       <p class="rounded-2xl border border-dashed border-[#263b70] p-6 text-center text-slate-400">No saved addresses yet.</p>

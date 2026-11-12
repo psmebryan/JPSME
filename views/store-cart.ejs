@@ -18,20 +18,25 @@
 <% if (!cart.items.length) { %>
   <div class="rounded-2xl border border-dashed border-[#263b70] p-10 text-center text-slate-400">Your cart is empty. <a href="/store" class="text-amber-400 hover:underline">Browse the Store</a></div>
 <% } else { %>
-  <div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_21rem]" id="store-cart" data-subtotal="<%= cart.subtotal %>">
-    <div class="space-y-6">
+  <div class="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_21rem]" id="store-cart" data-subtotal="<%= cart.subtotal %>">
+    <div class="min-w-0 space-y-6">
       <ul class="divide-y divide-[#263b70] rounded-2xl border border-[#263b70] bg-[#111b3a]">
         <% cart.items.forEach((i) => { %>
-          <li class="flex flex-wrap items-center gap-4 p-4" data-line="<%= i.variantId %>">
-            <div class="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-[#0b1430]"><% if (i.photo) { %><img src="<%= i.photo %>" alt="" class="h-full w-full object-cover"><% } %></div>
-            <div class="min-w-0 flex-1">
-              <a href="/store/products/<%= i.productId %>" class="font-semibold text-white hover:text-amber-300"><%= i.productName %></a>
-              <p class="text-sm text-slate-400"><%= i.label %> · <%= i.unitPrice === null ? 'price not set' : peso(i.unitPrice) + (i.priceType === 'MEMBER' ? ' member price' : '') %></p>
-              <% if (i.problem) { %><p class="mt-1 text-sm font-medium text-red-400" data-problem><%= i.problem %></p><% } %>
+          <%# On a phone: photo and name on top, quantity / total / Remove below. %>
+          <li class="flex flex-wrap items-center gap-x-4 gap-y-3 p-4" data-line="<%= i.variantId %>">
+            <div class="flex min-w-0 basis-full items-center gap-4 sm:basis-0 sm:flex-1">
+              <div class="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-[#0b1430]"><% if (i.photo) { %><img src="<%= i.photo %>" alt="" class="h-full w-full object-cover"><% } %></div>
+              <div class="min-w-0 flex-1">
+                <a href="/store/products/<%= i.productId %>" class="break-words font-semibold text-white hover:text-amber-300"><%= i.productName %></a>
+                <p class="text-sm text-slate-400"><%= i.label %> · <%= i.unitPrice === null ? 'price not set' : peso(i.unitPrice) + (i.priceType === 'MEMBER' ? ' member price' : '') %></p>
+                <% if (i.problem) { %><p class="mt-1 text-sm font-medium text-red-400" data-problem><%= i.problem %></p><% } %>
+              </div>
             </div>
-            <input type="number" min="0" max="100" value="<%= i.quantity %>" aria-label="Quantity of <%= i.productName %> <%= i.label %>" class="w-20 rounded-lg border border-[#263b70] bg-[#0b1430] px-3 py-2 text-white" data-qty>
-            <p class="w-28 text-right font-semibold tabular-nums text-white"><%= i.lineTotal === null ? '—' : peso(i.lineTotal) %></p>
-            <button type="button" class="text-sm text-red-400 hover:underline" data-remove>Remove</button>
+            <div class="flex flex-1 items-center justify-end gap-4 sm:flex-none">
+              <input type="number" inputmode="numeric" min="0" max="100" value="<%= i.quantity %>" aria-label="Quantity of <%= i.productName %> <%= i.label %>" class="mr-auto w-20 rounded-lg border border-[#263b70] bg-[#0b1430] px-3 py-2 text-white sm:mr-0" data-qty>
+              <p class="text-right font-semibold tabular-nums text-white sm:w-28"><%= i.lineTotal === null ? '—' : peso(i.lineTotal) %></p>
+              <button type="button" class="-m-2 p-2 text-sm text-red-400 hover:underline" data-remove>Remove</button>
+            </div>
           </li>
         <% }) %>
       </ul>

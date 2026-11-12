@@ -59,7 +59,7 @@
   <% } %>
 
   <% if (o.fulfilment) { %>
-    <div class="grid gap-4 sm:grid-cols-2">
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <div class="rounded-2xl border border-[#263b70] bg-[#111b3a] p-4 text-sm" data-ship-to>
         <% if (o.fulfilment === 'DELIVERY') { %>
           <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Delivery to <%= o.zoneName %></p>
@@ -139,7 +139,7 @@
                 </div>
               <% }) %>
             </div>
-            <div class="grid gap-3 sm:grid-cols-2">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label class="text-sm text-slate-300">Reason
                 <select name="reason" class="jp-field mt-1">
                   <% ['WRONG_SIZE', 'CHANGE_OF_MIND', 'DAMAGED', 'OTHER'].forEach((k) => { %><option value="<%= k %>"><%= rf.reasons[k] %></option><% }) %>
