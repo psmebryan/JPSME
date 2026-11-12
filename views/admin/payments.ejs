@@ -15,7 +15,9 @@ function peso(centavos) {
   return '&#8369;' + (centavos / 100).toFixed(2);
 }
 %>
-<div id="payments-module" class="max-w-6xl" data-is-main-admin="<%= isMainAdmin ? '1' : '0' %>">
+<%# canAct false: Finance & Logistics, who may look but not refund or reconcile here. %>
+<% const canAct = locals.canAct !== false; %>
+<div id="payments-module" class="max-w-6xl" data-is-main-admin="<%= isMainAdmin ? '1' : '0' %>" data-can-act="<%= canAct ? '1' : '0' %>">
   <div class="mb-6">
     <h1 class="admin-h1">Payments</h1>
     <p class="admin-subtitle"><%= isMainAdmin ? 'All membership and event-fee payments.' : 'Payments for your chapter.' %></p>
@@ -119,12 +121,12 @@ function peso(centavos) {
               <td class="admin-td"><%= new Date(p.createdAt).toLocaleDateString() %></td>
               <td class="admin-td text-xs text-slate-500 max-w-[160px] truncate"><%= p.gatewayPaymentId || p.gatewayCheckoutId || '-' %></td>
               <td class="admin-td text-right payment-actions-cell">
-                <% if (isMainAdmin && p.status === 'PAID' && !p.refund) { %>
+                <% if (isMainAdmin && canAct && p.status === 'PAID' && !p.refund) { %>
                   <button type="button" data-refund="<%= p.id %>" class="text-red-600 hover:underline text-sm font-medium">Refund</button>
                 <% } else if (p.refund) { %>
                   <span class="text-xs text-slate-400">Refund: <%= p.refund.status %></span>
                 <% } %>
-                <% if (isMainAdmin && (p.status === 'PENDING' || p.status === 'PROCESSING')) { %>
+                <% if (isMainAdmin && canAct && (p.status === 'PENDING' || p.status === 'PROCESSING')) { %>
                   <button type="button" data-reconcile="<%= p.id %>" class="text-sky-600 hover:underline text-sm font-medium ml-2">Reconcile</button>
                 <% } %>
               </td>

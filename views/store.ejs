@@ -1,0 +1,56 @@
+<%#
+  The Store: every product on sale, with the visitor's own price ("from" the
+  cheapest variant they can buy). Hidden until the main admin opens it; while
+  closed, the main admin and a President with Merchandise see it as a preview.
+  See merchStore.service listStoreProducts.
+%>
+<% const peso = (c) => '₱' + (c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); %>
+<section class="-mx-4 -mt-12 mb-10 border-b border-[#26365f] bg-[radial-gradient(circle_at_14%_25%,#1c1442_0,transparent_35%),#080f29] px-4 py-14 sm:-mx-6 sm:px-6">
+  <div class="mx-auto flex max-w-6xl flex-wrap items-end justify-between gap-4">
+    <div>
+      <nav class="text-sm text-slate-400"><a href="/" class="hover:text-amber-300">Home</a><span class="mx-2">&rsaquo;</span><span class="font-semibold text-amber-400">Store</span></nav>
+      <h1 class="mt-4 text-4xl font-extrabold">JPSME Store</h1>
+      <p class="mt-2 text-slate-400">Official merchandise, paid securely through PayMongo.</p>
+    </div>
+    <% if (locals.currentUser) { %>
+      <div class="flex gap-2">
+        <a href="/store/orders" class="rounded-lg border border-[#263b70] px-4 py-2.5 text-sm font-semibold text-slate-200 hover:border-amber-400">My Orders</a>
+        <a href="/store/cart" class="rounded-lg bg-amber-400 px-4 py-2.5 text-sm font-semibold text-[#071126] hover:bg-amber-300">Cart</a>
+      </div>
+    <% } %>
+  </div>
+</section>
+
+<% if (access.preview) { %>
+  <div class="mb-6 rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-200" data-preview-banner>
+    Preview: the Store is closed to members. Only you can see this. Open it in Admin &rarr; Merchandise &rarr; Products.
+  </div>
+<% } %>
+
+<% if (locals.currentUser) { %>
+  <p class="mb-6 text-sm text-slate-400" data-price-note>
+    <% if (member) { %>You are paying <span class="font-semibold text-amber-300">member prices</span>.<% } else { %>You are paying non-member prices. <a href="/membership-payment" class="text-amber-400 hover:underline">Members pay less</a>.<% } %>
+  </p>
+<% } else { %>
+  <p class="mb-6 text-sm text-slate-400"><a href="/login?next=/store" class="text-amber-400 hover:underline">Sign in</a> to buy. Members pay less.</p>
+<% } %>
+
+<% if (!products.length) { %>
+  <div class="rounded-2xl border border-dashed border-[#263b70] p-10 text-center text-slate-400">Nothing on sale yet. Check back soon.</div>
+<% } else { %>
+  <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4" data-store-grid>
+    <% products.forEach((p) => { %>
+      <a href="/store/products/<%= p.id %>" class="group flex flex-col overflow-hidden rounded-2xl border border-[#263b70] bg-[#111b3a] transition hover:-translate-y-0.5 hover:border-amber-400/60" data-store-product="<%= p.id %>">
+        <div class="relative aspect-square overflow-hidden bg-[#0b1430]">
+          <% if (p.photo) { %><img src="<%= p.photo %>" alt="" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-105"><% } else { %><div class="flex h-full items-center justify-center text-sm text-slate-500">No photo yet</div><% } %>
+          <% if (p.soldOut) { %><span class="absolute left-3 top-3 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-semibold text-white">Sold out</span><% } %>
+        </div>
+        <div class="flex flex-1 flex-col p-4">
+          <h2 class="font-semibold text-white group-hover:text-amber-300"><%= p.name %></h2>
+          <p class="mt-1 text-sm text-slate-400"><%= p.variantCount %> option<%= p.variantCount === 1 ? '' : 's' %></p>
+          <p class="mt-auto pt-3 text-lg font-bold text-amber-300"><%= p.fromPrice === null ? 'Price coming soon' : (p.variantCount > 1 ? 'From ' : '') + peso(p.fromPrice) %></p>
+        </div>
+      </a>
+    <% }) %>
+  </div>
+<% } %>

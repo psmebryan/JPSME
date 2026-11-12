@@ -13,9 +13,13 @@ const invitationApi = require('../../controllers/api/invitation.api');
 const dataTransferApi = require('../../controllers/api/dataTransfer.api');
 const activationsApi = require('../../controllers/api/activations.api');
 const jobApi = require('../../controllers/api/job.api');
-const { apiAdmin, apiAdminOrChapterAdmin, presidentTargetGuard } = require('../../middleware/auth.middleware');
+const merchApi = require('../../controllers/api/merch.api');
+const merchOrdersApi = require('../../controllers/api/merchOrders.api');
+const merchReturnsApi = require('../../controllers/api/merchReturns.api');
+const merchFinanceApi = require('../../controllers/api/merchFinance.api');
+const { apiAdmin, apiAdminOrChapterAdmin, presidentTargetGuard, merchCan } = require('../../middleware/auth.middleware');
 const { verifyCsrfToken } = require('../../middleware/csrf.middleware');
-const { uploadLogo, uploadEventImage, uploadSponsorLogo, uploadCertificateBackground, uploadEmailAttachment, uploadDataWorkbook } = require('../../middleware/upload.middleware');
+const { uploadLogo, uploadEventImage, uploadSponsorLogo, uploadCertificateBackground, uploadEmailAttachment, uploadDataWorkbook, uploadMerchPhotos } = require('../../middleware/upload.middleware');
 const verifyImageSignature = require('../../middleware/verifyImageSignature');
 
 const certificateTemplateValidators = [
@@ -222,6 +226,14 @@ router.put(
   verifyCsrfToken,
   body('modules').isArray({ max: 50 }).withMessage('modules must be a list'),
   adminApi.updatePresidentAccess
+);
+// One Finance & Logistics account's ticks. Under /settings too: main admin only.
+router.put(
+  '/settings/finance-logistics/:userId',
+  verifyCsrfToken,
+  param('userId').isInt({ min: 1 }),
+  body('grants').isArray({ max: 20 }).withMessage('grants must be a list'),
+  adminApi.updateFinanceLogisticsAccess
 );
 router.get('/settings/payments-enabled', adminApi.getPaymentsEnabled);
 router.put(
@@ -444,5 +456,48 @@ router.post(
   adminBroadcastApi.createBroadcast
 );
 router.get('/broadcasts/:id', param('id').isInt(), adminBroadcastApi.getBroadcast);
+
+// Merchandise (phase 1): products, photos, variants and the stock ledger.
+// Inherits router.use(apiAdmin) above: the main admin, a President given the
+// Merchandise module, or a Finance & Logistics account with a task group.
+// merchCan then checks the one capability each action needs
+// (adminAccess.merchCapsFor). Validation is in merch.service.
+const merchId = [param('id').isInt({ min: 1 }), checkRouteInput];
+const merchVariant = [param('variantId').isInt({ min: 1 }), checkRouteInput];
+router.get('/merch/products', merchCan('catalog.view'), merchApi.listProducts);
+router.post('/merch/products', verifyCsrfToken, merchCan('catalog.edit'), merchApi.createProduct);
+router.get('/merch/products/:id', merchCan('catalog.view'), merchId, merchApi.getProduct);
+router.put('/merch/products/:id', verifyCsrfToken, merchCan('catalog.edit'), merchId, merchApi.updateProduct);
+router.delete('/merch/products/:id', verifyCsrfToken, merchCan('catalog.edit'), merchId, merchApi.deleteProduct);
+router.post('/merch/products/:id/photos', verifyCsrfToken, merchCan('catalog.edit'), merchId,
+  uploadMerchPhotos.fields([{ name: 'photos', maxCount: 6 }]), verifyImageSignature.verifyImageSignatures, merchApi.addPhotos);
+router.delete('/merch/products/:id/photos/:imageId', verifyCsrfToken, merchCan('catalog.edit'), param('id').isInt({ min: 1 }), param('imageId').isInt({ min: 1 }), checkRouteInput, merchApi.removePhoto);
+router.post('/merch/products/:id/variants', verifyCsrfToken, merchCan('catalog.edit'), merchId, merchApi.addVariant);
+router.put('/merch/products/:id/variants/:variantId', verifyCsrfToken, merchCan('catalog.edit'), param('id').isInt({ min: 1 }), merchVariant, merchApi.updateVariant);
+router.delete('/merch/products/:id/variants/:variantId', verifyCsrfToken, merchCan('catalog.edit'), param('id').isInt({ min: 1 }), merchVariant, merchApi.deleteVariant);
+router.get('/merch/variants/:variantId/movements', merchCan('stock.view'), merchVariant, merchApi.movements);
+router.get('/merch/variants/:variantId/price-history', merchCan('catalog.view'), merchVariant, merchApi.priceHistory);
+router.post('/merch/variants/:variantId/stock', verifyCsrfToken, merchCan('stock.edit'), merchVariant, merchApi.recordStock);
+// Open or close the Store to members (off until launch).
+router.put('/merch/store-open', verifyCsrfToken, merchCan('catalog.edit'), body('open').isBoolean(), checkRouteInput, merchApi.setStoreOpen);
+// Orders and fulfilment (phase 3a).
+const orderNumberParam = [param('orderNumber').matches(/^ORD-\d{4}-\d{6,}$/), checkRouteInput];
+router.post('/merch/orders/bulk', verifyCsrfToken, merchCan('orders.fulfil'), merchOrdersApi.bulk);
+router.post('/merch/orders/:orderNumber/steps/:action', verifyCsrfToken, merchCan('orders.fulfil'), orderNumberParam, param('action').isIn(['pack', 'ship', 'deliver', 'ready', 'pickedUp', 'unclaimed', 'reopen', 'holdAddress', 'resume']), checkRouteInput, merchOrdersApi.step);
+router.post('/merch/handover/lookup', verifyCsrfToken, merchCan('orders.fulfil'), merchOrdersApi.handoverLookup);
+router.post('/merch/handover', verifyCsrfToken, merchCan('orders.fulfil'), merchOrdersApi.handover);
+router.put('/merch/zones/:id', verifyCsrfToken, merchCan('settings.edit'), param('id').isInt({ min: 1 }), checkRouteInput, merchOrdersApi.updateZone);
+router.put('/merch/zone-regions', verifyCsrfToken, merchCan('settings.edit'), merchOrdersApi.setRegionZone);
+router.post('/merch/pickup-points', verifyCsrfToken, merchCan('settings.edit'), merchOrdersApi.addPickupPoint);
+router.put('/merch/pickup-points/:id', verifyCsrfToken, merchCan('settings.edit'), param('id').isInt({ min: 1 }), checkRouteInput, merchOrdersApi.updatePickupPoint);
+router.post('/merch/psgc/import', verifyCsrfToken, merchCan('settings.edit'), uploadDataWorkbook.single('workbook'), merchOrdersApi.importPsgc);
+// Refunds and exchanges (phase 3b).
+router.post('/merch/orders/:orderNumber/returns', verifyCsrfToken, merchCan('returns.goods', 'refund.approve'), orderNumberParam, merchReturnsApi.raise);
+router.post('/merch/returns/:returnNumber/:action', verifyCsrfToken, merchCan('returns.goods', 'refund.approve', 'refund.second'), param('returnNumber').matches(/^RET-\d{4}-\d{6,}$/), param('action').isIn(['check', 'approve', 'reject', 'accept', 'receive', 'send']), checkRouteInput, merchReturnsApi.step);
+router.put('/merch/return-settings', verifyCsrfToken, merchCan('policy.edit'), merchReturnsApi.saveSettings);
+// The daily reconciliation (phase 4): check a day against PayMongo, or explain its gaps.
+const dayParam = [param('day').matches(/^\d{4}-\d{2}-\d{2}$/), checkRouteInput];
+router.post('/merch/reconciliation/:day/check', verifyCsrfToken, merchCan('reconcile.edit'), dayParam, merchFinanceApi.checkDay);
+router.put('/merch/reconciliation/:day/note', verifyCsrfToken, merchCan('reconcile.edit'), dayParam, merchFinanceApi.explainDay);
 
 module.exports = router;

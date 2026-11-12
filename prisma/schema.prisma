@@ -33,6 +33,9 @@ enum Role {
   // National President: admin access limited to the modules the main admin
   // ticks (Site Settings -> National President access; config/adminModules).
   PRESIDENT
+  // Finance & Logistics: runs the merchandise store day to day. What each
+  // account may do is ticked per account (AdminGrant), not for the role.
+  FINANCE_LOGISTICS
 }
 
 // Stored as named levels rather than a number so the value can't drift into
@@ -173,6 +176,8 @@ enum CertificateTemplateType {
 enum PaymentPurpose {
   MEMBERSHIP_REGISTRATION
   EVENT_REGISTRATION
+  // A merchandise store order (MerchOrder.paymentId points here).
+  MERCHANDISE
 }
 
 enum PaymentStatus {
@@ -412,6 +417,15 @@ model User {
   checkInAccessRevoked   EventCheckInStaff[]   @relation("checkin_staff_revoked_by")
   integrationKeysMade    EventIntegrationKey[] @relation("integration_key_created_by")
   integrationKeysRevoked EventIntegrationKey[] @relation("integration_key_revoked_by")
+  merchStockMoves        MerchStockMovement[]  @relation("merch_stock_actor")
+  merchPriceChanges      MerchPriceChange[]    @relation("merch_price_actor")
+  merchCartItems         MerchCartItem[]
+  merchOrders            MerchOrder[]
+  merchAddresses         MerchAddress[]
+  merchOrderEvents       MerchOrderEvent[]
+  merchReturns           MerchReturn[]
+  adminGrant             AdminGrant?
+  merchReconciliations   MerchReconciliation[]
 
   @@index([status])
   @@index([organizationId])
@@ -524,6 +538,7 @@ model Event {
   // event. A general-admission seminar never sees a seat map; a convention
   // switches it on and builds one. No code changes between the two.
   seatingEnabled      Boolean               @default(false)
+  merchPickupPoints MerchPickupPoint[]
 }
 
 // A block of seats — "Main Floor", "VIP", "Balcony", "Table 1".
@@ -1097,6 +1112,117 @@ model ArticleImage {
   @@map("article_images")
 }
 
+// --- Merchandise store (admin -> Merchandise) -------------------------------------
+
+// A product sold in the store (Polo shirt, Cap, Pin, Lanyard). Off until the
+// store opens; what is stocked and priced is its variants.
+model MerchProduct {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(80)
+  description String?  @db.Text
+  isActive    Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  images   MerchProductImage[]
+  variants MerchVariant[]
+
+  @@map("merch_products")
+}
+
+model MerchProductImage {
+  id        Int      @id @default(autoincrement())
+  productId Int
+  url       String   @db.VarChar(500)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  product MerchProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("merch_product_images")
+}
+
+// What is stocked and sold: "Polo shirt, Navy, L". Prices and cost are
+// centavos; NULL = not decided yet. Stock is not a column: it is the sum of
+// the variant's ledger movements.
+model MerchVariant {
+  id                  Int      @id @default(autoincrement())
+  productId           Int
+  sku                 String   @unique @db.VarChar(40)
+  label               String   @db.VarChar(80)
+  size                String?  @db.VarChar(20)
+  color               String?  @db.VarChar(30)
+  memberPriceCentavos Int?
+  priceCentavos       Int?
+  costCentavos        Int?
+  limitPerBuyer       Int?
+  lowStockLevel       Int?
+  isActive            Boolean  @default(true)
+  sortOrder           Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  product      MerchProduct          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  movements    MerchStockMovement[]
+  priceChanges MerchPriceChange[]
+  cartItems    MerchCartItem[]
+  orderItems   MerchOrderItem[]
+  exchangeIn   MerchReturnItem[]
+
+  @@unique([productId, label])
+  @@map("merch_variants")
+}
+
+// The stock ledger: one signed line per change, never edited. Types:
+// RECEIVED (+), DAMAGED (-), COUNT_CORRECTION (+/-) entered by staff;
+// HELD, RELEASED, SOLD, RETURNED written by checkout in a later phase.
+model MerchStockMovement {
+  id               Int      @id @default(autoincrement())
+  variantId        Int
+  type             String   @db.VarChar(20)
+  quantity         Int
+  reason           String?  @db.VarChar(300)
+  supplier         String?  @db.VarChar(120)
+  unitCostCentavos Int?
+  actorId          Int?
+  // The order a hold, release or sale belongs to.
+  orderId          Int?
+  // An exchange's hold, sale and returns point at its request instead.
+  returnId         Int?
+  createdAt        DateTime @default(now())
+
+  variant MerchVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  actor   User?        @relation("merch_stock_actor", fields: [actorId], references: [id], onDelete: SetNull)
+  order   MerchOrder?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  return  MerchReturn? @relation(fields: [returnId], references: [id], onDelete: SetNull)
+
+  @@index([variantId])
+  @@index([orderId])
+  @@index([returnId])
+  @@index([createdAt])
+  @@map("merch_stock_movements")
+}
+
+// Every change to a variant's member price, price or cost: who, when, from
+// what to what.
+model MerchPriceChange {
+  id        Int      @id @default(autoincrement())
+  variantId Int
+  field     String   @db.VarChar(30)
+  oldValue  Int?
+  newValue  Int?
+  actorId   Int?
+  createdAt DateTime @default(now())
+
+  variant MerchVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  actor   User?        @relation("merch_price_actor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([variantId])
+  @@map("merch_price_changes")
+}
+
 // Key/value store for site-wide content the admin can change, e.g. site_logo path.
 model SiteSetting {
   id        Int      @id @default(autoincrement())
@@ -1307,6 +1433,7 @@ model Payment {
   user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   event    Event?           @relation(fields: [eventId], references: [id], onDelete: Restrict)
   attempts PaymentAttempt[]
+  merchOrder MerchOrder?
   webhooks PaymentWebhook[]
   refund   Refund?
 
@@ -1358,7 +1485,9 @@ model PaymentWebhook {
 model Refund {
   id              Int          @id @default(autoincrement())
   paymentId       Int          @unique
-  requestedBy     Int
+  // NULL = requested by the system (the automatic refund of a merchandise
+  // order whose stock sold out before its late payment arrived).
+  requestedBy     Int?
   reason          String?      @db.Text
   amount          Int
   gatewayRefundId String?      @unique
@@ -1367,7 +1496,7 @@ model Refund {
   updatedAt       DateTime     @updatedAt
 
   payment         Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  requestedByUser User    @relation("refund_requested_by", fields: [requestedBy], references: [id], onDelete: Restrict)
+  requestedByUser User?   @relation("refund_requested_by", fields: [requestedBy], references: [id], onDelete: Restrict)
 
   @@map("refunds")
 }
@@ -1649,4 +1778,312 @@ model ActivationInvite {
   // And the filters read "everyone whose last attempt bounced".
   @@index([status])
   @@map("activation_invites")
+}
+
+// A member's cart: one line per variant. Prices are not stored here; the
+// cart always shows today's price for the buyer.
+model MerchCartItem {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  variantId Int
+  quantity  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  variant MerchVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, variantId])
+  @@map("merch_cart_items")
+}
+
+// A merchandise order. status: AWAITING_PAYMENT (stock held until
+// holdExpiresAt), PAID, CANCELLED (cancelReason says why), REFUNDED; the
+// packing and delivery states come with fulfilment. The buyer's name, email
+// and organization are copied so the money record survives the account.
+model MerchOrder {
+  id                 Int       @id @default(autoincrement())
+  orderNumber        String?   @unique @db.VarChar(30)
+  userId             Int?
+  buyerName          String    @db.VarChar(200)
+  buyerEmail         String    @db.VarChar(191)
+  organizationId     Int?
+  memberPricing      Boolean   @default(false)
+  status             String    @db.VarChar(30)
+  subtotalCentavos   Int
+  channelFeeCentavos Int       @default(0)
+  totalCentavos      Int
+  paymentId          Int?      @unique
+  holdExpiresAt      DateTime?
+  paidAt             DateTime?
+  cancelledAt        DateTime?
+  cancelReason       String?   @db.VarChar(200)
+  // Fulfilment (phase 3): DELIVERY or PICKUP, chosen at checkout.
+  fulfilment          String?   @db.VarChar(10)
+  deliveryFeeCentavos Int       @default(0)
+  zoneName            String?   @db.VarChar(60)
+  // The delivery address as it was at checkout (JSON), and its region.
+  shipTo              String?   @db.Text
+  shipRegionCode      String?   @db.Char(10)
+  pickupPointId       Int?
+  // The pickup point as it was at checkout (JSON).
+  pickupPoint         String?   @db.Text
+  courier             String?   @db.VarChar(80)
+  trackingNumber      String?   @db.VarChar(80)
+  // Shown as a QR at pickup and scanned at handover.
+  qrToken             String?   @unique @db.VarChar(40)
+  // While an address is being fixed: the status to return to, and why.
+  holdFromStatus      String?   @db.VarChar(30)
+  addressNote         String?   @db.VarChar(300)
+  packedAt            DateTime?
+  shippedAt           DateTime?
+  deliveredAt         DateTime?
+  readyAt             DateTime?
+  pickedUpAt          DateTime?
+  pickedUpById        Int?
+  pickupReminderAt    DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  user      User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  payment   Payment?             @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  items     MerchOrderItem[]
+  movements MerchStockMovement[]
+  events    MerchOrderEvent[]
+  returns   MerchReturn[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([status, holdExpiresAt])
+  @@map("merch_orders")
+}
+
+// One line of an order, copied at the moment of purchase: later price or name
+// changes never rewrite what somebody bought. priceType: MEMBER or REGULAR.
+model MerchOrderItem {
+  id                Int    @id @default(autoincrement())
+  orderId           Int
+  variantId         Int
+  productName       String @db.VarChar(80)
+  variantLabel      String @db.VarChar(80)
+  sku               String @db.VarChar(40)
+  priceType         String @db.VarChar(10)
+  unitPriceCentavos Int
+  unitCostCentavos  Int?
+  quantity          Int
+
+  order       MerchOrder        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant     MerchVariant      @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  returnItems MerchReturnItem[]
+
+  @@index([orderId])
+  @@index([variantId])
+  @@map("merch_order_items")
+}
+
+// The PSA's Philippine Standard Geographic Code list, imported from the PSA
+// publication workbook (merchFulfilment.service importPsgc). level: Reg, Prov,
+// City, Mun, SubMun, Bgy. Each row carries its region, province (none for
+// Metro Manila's cities) and, for barangays, its city or municipality.
+model PsgcArea {
+  code            String  @id @db.Char(10)
+  name            String  @db.VarChar(150)
+  level           String  @db.VarChar(10)
+  regionCode      String  @db.Char(10)
+  provinceCode    String? @db.Char(10)
+  cityCode        String? @db.Char(10)
+  // Manila's barangays belong to a sub-municipality (Tondo I/II, ...).
+  subMunicipality String? @db.VarChar(100)
+  cityClass       String? @db.VarChar(10)
+
+  @@index([level, regionCode])
+  @@index([level, provinceCode])
+  @@index([level, cityCode])
+  @@map("psgc_areas")
+}
+
+// A delivery fee zone. feeCentavos NULL = delivery to it is not offered yet.
+model MerchDeliveryZone {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(60)
+  feeCentavos Int?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  regions MerchZoneRegion[]
+
+  @@map("merch_delivery_zones")
+}
+
+model MerchZoneRegion {
+  regionCode String @id @db.Char(10)
+  zoneId     Int
+
+  zone MerchDeliveryZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@index([zoneId])
+  @@map("merch_zone_regions")
+}
+
+// Where orders can be collected. An event pickup point stops being offered
+// after its end date.
+model MerchPickupPoint {
+  id        Int       @id @default(autoincrement())
+  name      String    @db.VarChar(120)
+  address   String    @db.VarChar(300)
+  hours     String?   @db.VarChar(200)
+  eventId   Int?
+  endsAt    DateTime?
+  isActive  Boolean   @default(true)
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  event Event? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@map("merch_pickup_points")
+}
+
+// A buyer's saved delivery address, checked against the same rules as at
+// checkout every time it is used.
+model MerchAddress {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  recipientName String   @db.VarChar(150)
+  mobile        String   @db.VarChar(20)
+  altMobile     String?  @db.VarChar(20)
+  houseNo       String   @db.VarChar(100)
+  building      String?  @db.VarChar(120)
+  street        String   @db.VarChar(150)
+  subdivision   String?  @db.VarChar(120)
+  regionCode    String   @db.Char(10)
+  provinceCode  String?  @db.Char(10)
+  cityCode      String   @db.Char(10)
+  barangayCode  String   @db.Char(10)
+  zip           String   @db.Char(4)
+  landmark      String   @db.VarChar(200)
+  notes         String?  @db.VarChar(300)
+  addressType   String   @db.VarChar(10)
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("merch_addresses")
+}
+
+// Every status change of an order: the timeline staff and the buyer see.
+model MerchOrderEvent {
+  id        Int      @id @default(autoincrement())
+  orderId   Int
+  status    String   @db.VarChar(30)
+  note      String?  @db.VarChar(300)
+  actorId   Int?
+  createdAt DateTime @default(now())
+
+  order MerchOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actor User?      @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@map("merch_order_events")
+}
+
+// A refund or exchange request on an order (phase 3b). kind: REFUND or
+// EXCHANGE. status: REQUESTED -> CHECKED (Logistics recorded what came back)
+// -> NEEDS_SECOND (approved once, above the limit) -> REFUND_SENT ->
+// COMPLETED; an exchange: REQUESTED -> NEW_HELD -> OLD_RECEIVED -> COMPLETED.
+// REJECTED or WITHDRAWN end it early. The approvers are kept by id; nobody
+// approves their own request, and the second approver is someone else.
+model MerchReturn {
+  id                 Int       @id @default(autoincrement())
+  returnNumber       String?   @unique @db.VarChar(30)
+  orderId            Int
+  kind               String    @db.VarChar(10)
+  status             String    @db.VarChar(30)
+  reason             String    @db.VarChar(30)
+  details            String?   @db.VarChar(1000)
+  photoUrl           String?   @db.VarChar(500)
+  requestedById      Int?
+  byBuyer            Boolean   @default(true)
+  // True when nothing comes back (cancelled before packing, lost in transit).
+  noItemBack         Boolean   @default(false)
+  checkedById        Int?
+  checkedAt          DateTime?
+  checkNote          String?   @db.VarChar(300)
+  suggestedCentavos  Int?
+  refundCentavos     Int?
+  approvedById       Int?
+  approvedAt         DateTime?
+  secondApprovedById Int?
+  secondApprovedAt   DateTime?
+  rejectReason       String?   @db.VarChar(300)
+  refundId           Int?
+  courier            String?   @db.VarChar(80)
+  trackingNumber     String?   @db.VarChar(80)
+  completedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  order       MerchOrder           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  requestedBy User?                @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+  items       MerchReturnItem[]
+  movements   MerchStockMovement[]
+
+  @@index([orderId])
+  @@index([status])
+  @@map("merch_returns")
+}
+
+model MerchReturnItem {
+  id            Int  @id @default(autoincrement())
+  returnId      Int
+  orderItemId   Int
+  quantity      Int
+  // An exchange: the size or colour wanted instead.
+  newVariantId  Int?
+  receivedQty   Int?
+  resaleableQty Int?
+
+  return     MerchReturn    @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  orderItem  MerchOrderItem @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  newVariant MerchVariant?  @relation(fields: [newVariantId], references: [id], onDelete: Restrict)
+
+  @@index([returnId])
+  @@map("merch_return_items")
+}
+
+// The ticks of one Finance & Logistics account (Site Settings): which task
+// groups and modules it may use. modules: JSON list of keys.
+model AdminGrant {
+  userId      Int      @id
+  modules     String   @db.Text
+  updatedById Int?
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("admin_grants")
+}
+
+// One day of the store's paid orders checked against PayMongo (phase 4).
+// status: MATCHED or GAPS; gaps: JSON list of what did not match.
+model MerchReconciliation {
+  id           Int      @id @default(autoincrement())
+  day          DateTime @unique @db.Date
+  status       String   @db.VarChar(10)
+  siteCount    Int      @default(0)
+  siteCentavos Int      @default(0)
+  feeCentavos  Int      @default(0)
+  gaps         String?  @db.Text
+  note         String?  @db.VarChar(500)
+  checkedById  Int?
+  checkedAt    DateTime
+
+  checkedBy User? @relation(fields: [checkedById], references: [id], onDelete: SetNull)
+
+  @@map("merch_reconciliations")
 }

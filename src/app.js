@@ -16,6 +16,7 @@ const { issueCsrfToken } = require('./middleware/csrf.middleware');
 const AppError = require('./utils/AppError');
 const settingsService = require('./services/settings.service');
 const adminAccessService = require('./services/adminAccess.service');
+const merchStoreService = require('./services/merchStore.service');
 const sessionStore = require('./config/sessionStore');
 
 const app = express();
@@ -321,6 +322,9 @@ app.use((req, res, next) => {
 app.use('/admin', async (req, res, next) => {
   try {
     res.locals.adminModules = await adminAccessService.modulesFor(req.session.user);
+    // What this person may do inside the store, for the sidebar and pages.
+    res.locals.merchCaps = res.locals.adminModules.includes('merchandise')
+      ? await adminAccessService.merchCapsFor(req.session.user) : new Set();
     next();
   } catch (err) {
     next(err);
@@ -350,6 +354,9 @@ app.use(async (req, res, next) => {
     // be read by the browser. Empty when unconfigured, which is how the views
     // know to render nothing rather than a broken widget.
     res.locals.turnstileSiteKey = config.captcha.turnstileSiteKey || '';
+    // Whether the menu shows Store: open to everyone, or a preview for the
+    // main admin / a President with Merchandise while it is closed.
+    res.locals.storeAccess = await merchStoreService.storeAccess(req.session.user).catch(() => ({ visible: false }));
   }
   next();
 });

@@ -281,6 +281,13 @@ const updatePresidentAccess = asyncHandler(async (req, res) => {
   return success(res, { modules }, 'National President access saved. It applies on their next page.');
 });
 
+// One Finance & Logistics account's ticks (Site Settings).
+const updateFinanceLogisticsAccess = asyncHandler(async (req, res) => {
+  if (!checkValidation(req, res)) return undefined;
+  const grants = await adminAccessService.setGrant(req.params.userId, req.body.grants, req.session.user.id);
+  return success(res, { grants }, 'Finance & Logistics access saved. It applies on their next page.');
+});
+
 const getPaymentsEnabled = asyncHandler(async (req, res) => {
   const enabled = await settingsService.getPaymentsEnabled();
   return success(res, { enabled });
@@ -515,6 +522,7 @@ const resendActivation = asyncHandler(async (req, res) => {
 
 module.exports = {
   updatePresidentAccess,
+  updateFinanceLogisticsAccess,
   activationStatus,
   sendActivations,
   resendActivation,

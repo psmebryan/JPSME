@@ -262,6 +262,9 @@ async function updateUser(userId, data, {
   if (data.role === 'PRESIDENT' && !allowPresidentRole) {
     throw new AppError('Only the main admin can make someone National President', 403);
   }
+  if (data.role === 'FINANCE_LOGISTICS' && !allowPresidentRole) {
+    throw new AppError('Only the main admin can give the Finance & Logistics role', 403);
+  }
 
   const losesAdmin = target.role === 'ADMIN' && data.role && data.role !== 'ADMIN';
 
@@ -307,7 +310,7 @@ async function updateUser(userId, data, {
     const assignable = allowAdminRole
       ? ['ADMIN', 'CHAPTER_ADMIN', 'USER']
       : ['CHAPTER_ADMIN', 'USER'];
-    if (allowPresidentRole) assignable.push('PRESIDENT');
+    if (allowPresidentRole) assignable.push('PRESIDENT', 'FINANCE_LOGISTICS');
     if (assignable.includes(roleVal)) allowed.role = roleVal;
   }
   // Member type, from the Master List. Main admins only: the scoped (chapter
@@ -331,6 +334,11 @@ async function updateUser(userId, data, {
   }
 
   const updated = await prisma.user.update({ where: { id: Number(userId) }, data: allowed, include: { organization: true, memberType: true } });
+  // Leaving Finance & Logistics drops that account's ticks, so giving the role
+  // again later starts from nothing rather than from old access.
+  if (target.role === 'FINANCE_LOGISTICS' && allowed.role && allowed.role !== 'FINANCE_LOGISTICS') {
+    await prisma.adminGrant.deleteMany({ where: { userId: target.id } });
+  }
 
   // Logged after the write, so nothing claims a change that did not happen.
   // Awaited rather than fired and forgotten: granting ADMIN hands over every

@@ -1,0 +1,76 @@
+<%#
+  My Addresses: a buyer's saved delivery addresses (up to 10), one of them the
+  default. Each is checked against the same rules as at checkout, both when
+  saved and again whenever it is used. ?edit=<id> opens one in the form.
+%>
+<nav class="mb-6 flex items-center gap-2 text-sm text-slate-400"><a href="/store" class="hover:text-amber-300">Store</a><span>&rsaquo;</span><span class="text-slate-300">My Addresses</span></nav>
+<h1 class="mb-6 text-3xl font-bold text-white">My Addresses</h1>
+
+<div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]" id="store-addresses">
+  <div class="space-y-3">
+    <% if (!addresses.length) { %>
+      <p class="rounded-2xl border border-dashed border-[#263b70] p-6 text-center text-slate-400">No saved addresses yet.</p>
+    <% } %>
+    <% addresses.forEach((a) => { %>
+      <div class="rounded-2xl border <%= a.isDefault ? 'border-amber-400/60' : 'border-[#263b70]' %> bg-[#111b3a] p-4 text-sm" data-address="<%= a.id %>">
+        <div class="mb-1 flex items-center justify-between gap-2">
+          <span class="text-xs font-semibold uppercase tracking-wide text-slate-400"><%= a.typeLabel %><%= a.isDefault ? ' · default' : '' %></span>
+          <span class="flex gap-3">
+            <% if (!a.isDefault) { %><button type="button" class="text-amber-400 hover:underline" data-default>Make default</button><% } %>
+            <a href="/store/addresses?edit=<%= a.id %>" class="text-slate-300 hover:underline">Edit</a>
+            <button type="button" class="text-red-400 hover:underline" data-delete>Remove</button>
+          </span>
+        </div>
+        <% a.lines.forEach((l, i) => { %><p class="<%= i === 0 ? 'font-semibold text-white' : 'text-slate-300' %>"><%= l %></p><% }) %>
+      </div>
+    <% }) %>
+  </div>
+
+  <form class="rounded-2xl border border-[#263b70] bg-[#111b3a] p-5" data-address-editor data-edit-id="<%= editing ? editing.id : '' %>">
+    <h2 class="mb-4 text-lg font-semibold text-white"><%= editing ? 'Edit address' : 'Add an address' %></h2>
+    <%- include('partials/address-form', { prefix: 'ab', addressTypes, value: editing }) %>
+    <label class="mt-3 flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" name="isDefault" <%= editing && editing.isDefault ? 'checked' : '' %>> Use as my default address</label>
+    <div class="mt-4 flex gap-3">
+      <button type="submit" class="rounded-lg bg-amber-400 px-5 py-2.5 font-semibold text-[#071126] hover:bg-amber-300"><%= editing ? 'Save changes' : 'Save address' %></button>
+      <% if (editing) { %><a href="/store/addresses" class="rounded-lg border border-[#263b70] px-5 py-2.5 font-semibold text-slate-200">Cancel</a><% } %>
+    </div>
+  </form>
+</div>
+
+<script src="/js/address-form.js"></script>
+<script nonce="<%= cspNonce %>">
+(function () {
+  const root = document.getElementById('store-addresses');
+  const editor = root.querySelector('[data-address-editor]');
+  const form = editor.querySelector('[data-address-form]');
+  window.AddressForm.init(form);
+  editor.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = editor.dataset.editId;
+    const body = { ...window.AddressForm.read(form), isDefault: editor.querySelector('input[name="isDefault"]').checked };
+    try {
+      const res = await apiFetch(id ? `/api/store/addresses/${id}` : '/api/store/addresses', { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) });
+      showToast(res.message);
+      setTimeout(() => { window.location.href = '/store/addresses'; }, 600);
+    } catch (err) { showToast(err.message, 'error'); }
+  });
+  root.addEventListener('click', async (e) => {
+    const card = e.target.closest('[data-address]');
+    if (!card) return;
+    const id = card.getAttribute('data-address');
+    if (e.target.closest('[data-delete]')) {
+      if (!confirm('Remove this address?')) return;
+      try { await apiFetch(`/api/store/addresses/${id}`, { method: 'DELETE' }); window.location.reload(); } catch (err) { showToast(err.message, 'error'); }
+    }
+    if (e.target.closest('[data-default]')) {
+      // Saving it again with isDefault keeps every field as it is.
+      try {
+        const list = (await apiFetch('/api/store/addresses')).data.addresses;
+        const a = list.find((x) => String(x.id) === id);
+        await apiFetch(`/api/store/addresses/${id}`, { method: 'PUT', body: JSON.stringify({ ...a, isDefault: true }) });
+        window.location.reload();
+      } catch (err) { showToast(err.message, 'error'); }
+    }
+  });
+}());
+</script>

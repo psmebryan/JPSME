@@ -1,0 +1,152 @@
+<%#
+  Merchandise -> Daily reconciliation (phase 4). One month, newest day first:
+  what the site recorded as paid that day, and the result of checking it
+  against PayMongo. "Check" asks PayMongo about every store payment of that
+  day (merchFinance.service reconcileDay) and only reports: it changes no
+  payment or order. A day with gaps can be explained with a note. The
+  month-end pack downloads the whole month as a workbook.
+%>
+<%
+  const peso = (c) => '₱' + ((Number(c) || 0) / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const when = (d) => new Date(d).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const dayLabel = (d) => new Date(`${d}T00:00:00+08:00`).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', weekday: 'short', month: 'short', day: 'numeric' });
+  const canCheck = locals.merchCaps && merchCaps.has('reconcile.edit');
+  const badge = { MATCHED: 'badge-green', GAPS: 'badge-red', EXPLAINED: 'badge-amber' };
+  const tile = 'rounded-lg border border-slate-200 px-4 py-3';
+  const lbl = 'text-xs font-medium uppercase tracking-wide text-slate-500';
+%>
+<div class="w-full">
+  <div class="admin-card overflow-hidden">
+    <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+      <div>
+        <h1 class="admin-h1">Daily Reconciliation</h1>
+        <p class="admin-subtitle">Each day's store payments checked against PayMongo</p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <a href="/admin/merch/reconciliation?month=<%= prev %>" class="btn-secondary px-3 py-2" aria-label="Previous month">&larr;</a>
+        <span class="min-w-[9rem] text-center font-semibold" data-month="<%= month %>"><%= label %></span>
+        <% if (next) { %><a href="/admin/merch/reconciliation?month=<%= next %>" class="btn-secondary px-3 py-2" aria-label="Next month">&rarr;</a><% } else { %><span class="btn-secondary px-3 py-2 opacity-40" aria-hidden="true">&rarr;</span><% } %>
+        <a href="/admin/merch/month-end.xlsx?month=<%= month %>" class="btn-primary px-4 py-2" data-month-end>Month-end pack (XLS)</a>
+      </div>
+    </div>
+
+    <div class="space-y-5 px-6 py-5">
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-5" data-totals>
+        <div class="<%= tile %>"><p class="<%= lbl %>">Days with sales</p><p class="mt-1 text-2xl font-semibold tabular-nums"><%= totals.daysWithSales %></p></div>
+        <div class="<%= tile %>"><p class="<%= lbl %>">Matched</p><p class="mt-1 text-2xl font-semibold tabular-nums text-emerald-700"><%= totals.matched %></p></div>
+        <div class="<%= tile %>"><p class="<%= lbl %>">Gaps</p><p class="mt-1 text-2xl font-semibold tabular-nums <%= totals.gaps ? 'text-red-700' : '' %>"><%= totals.gaps %></p></div>
+        <div class="<%= tile %>"><p class="<%= lbl %>">Explained</p><p class="mt-1 text-2xl font-semibold tabular-nums"><%= totals.explained %></p></div>
+        <div class="<%= tile %>"><p class="<%= lbl %>">Not checked</p><p class="mt-1 text-2xl font-semibold tabular-nums <%= totals.unchecked ? 'text-amber-700' : '' %>"><%= totals.unchecked %></p></div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="admin-table">
+          <thead class="admin-table-head">
+            <tr>
+              <th class="admin-th">Day</th>
+              <th class="admin-th text-right">Paid here</th>
+              <th class="admin-th text-right">Amount</th>
+              <th class="admin-th">PayMongo check</th>
+              <th class="admin-th text-right">PayMongo fees</th>
+              <th class="admin-th">Checked</th>
+              <% if (canCheck) { %><th class="admin-th"><span class="sr-only">Actions</span></th><% } %>
+            </tr>
+          </thead>
+          <tbody class="admin-tbody">
+            <% days.forEach((d) => { const c = d.check; %>
+              <tr class="admin-tr" data-day="<%= d.day %>">
+                <td class="admin-td whitespace-nowrap font-medium"><%= dayLabel(d.day) %><%= d.day === today ? ' (today)' : '' %></td>
+                <td class="admin-td text-right tabular-nums"><%= d.paidCount || '—' %></td>
+                <td class="admin-td whitespace-nowrap text-right tabular-nums"><%= d.paidCentavos ? peso(d.paidCentavos) : '—' %></td>
+                <td class="admin-td">
+                  <% if (c) { %>
+                    <span class="<%= badge[c.status] || 'badge-slate' %>"><%= c.statusLabel %></span>
+                    <% if (c.gaps.length) { %>
+                      <ul class="mt-1 space-y-0.5 text-xs text-slate-700">
+                        <% c.gaps.forEach((g) => { %><li><span class="font-mono"><%= g.order %></span>: <%= g.label %><%= g.siteCentavos !== undefined && g.paymongoCentavos !== undefined ? ` (here ${peso(g.siteCentavos)}, PayMongo ${peso(g.paymongoCentavos)})` : '' %></li><% }) %>
+                      </ul>
+                    <% } %>
+                    <% if (c.note) { %><p class="mt-1 text-xs italic text-slate-600"><%= c.note %></p><% } %>
+                  <% } else if (d.paidCount && d.day < today) { %>
+                    <span class="badge-amber">Not checked</span>
+                  <% } else { %>
+                    <span class="text-xs text-slate-400"><%= d.paidCount ? 'Check after the day ends' : 'No sales' %></span>
+                  <% } %>
+                </td>
+                <td class="admin-td whitespace-nowrap text-right tabular-nums"><%= c ? peso(c.feeCentavos) : '—' %></td>
+                <td class="admin-td whitespace-nowrap text-xs text-slate-500"><%= c ? `${when(c.checkedAt)}${c.checkedBy ? ` · ${c.checkedBy}` : ''}` : '' %></td>
+                <% if (canCheck) { %>
+                  <td class="admin-td whitespace-nowrap text-right">
+                    <button type="button" class="btn-secondary px-3 py-1 text-xs" data-check="<%= d.day %>"><%= c ? 'Check again' : 'Check' %></button>
+                    <% if (c && c.status !== 'MATCHED') { %><button type="button" class="btn-secondary ml-1 px-3 py-1 text-xs" data-explain="<%= d.day %>" data-note="<%= c.note || '' %>">Explain</button><% } %>
+                  </td>
+                <% } %>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <% if (!days.length) { %><p class="py-8 text-center text-sm text-slate-500">This month has not started yet.</p><% } %>
+      </div>
+
+      <p class="text-xs text-slate-500">
+        A check asks PayMongo about every store payment of that day, one at a time, and saves what it found. It never changes
+        a payment or an order. <strong>Paid at PayMongo, but not marked paid here</strong> usually means a missed notification:
+        use Reconcile on the Payments page. Days run midnight to midnight, Philippine time.
+      </p>
+    </div>
+  </div>
+</div>
+
+<% if (canCheck) { %>
+<dialog id="explain-dialog" class="w-full max-w-lg rounded-xl p-0 shadow-xl backdrop:bg-slate-900/50">
+  <form method="dialog" class="space-y-4 p-6" id="explain-form">
+    <h2 class="text-lg font-semibold">Explain the gaps</h2>
+    <p class="text-sm text-slate-600">What explains them, e.g. "PayMongo settled it the next day" or "refunded on the 14th". The day then shows as explained.</p>
+    <div><label for="explain-note" class="form-label">Note</label><textarea id="explain-note" name="note" rows="3" maxlength="500" class="form-input" required></textarea></div>
+    <div class="flex justify-end gap-2"><button type="button" class="btn-secondary px-4 py-2" data-close>Cancel</button><button type="submit" class="btn-primary px-4 py-2">Save</button></div>
+  </form>
+</dialog>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  document.querySelectorAll('[data-check]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const was = btn.textContent;
+      btn.textContent = 'Checking…';
+      try {
+        const res = await apiFetch(`/api/admin/merch/reconciliation/${btn.dataset.check}/check`, { method: 'POST', body: '{}' });
+        showToast(res.message, res.data.day.status === 'MATCHED' ? 'success' : 'error');
+        setTimeout(() => window.location.reload(), 700);
+      } catch (err) {
+        showToast(err.message, 'error');
+        btn.disabled = false;
+        btn.textContent = was;
+      }
+    });
+  });
+
+  const dialog = document.getElementById('explain-dialog');
+  const form = document.getElementById('explain-form');
+  const note = document.getElementById('explain-note');
+  let day = null;
+  document.querySelectorAll('[data-explain]').forEach((btn) => btn.addEventListener('click', () => {
+    day = btn.dataset.explain;
+    note.value = btn.dataset.note || '';
+    dialog.showModal();
+  }));
+  dialog.querySelector('[data-close]').addEventListener('click', () => dialog.close());
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const res = await apiFetch(`/api/admin/merch/reconciliation/${day}/note`, { method: 'PUT', body: JSON.stringify({ note: note.value }) });
+      showToast(res.message);
+      dialog.close();
+      setTimeout(() => window.location.reload(), 500);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+}());
+</script>
+<% } %>

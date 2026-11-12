@@ -31,6 +31,13 @@ const passwordResetService = require('../services/passwordReset.service');
 const articleService = require('../services/article.service');
 const articleFormat = require('../utils/articleFormat');
 const adminAccessService = require('../services/adminAccess.service');
+const merchService = require('../services/merch.service');
+const merchStoreService = require('../services/merchStore.service');
+const merchOrdersService = require('../services/merchOrders.service');
+const merchFulfilmentService = require('../services/merchFulfilment.service');
+const merchReturnsService = require('../services/merchReturns.service');
+const merchFinanceService = require('../services/merchFinance.service');
+const merchRedact = require('../utils/merchRedact');
 const membershipMasterService = require('../services/membershipMaster.service');
 const reportsService = require('../services/reports.service');
 const AppError = require('../utils/AppError');
@@ -639,6 +646,146 @@ const adminOrgEventReportExport = asyncHandler(async (req, res) => {
   sendWorkbook(res, 'student-organization-event-registrations', await reportsService.exportEventRegistrations(req.query));
 });
 
+// The Store (merchandise, phase 2). merchStore.service decides visibility,
+// prices and stock; these only render.
+const storePage = asyncHandler(async (req, res) => {
+  const access = await merchStoreService.storeAccess(req.session.user);
+  const data = await merchStoreService.listStoreProducts(req.session.user);
+  res.render('store', { title: 'Store', ...data, access });
+});
+const storeProductPage = asyncHandler(async (req, res) => {
+  const access = await merchStoreService.storeAccess(req.session.user);
+  const data = await merchStoreService.getStoreProduct(req.session.user, req.params.id);
+  res.render('store-product', { title: data.product.name, ...data, access });
+});
+const storeCartPage = asyncHandler(async (req, res) => {
+  const access = await merchStoreService.storeAccess(req.session.user);
+  if (!access.visible) throw new AppError('The store is not open yet', 404);
+  const [cart, openOrder] = await Promise.all([
+    merchStoreService.getCart(req.session.user),
+    prisma.merchOrder.findFirst({ where: { userId: req.session.user.id, status: 'AWAITING_PAYMENT' }, select: { orderNumber: true } }),
+  ]);
+  const options = await merchStoreService.checkoutOptions(req.session.user);
+  res.render('store-cart', { title: 'Your Cart', cart, openOrder, access, holdMinutes: merchStoreService.HOLD_MINUTES, options, addressTypes: merchFulfilmentService.ADDRESS_TYPES });
+});
+const storeOrdersPage = asyncHandler(async (req, res) => {
+  res.render('store-orders', { title: 'My Orders', orders: await merchStoreService.listMyOrders(req.session.user) });
+});
+const storeOrderPage = asyncHandler(async (req, res) => {
+  const order = await merchStoreService.getMyOrder(req.session.user, req.params.orderNumber);
+  // The pickup QR, shown once the order is ready to collect.
+  const qr = order.qrToken && ['READY_FOR_PICKUP', 'UNCLAIMED'].includes(order.status) ? await merchOrdersService.qrDataUrl(order.qrToken, 280) : null;
+  const [returns, returnForm] = await Promise.all([
+    merchReturnsService.listForOrder(order.id),
+    merchReturnsService.requestForm(req.session.user, order.orderNumber),
+  ]);
+  res.render('store-order', { title: `Order ${order.orderNumber}`, order, qr, addressTypes: merchFulfilmentService.ADDRESS_TYPES, returns, returnForm });
+});
+const storeAddressesPage = asyncHandler(async (req, res) => {
+  const addresses = await merchFulfilmentService.listAddresses(req.session.user.id);
+  const editing = addresses.find((a) => String(a.id) === String(req.query.edit || '')) || null;
+  res.render('store-addresses', { title: 'My Addresses', addresses, editing, addressTypes: merchFulfilmentService.ADDRESS_TYPES });
+});
+
+// Merchandise admin pages. merchCan (pages.routes) has checked the page's
+// capability and set req.merchCaps; what each person may SEE of the data is
+// applied here (utils/merchRedact): costs only with cost.view, a delivery
+// address only with addresses.view and while the order still needs it.
+const caps = (req) => req.merchCaps || new Set();
+const adminMerchDashboardPage = asyncHandler(async (req, res) => {
+  const data = await merchFinanceService.dashboard();
+  renderAdmin(req, res, 'admin/merch-dashboard', { title: 'Store Dashboard', ...merchRedact.costs(caps(req), data) });
+});
+const adminMerchProductsPage = asyncHandler(async (req, res) => {
+  const [products, storeOpen] = await Promise.all([merchService.listProducts(), merchStoreService.isStoreOpen()]);
+  renderAdmin(req, res, 'admin/merch-products', { title: 'Merchandise Products', products: merchRedact.costs(caps(req), products), storeOpen });
+});
+const adminMerchProductPage = asyncHandler(async (req, res) => {
+  const product = await merchService.getProduct(req.params.id);
+  renderAdmin(req, res, 'admin/merch-product', { title: product.name, product: merchRedact.costs(caps(req), product), maxPhotos: merchService.MAX_PHOTOS });
+});
+const adminMerchInventoryPage = asyncHandler(async (req, res) => {
+  const [inventory, products] = await Promise.all([merchService.listInventory(req.query), merchService.listProducts()]);
+  renderAdmin(req, res, 'admin/merch-inventory', { title: 'Inventory', ...merchRedact.costs(caps(req), inventory), products: merchRedact.costs(caps(req), products) });
+});
+// Merchandise orders and fulfilment (phase 3a).
+const adminMerchOrdersPage = asyncHandler(async (req, res) => {
+  const list = await merchOrdersService.listOrders(req.query);
+  list.orders = list.orders.map((o) => merchRedact.order(caps(req), req.session.user, o));
+  renderAdmin(req, res, 'admin/merch-orders', { title: 'Merchandise Orders', ...merchRedact.costs(caps(req), list), statusLabels: merchStoreService.STATUS_LABELS });
+});
+const adminMerchOrderPage = asyncHandler(async (req, res) => {
+  const order = await merchOrdersService.getOrder(req.params.orderNumber);
+  const returns = await merchReturnsService.listForOrder(order.id);
+  const shown = merchRedact.order(caps(req), req.session.user, order, { openReturn: returns.some((r) => r.open) });
+  renderAdmin(req, res, 'admin/merch-order', { title: `Order ${order.orderNumber}`, order: merchRedact.costs(caps(req), shown), returns: merchRedact.costs(caps(req), returns), reasons: merchReturnsService.REASONS });
+});
+const adminMerchOrdersPrint = asyncHandler(async (req, res) => {
+  const data = await merchOrdersService.printData(req.query.orders);
+  data.slips = data.slips.map((o) => merchRedact.order(caps(req), req.session.user, o));
+  res.render('admin/merch-print', { title: 'Pick list and packing slips', layout: false, ...merchRedact.costs(caps(req), data) });
+});
+// The export has no address columns at all (data privacy), whoever asks.
+const adminMerchOrdersExport = asyncHandler(async (req, res) => {
+  res.setHeader('Content-Type', reportsService.XLSX);
+  res.setHeader('Content-Disposition', `attachment; filename="jpsme-orders-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(await merchOrdersService.exportOrdersExcel(req.query));
+});
+const adminMerchPickupPage = asyncHandler(async (req, res) => {
+  renderAdmin(req, res, 'admin/merch-pickup', { title: 'Pickup Handover' });
+});
+const adminMerchFulfilmentPage = asyncHandler(async (req, res) => {
+  const [zones, regions, pickupPoints, psgcImport, events] = await Promise.all([
+    merchFulfilmentService.listZones(), merchFulfilmentService.listRegions(), merchFulfilmentService.listPickupPoints(),
+    merchFulfilmentService.lastPsgcImport(),
+    prisma.event.findMany({ where: { OR: [{ endDate: { gte: new Date() } }, { endDate: null, startDate: { gte: new Date() } }] }, orderBy: { startDate: 'asc' }, select: { id: true, title: true, startDate: true, location: true }, take: 50 }),
+  ]);
+  const returnSettings = await merchReturnsService.getSettings();
+  renderAdmin(req, res, 'admin/merch-fulfilment', { title: 'Delivery & Pickup', zones, regions, pickupPoints, psgcImport, events, returnSettings });
+});
+
+const adminMerchReturnsPage = asyncHandler(async (req, res) => {
+  renderAdmin(req, res, 'admin/merch-returns', { title: 'Refunds & Exchanges', ...merchRedact.costs(caps(req), await merchReturnsService.listReturns(req.query)) });
+});
+const adminMerchReturnPage = asyncHandler(async (req, res) => {
+  const ret = await merchReturnsService.getReturn(req.params.returnNumber);
+  const settings = await merchReturnsService.getSettings();
+  const order = merchRedact.order(caps(req), req.session.user, await merchOrdersService.getOrder(ret.orderNumber), { openReturn: ret.open });
+  renderAdmin(req, res, 'admin/merch-return', { title: ret.returnNumber, ret: merchRedact.costs(caps(req), ret), order: merchRedact.costs(caps(req), order), settings, me: req.session.user });
+});
+
+const adminMerchInventoryExport = asyncHandler(async (req, res) => {
+  res.setHeader('Content-Type', reportsService.XLSX);
+  res.setHeader('Content-Disposition', `attachment; filename="jpsme-inventory-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(await merchService.exportInventoryExcel(req.query, { withCost: caps(req).has('cost.view') }));
+});
+
+// Phase 4: the daily reconciliation, the month-end pack and the sales reports.
+const adminMerchReconciliationPage = asyncHandler(async (req, res) => {
+  const data = await merchFinanceService.reconciliationMonth(req.query.month);
+  renderAdmin(req, res, 'admin/merch-reconciliation', { title: 'Daily Reconciliation', ...data, gapLabels: merchFinanceService.GAP_LABELS, today: merchFinanceService.manilaYmd() });
+});
+const adminMerchMonthEndExport = asyncHandler(async (req, res) => {
+  const { buffer, month } = await merchFinanceService.monthEndExport(req.query.month || merchFinanceService.manilaYmd().slice(0, 7), { withCost: caps(req).has('cost.view') });
+  res.setHeader('Content-Type', reportsService.XLSX);
+  res.setHeader('Content-Disposition', `attachment; filename="jpsme-store-month-end-${month}.xlsx"`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(buffer);
+});
+const adminMerchReportsPage = asyncHandler(async (req, res) => {
+  const report = await merchFinanceService.salesReport(req.query);
+  renderAdmin(req, res, 'admin/merch-reports', { title: 'Merchandise Reports', ...merchRedact.costs(caps(req), report) });
+});
+const adminMerchReportsExport = asyncHandler(async (req, res) => {
+  const { buffer, period } = await merchFinanceService.exportSales(req.query, { withCost: caps(req).has('cost.view') });
+  res.setHeader('Content-Type', reportsService.XLSX);
+  res.setHeader('Content-Disposition', `attachment; filename="jpsme-store-sales-${period.from}-to-${period.to}.xlsx"`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(buffer);
+});
+
 const adminStudentOrgMasterPage = asyncHandler(async (req, res) => {
   const [organizations, provinces] = await Promise.all([
     studentOrgService.listStudentOrganizations(),
@@ -680,6 +827,8 @@ const adminSettingsPage = asyncHandler(async (req, res) => {
     paymentsEnabled, gatewaySurchargePercent, membershipPaymentRequired,
     pendingActivations, registrationEmailsEnabled,
     adminModuleList: adminAccessService.MODULES, presidentModules, presidents,
+    financeLogistics: await adminAccessService.listFinanceLogistics(),
+    flGrantList: adminAccessService.FINANCE_LOGISTICS_GRANTS,
   });
 });
 
@@ -699,6 +848,7 @@ const adminPaymentsPage = asyncHandler(async (req, res) => {
     title: 'Payments',
     summary,
     isMainAdmin: true,
+    canAct: req.session.user.role !== 'FINANCE_LOGISTICS',
     ...listing,
   });
 });
@@ -1425,6 +1575,29 @@ module.exports = {
   adminStudentOrgMasterPage,
   adminMembershipMasterPage,
   adminMembershipMasterExport,
+  adminMerchProductsPage,
+  adminMerchDashboardPage,
+  adminMerchReconciliationPage,
+  adminMerchMonthEndExport,
+  adminMerchReportsPage,
+  adminMerchReportsExport,
+  adminMerchOrdersPage,
+  adminMerchOrderPage,
+  adminMerchOrdersPrint,
+  adminMerchOrdersExport,
+  adminMerchPickupPage,
+  adminMerchFulfilmentPage,
+  adminMerchReturnsPage,
+  adminMerchReturnPage,
+  storeAddressesPage,
+  storePage,
+  storeProductPage,
+  storeCartPage,
+  storeOrdersPage,
+  storeOrderPage,
+  adminMerchProductPage,
+  adminMerchInventoryPage,
+  adminMerchInventoryExport,
   adminTransactionReportPage,
   adminTransactionReportExport,
   adminOrgMemberReportPage,

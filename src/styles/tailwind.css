@@ -68,6 +68,12 @@
     @apply border-[#263b70];
   }
 
+  /* A form field on the public site's dark pages (the Store's checkout and
+     address forms). */
+  .jp-field {
+    @apply w-full rounded-lg border border-[#263b70] bg-[#0b1430] px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-amber-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
   /* Page headers */
   .admin-h1 {
     @apply text-2xl font-semibold tracking-tight text-slate-900;

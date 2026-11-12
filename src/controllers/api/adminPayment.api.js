@@ -40,6 +40,8 @@ const getPayment = asyncHandler(async (req, res) => {
   const payment = await paymentService.getPaymentForViewer(req.params.id, {
     id: req.session.user.id,
     role: req.session.user.role,
+    // The admin route's own gate already decided this person may see payments.
+    adminRoute: true,
   });
   return success(res, { payment });
 });

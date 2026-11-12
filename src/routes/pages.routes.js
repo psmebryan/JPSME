@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const pages = require('../controllers/pages.controller');
 const {
-  ensureAuth, ensureGuest, ensureAdmin, ensureAdminOrChapterAdmin, ensureMainAdminOnly, presidentTargetGuard,
+  ensureAuth, ensureGuest, ensureAdmin, ensureAdminOrChapterAdmin, ensureMainAdminOnly, presidentTargetGuard, merchCan,
 } = require('../middleware/auth.middleware');
 // The admin forms below post a _csrf field; verifyCsrfToken is what checks it.
 // withCsrfToken marks a page an anonymous visitor submits a form from: only
@@ -36,6 +36,14 @@ router.get('/events/:id/ticket', ensureAuth, pages.eventTicketPage);
 // this is the half they drive.
 router.get('/events/:id/seat', requireSeatingFeature, ensureAuth, pages.eventSeatPickerPage);
 router.get('/articles', pages.articlesPage);
+// The merchandise Store. Hidden (404) until the main admin opens it, except
+// as a preview for the main admin / a President with Merchandise.
+router.get('/store', withCsrfToken, pages.storePage);
+router.get('/store/products/:id', withCsrfToken, pages.storeProductPage);
+router.get('/store/cart', ensureAuth, withCsrfToken, pages.storeCartPage);
+router.get('/store/orders', ensureAuth, withCsrfToken, pages.storeOrdersPage);
+router.get('/store/orders/:orderNumber', ensureAuth, withCsrfToken, pages.storeOrderPage);
+router.get('/store/addresses', ensureAuth, withCsrfToken, pages.storeAddressesPage);
 router.get('/articles/:id', pages.articleDetailPage);
 // URLs kept as /chapters/* so any existing external links still resolve;
 // they render the organization tree behind the scenes.
@@ -128,6 +136,29 @@ router.get('/admin/master/student-organizations', ensureMainAdminOnly, pages.adm
 router.get('/admin/master/event-fees', ensureMainAdminOnly, pages.adminEventFeeMasterPage);
 router.get('/admin/master/memberships', ensureMainAdminOnly, pages.adminMembershipMasterPage);
 router.get('/admin/master/memberships/export.xlsx', ensureMainAdminOnly, pages.adminMembershipMasterExport);
+// Merchandise. ensureMainAdminOnly lets in the main admin, a President given
+// Merchandise and a Finance & Logistics account with a task group; merchCan
+// then asks for the one capability each page needs (adminAccess.merchCapsFor).
+const M = (...caps) => [ensureMainAdminOnly, merchCan(...caps)];
+router.get('/admin/merch', ...M('dashboard.view'), (req, res) => res.redirect('/admin/merch/dashboard'));
+router.get('/admin/merch/dashboard', ...M('dashboard.view'), pages.adminMerchDashboardPage);
+router.get('/admin/merch/products', ...M('catalog.view'), pages.adminMerchProductsPage);
+router.get('/admin/merch/products/:id', ...M('catalog.view'), pages.adminMerchProductPage);
+router.get('/admin/merch/inventory', ...M('stock.view'), pages.adminMerchInventoryPage);
+router.get('/admin/merch/inventory/export.xlsx', ...M('stock.view'), pages.adminMerchInventoryExport);
+router.get('/admin/merch/orders', ...M('orders.view'), pages.adminMerchOrdersPage);
+router.get('/admin/merch/orders/export.xlsx', ...M('orders.view'), pages.adminMerchOrdersExport);
+router.get('/admin/merch/orders/print', ...M('orders.fulfil'), pages.adminMerchOrdersPrint);
+router.get('/admin/merch/orders/:orderNumber', ...M('orders.view'), pages.adminMerchOrderPage);
+router.get('/admin/merch/pickup', ...M('orders.fulfil'), pages.adminMerchPickupPage);
+router.get('/admin/merch/fulfilment', ...M('catalog.view'), pages.adminMerchFulfilmentPage);
+router.get('/admin/merch/returns', ...M('returns.view'), pages.adminMerchReturnsPage);
+router.get('/admin/merch/returns/:returnNumber', ...M('returns.view'), pages.adminMerchReturnPage);
+router.get('/admin/merch/reconciliation', ...M('reconcile.view'), pages.adminMerchReconciliationPage);
+router.get('/admin/merch/month-end.xlsx', ...M('reconcile.view'), pages.adminMerchMonthEndExport);
+router.get('/admin/merch/reports', ...M('reports.view'), pages.adminMerchReportsPage);
+router.get('/admin/merch/reports/export.xlsx', ...M('reports.view'), pages.adminMerchReportsExport);
+
 // Reports: read-only, main admin only.
 router.get('/admin/reports', ensureMainAdminOnly, (req, res) => res.redirect('/admin/reports/transactions'));
 router.get('/admin/reports/transactions', ensureMainAdminOnly, pages.adminTransactionReportPage);

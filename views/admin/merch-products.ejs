@@ -1,0 +1,151 @@
+<%#
+  Merchandise -> Products (phase 1). Every product with its photo, variants,
+  stock on hand and whether its prices are set. Add a product here; open one
+  to set its photos, variants, prices and cost. Members see nothing yet: there
+  is no public store page until a later phase. See merch.service.
+  Adding products and the Store switch need catalog.edit (phase 4).
+%>
+<% const canEdit = locals.merchCaps ? merchCaps.has('catalog.edit') : true; %>
+<div class="w-full">
+  <div class="admin-card overflow-hidden">
+    <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+      <div>
+        <h1 class="admin-h1">Merchandise Products</h1>
+        <p class="admin-subtitle">Products, their variants and prices. Not on sale to members yet.</p>
+      </div>
+      <div class="flex gap-2">
+        <a href="/admin/merch/inventory" class="btn-secondary px-4 py-2.5">Inventory</a>
+        <% if (canEdit) { %><button type="button" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-open-add>
+          <span aria-hidden="true" class="text-lg leading-none">+</span> Add Product
+        </button><% } %>
+      </div>
+    </div>
+
+    <%# The Store switch: members see the Store only while it is on. While off,
+        the main admin and a President with Merchandise see it as a preview. %>
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-6 py-4" id="store-switch">
+      <div>
+        <p class="text-sm font-semibold text-slate-900">Store is <span data-store-state><%= storeOpen ? 'open to members' : 'closed (preview only)' %></span></p>
+        <p class="text-xs text-slate-500">Closed: only you can see <a href="/store" target="_blank" rel="noopener" class="text-indigo-600 hover:underline">the Store</a> to try it. Open: members can see it and buy.</p>
+      </div>
+      <label class="relative inline-flex cursor-pointer items-center gap-3">
+        <span class="text-sm text-slate-700">Open to members</span>
+        <input type="checkbox" class="peer sr-only" data-store-open <%= storeOpen ? 'checked' : '' %> <%= canEdit ? '' : 'disabled' %>>
+        <span class="h-6 w-11 rounded-full bg-slate-300 transition-colors peer-checked:bg-emerald-600"></span>
+        <span class="pointer-events-none absolute right-[1.375rem] top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5"></span>
+      </label>
+    </div>
+
+    <div class="px-6 py-5">
+      <% if (!products.length) { %>
+        <div class="rounded-lg border border-dashed border-slate-300 p-10 text-center">
+          <p class="font-medium text-slate-800">No products yet</p>
+          <p class="mt-1 text-sm text-slate-500">Start with the polo shirt, cap, pin and lanyard. Prices and cost can stay empty until Finance decides them.</p>
+        </div>
+      <% } else { %>
+        <div class="overflow-x-auto">
+          <table class="admin-table" id="product-table">
+            <thead class="admin-table-head">
+              <tr>
+                <th class="admin-th">Product</th>
+                <th class="admin-th text-right">Variants</th>
+                <th class="admin-th text-right">On hand</th>
+                <th class="admin-th">Prices</th>
+                <th class="admin-th">Stock</th>
+                <th class="admin-th">On sale</th>
+                <th class="admin-th text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody class="admin-tbody">
+              <% products.forEach((p) => { %>
+                <tr class="admin-tr" data-product="<%= p.id %>">
+                  <td class="admin-td">
+                    <div class="flex items-center gap-3">
+                      <% if (p.images[0]) { %>
+                        <img src="<%= p.images[0].url %>" alt="" class="h-12 w-12 shrink-0 rounded-md object-cover ring-1 ring-slate-200">
+                      <% } else { %>
+                        <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-slate-100 text-xs text-slate-400">No photo</div>
+                      <% } %>
+                      <a href="/admin/merch/products/<%= p.id %>" class="font-medium text-slate-900 hover:text-indigo-700"><%= p.name %></a>
+                    </div>
+                  </td>
+                  <td class="admin-td text-right tabular-nums"><%= p.variants.length %></td>
+                  <td class="admin-td text-right tabular-nums"><%= p.onHand.toLocaleString('en-PH') %></td>
+                  <td class="admin-td">
+                    <% if (!p.variants.length) { %><span class="text-slate-400">No variants</span>
+                    <% } else if (p.pricesMissing) { %><span class="badge-amber"><%= p.pricesMissing %> to set</span>
+                    <% } else { %><span class="badge-green">Set</span><% } %>
+                  </td>
+                  <td class="admin-td">
+                    <% if (p.lowCount) { %><span class="badge-red"><%= p.lowCount %> low or sold out</span><% } else if (p.variants.length) { %><span class="text-slate-500">OK</span><% } else { %><span class="text-slate-400">&mdash;</span><% } %>
+                  </td>
+                  <td class="admin-td"><span class="<%= p.isActive ? 'badge-green' : 'badge-slate' %>"><%= p.isActive ? 'On' : 'Off' %></span></td>
+                  <td class="admin-td text-right">
+                    <a href="/admin/merch/products/<%= p.id %>" class="inline-flex items-center rounded-md bg-orange-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-600">Edit</a>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+      <p class="mt-4 text-xs text-slate-500">
+        "On sale" stays Off until the store opens; switching it on later shows the product to members.
+        Stock is changed only on the Inventory page, where every change is recorded.
+      </p>
+    </div>
+  </div>
+</div>
+
+<dialog id="product-dialog" class="w-full max-w-lg rounded-xl p-0 shadow-xl backdrop:bg-slate-900/40">
+  <form id="product-form" class="space-y-4 p-6">
+    <div class="flex items-start justify-between">
+      <h2 class="text-lg font-semibold text-slate-900">Add Product</h2>
+      <button type="button" class="text-xl text-slate-400 hover:text-slate-600" data-close aria-label="Close">&times;</button>
+    </div>
+    <div>
+      <label for="pr-name" class="form-label">Name</label>
+      <input id="pr-name" name="name" maxlength="80" required list="product-names" placeholder="e.g. Polo shirt" class="form-input">
+      <datalist id="product-names"><option value="Polo shirt"><option value="Cap"><option value="Pin"><option value="Lanyard"></datalist>
+    </div>
+    <div>
+      <label for="pr-desc" class="form-label">Description <span class="font-normal text-slate-400">(optional)</span></label>
+      <textarea id="pr-desc" name="description" rows="3" maxlength="4000" class="form-input"></textarea>
+    </div>
+    <div class="flex justify-end gap-2 border-t border-slate-100 pt-4">
+      <button type="button" class="btn-secondary px-4 py-2" data-close>Cancel</button>
+      <button type="submit" class="btn-primary px-4 py-2">Add and set up</button>
+    </div>
+  </form>
+</dialog>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  const sw = document.querySelector('[data-store-open]');
+  sw.addEventListener('change', async () => {
+    if (sw.checked && !confirm('Open the Store to members? They will be able to see it and buy.')) { sw.checked = false; return; }
+    sw.disabled = true;
+    try {
+      const res = await apiFetch('/api/admin/merch/store-open', { method: 'PUT', body: JSON.stringify({ open: sw.checked }) });
+      document.querySelector('[data-store-state]').textContent = res.data.open ? 'open to members' : 'closed (preview only)';
+      showToast(res.message);
+    } catch (err) { sw.checked = !sw.checked; showToast(err.message, 'error'); }
+    sw.disabled = false;
+  });
+  const dialog = document.getElementById('product-dialog');
+  const form = document.getElementById('product-form');
+  const add = document.querySelector('[data-open-add]');
+  if (add) add.addEventListener('click', () => { form.reset(); dialog.showModal(); form.elements.namedItem('name').focus(); });
+  dialog.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => dialog.close()));
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const res = await apiFetch('/api/admin/merch/products', {
+        method: 'POST',
+        body: JSON.stringify({ name: form.elements.namedItem('name').value, description: form.elements.namedItem('description').value }),
+      });
+      window.location.href = `/admin/merch/products/${res.data.product.id}`;
+    } catch (err) { showToast(err.message, 'error'); }
+  });
+}());
+</script>

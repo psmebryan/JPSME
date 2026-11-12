@@ -1,0 +1,50 @@
+<%#
+  Merchandise -> Refunds & Exchanges. Every open request, oldest first, in
+  groups by who acts next: Logistics (check what came back, or hold the new
+  size), approval, second approval (above the limit), exchanges to send, and
+  refunds waiting on PayMongo. See merchReturns.service.
+%>
+<% const peso = (c) => '₱' + (c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); %>
+<% const when = (d) => new Date(d).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); %>
+<div class="w-full">
+  <div class="admin-card overflow-hidden">
+    <div class="border-b border-slate-200 px-6 py-5">
+      <h1 class="admin-h1">Refunds &amp; Exchanges</h1>
+      <p class="admin-subtitle">Logistics checks what came back; approval sends the refund to PayMongo</p>
+    </div>
+    <div class="space-y-5 px-6 py-5">
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
+        <a href="/admin/merch/returns" class="rounded-lg border px-4 py-3 <%= !group ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50' %>">
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">All open</p>
+          <p class="mt-1 text-2xl font-semibold tabular-nums"><%= Object.entries(counts).filter(([k]) => k !== 'closed').reduce((t, [, v]) => t + v, 0) %></p>
+        </a>
+        <% Object.entries(groups).forEach(([k, g]) => { %>
+          <a href="/admin/merch/returns?group=<%= k %>" class="rounded-lg border px-4 py-3 <%= group === k ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50' %>" data-group="<%= k %>">
+            <p class="text-xs font-medium uppercase tracking-wide text-slate-500"><%= g.label %></p>
+            <p class="mt-1 text-2xl font-semibold tabular-nums <%= (k === 'failed' || k === 'second') && counts[k] ? 'text-red-700' : '' %>"><%= counts[k] || 0 %></p>
+          </a>
+        <% }) %>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="admin-table">
+          <thead class="admin-table-head"><tr><th class="admin-th">Request</th><th class="admin-th">Order</th><th class="admin-th">Buyer</th><th class="admin-th">Reason</th><th class="admin-th">Items</th><th class="admin-th text-right">Refund</th><th class="admin-th">Status</th><th class="admin-th">Asked</th></tr></thead>
+          <tbody class="admin-tbody">
+            <% returns.forEach((r) => { %>
+              <tr class="admin-tr" data-return-row="<%= r.returnNumber %>">
+                <td class="admin-td whitespace-nowrap"><a href="/admin/merch/returns/<%= r.returnNumber %>" class="font-mono text-sm font-medium text-indigo-700 hover:underline"><%= r.returnNumber %></a><br><span class="text-xs text-slate-500"><%= r.kindLabel %></span></td>
+                <td class="admin-td whitespace-nowrap"><a href="/admin/merch/orders/<%= r.orderNumber %>" class="font-mono text-xs text-slate-600 hover:underline"><%= r.orderNumber %></a></td>
+                <td class="admin-td"><%= r.buyerName %></td>
+                <td class="admin-td"><%= r.reasonLabel %></td>
+                <td class="admin-td max-w-[240px] truncate"><%= r.items.map((i) => `${i.quantity} × ${i.productName} (${i.label})${i.newVariant ? ` → ${i.newVariant.label}` : ''}`).join(', ') %></td>
+                <td class="admin-td whitespace-nowrap text-right tabular-nums"><%= r.refundCentavos ? peso(r.refundCentavos) : (r.suggestedCentavos ? `~${peso(r.suggestedCentavos)}` : '—') %></td>
+                <td class="admin-td"><span class="<%= r.open ? 'badge-amber' : 'badge-slate' %>"><%= r.statusLabel %></span></td>
+                <td class="admin-td whitespace-nowrap text-slate-500"><%= when(r.createdAt) %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <% if (!returns.length) { %><p class="py-8 text-center text-sm text-slate-500">Nothing here.</p><% } %>
+      </div>
+    </div>
+  </div>
+</div>

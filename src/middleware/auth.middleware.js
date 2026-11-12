@@ -2,26 +2,30 @@ const { error } = require('../utils/apiResponse');
 const organizationService = require('../services/organization.service');
 const adminAccess = require('../services/adminAccess.service');
 
-// The National President (role PRESIDENT) passes an admin guard only for a
-// path in a module the main admin has ticked (Site Settings -> National
-// President access); see config/adminModules. Anything else is refused, so a
-// route nobody listed stays main-admin only. Inside a module they may use, a
-// President acts with national reach, like the main admin.
-function presidentGate(req, onAllowed, onDenied) {
-  adminAccess.presidentCanOpen(req.originalUrl)
+// The limited admins: the National President (PRESIDENT) and Finance &
+// Logistics (FINANCE_LOGISTICS). Each passes an admin guard only for a path
+// in a module they have (Site Settings: the President list for the role, the
+// ticks on each Finance & Logistics account); see config/adminModules.
+// Anything else is refused, so a route nobody listed stays main-admin only.
+// Payments is view only for Finance & Logistics.
+const LIMITED = adminAccess.LIMITED_ROLES;
+const ADMIN_ROLES = ['ADMIN', 'CHAPTER_ADMIN', ...LIMITED];
+
+function limitedGate(req, onAllowed, onDenied) {
+  adminAccess.limitedCanOpen(req.session.user, req.originalUrl, req.method)
     .then((ok) => (ok ? onAllowed() : onDenied()))
     .catch(onDenied);
 }
 
-// Where a President lands when a page is not theirs: the dashboard if they
-// have it, otherwise their first module, otherwise the public site.
-function presidentHome(req, res) {
-  adminAccess.getPresidentModules().then((mods) => {
-    if (mods.includes('dashboard')) return res.redirect('/admin/dashboard?denied=1');
-    const first = adminAccess.MODULES.find((m) => mods.includes(m.key) && m.home);
-    return res.redirect(first ? first.home : '/');
-  }).catch(() => res.redirect('/'));
+// Where a limited admin lands when a page is not theirs.
+function limitedHome(req, res) {
+  adminAccess.homeFor(req.session.user)
+    .then((home) => res.redirect(home))
+    .catch(() => res.redirect('/'));
 }
+
+const isLimited = (req) => Boolean(req.session.user && LIMITED.includes(req.session.user.role));
+const apiDenied = (res) => () => error(res, 'Your access does not include this. Ask the main admin.', 403);
 
 // Session shape has varied historically (scalar id vs. a nested object), so
 // read both rather than assuming one.
@@ -40,19 +44,20 @@ function ensureAuth(req, res, next) {
 
 function ensureGuest(req, res, next) {
   if (!req.session.user) return next();
-  return res.redirect(['ADMIN', 'CHAPTER_ADMIN', 'PRESIDENT'].includes(req.session.user.role) ? '/admin/dashboard' : '/profile');
+  if (req.session.user.role === 'FINANCE_LOGISTICS') return limitedHome(req, res);
+  return res.redirect(ADMIN_ROLES.includes(req.session.user.role) ? '/admin/dashboard' : '/profile');
 }
 
 function ensureAdmin(req, res, next) {
   const role = req.session.user?.role;
   if (role === 'ADMIN' || role === 'CHAPTER_ADMIN') return next();
-  if (role === 'PRESIDENT') return presidentGate(req, next, () => presidentHome(req, res));
+  if (isLimited(req)) return limitedGate(req, next, () => limitedHome(req, res));
   return res.redirect('/admin/login');
 }
 
 function ensureMainAdminOnly(req, res, next) {
   if (req.session.user && req.session.user.role === 'ADMIN') return next();
-  if (req.session.user && req.session.user.role === 'PRESIDENT') return presidentGate(req, next, () => presidentHome(req, res));
+  if (isLimited(req)) return limitedGate(req, next, () => limitedHome(req, res));
   if (req.session.user) return res.redirect('/admin/dashboard');
   return res.redirect('/admin/login');
 }
@@ -60,7 +65,7 @@ function ensureMainAdminOnly(req, res, next) {
 function ensureAdminOrChapterAdmin(req, res, next) {
   if (!req.session.user) return res.redirect('/admin/login');
   if (req.session.user.role === 'ADMIN') return next();
-  if (req.session.user.role === 'PRESIDENT') return presidentGate(req, next, () => presidentHome(req, res));
+  if (isLimited(req)) return limitedGate(req, next, () => limitedHome(req, res));
   if (req.session.user.role === 'CHAPTER_ADMIN') {
     const organizationId = sessionOrganizationId(req);
     if (organizationId) return next();
@@ -77,9 +82,7 @@ function apiAuth(req, res, next) {
  
 function apiAdmin(req, res, next) {
   if (req.session.user && req.session.user.role === 'ADMIN') return next();
-  if (req.session.user && req.session.user.role === 'PRESIDENT') {
-    return presidentGate(req, next, () => error(res, 'Your access does not include this. Ask the main admin.', 403));
-  }
+  if (isLimited(req)) return limitedGate(req, next, apiDenied(res));
   return error(res, 'Admin access required', 403);
 }
 
@@ -97,9 +100,7 @@ function apiAdmin(req, res, next) {
 async function apiAdminOrChapterAdmin(req, res, next) {
   if (!req.session.user) return error(res, 'Authentication required', 401);
   if (req.session.user.role === 'ADMIN') return next();
-  if (req.session.user.role === 'PRESIDENT') {
-    return presidentGate(req, next, () => error(res, 'Your access does not include this. Ask the main admin.', 403));
-  }
+  if (isLimited(req)) return limitedGate(req, next, apiDenied(res));
   if (req.session.user.role === 'CHAPTER_ADMIN') {
     const organizationId = sessionOrganizationId(req);
     if (organizationId) {
@@ -118,10 +119,11 @@ async function apiAdminOrChapterAdmin(req, res, next) {
  
 // A President can manage members (when given Users or Organizations) but can
 // never touch an account above or beside them: not the main admin, not another
-// President, and cannot hand out either role. Mounted in front of the routes
+// President, not a Finance & Logistics account (those are assigned by the main
+// admin only), and cannot hand out any of those roles. Mounted in front of the routes
 // that change an account, so a new one there is covered too. Reads are left
 // alone; only changes are checked.
-const PROTECTED_ROLES = ['ADMIN', 'PRESIDENT'];
+const PROTECTED_ROLES = ['ADMIN', 'PRESIDENT', 'FINANCE_LOGISTICS'];
 const TARGET_IN_PATH = [/\/users\/(\d+)(\/|$)/, /\/organization-members\/(\d+)(\/|$)/];
 
 async function presidentTargetGuard(req, res, next) {
@@ -134,7 +136,7 @@ async function presidentTargetGuard(req, res, next) {
   try {
     const body = req.body || {};
     if (PROTECTED_ROLES.includes(String(body.role || '').toUpperCase())) {
-      return deny('Only the main admin can give the admin or President role.');
+      return deny('Only the main admin can give the admin, President or Finance & Logistics role.');
     }
     const ids = [];
     TARGET_IN_PATH.forEach((re) => { const m = req.originalUrl.split('?')[0].match(re); if (m) ids.push(Number(m[1])); });
@@ -145,14 +147,29 @@ async function presidentTargetGuard(req, res, next) {
     // eslint-disable-next-line global-require
     const prisma = require('../config/prisma');
     const protectedOne = await prisma.user.findFirst({ where: { id: { in: wanted }, role: { in: PROTECTED_ROLES } }, select: { id: true } });
-    if (protectedOne) return deny('A President cannot change the main admin or a President account.');
+    if (protectedOne) return deny('A President cannot change the main admin, a President or a Finance & Logistics account.');
     return next();
   } catch (err) {
     return next(err);
   }
 }
 
+// Inside the merchandise store, after the admin guard: refuses unless the
+// person has one of these capabilities. Sets req.merchCaps for the handler.
+function merchCan(...caps) {
+  return (req, res, next) => {
+    adminAccess.merchCapsFor(req.session.user).then((have) => {
+      req.merchCaps = have;
+      res.locals.merchCaps = have;
+      if (caps.some((c) => have.has(c))) return next();
+      if (req.originalUrl.startsWith('/api/')) return error(res, 'Your access does not include this. Ask the main admin.', 403);
+      return limitedHome(req, res);
+    }).catch(next);
+  };
+}
+
 module.exports = {
+  merchCan,
   ensureAuth, ensureGuest, ensureAdmin, ensureAdminOrChapterAdmin, ensureMainAdminOnly,
   apiAuth, apiAdmin, apiAdminOrChapterAdmin, presidentTargetGuard,
 };

@@ -1,0 +1,28 @@
+<%#
+  My Orders: every merchandise order of the signed-in buyer, newest first.
+%>
+<% const peso = (c) => '₱' + (c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); %>
+<% const badge = { AWAITING_PAYMENT: 'bg-amber-400/15 text-amber-300', PAID: 'bg-emerald-500/15 text-emerald-300', CANCELLED: 'bg-slate-500/20 text-slate-300', REFUNDED: 'bg-purple-500/15 text-purple-300' }; %>
+<nav class="mb-6 flex items-center gap-2 text-sm text-slate-400"><a href="/store" class="hover:text-amber-300">Store</a><span>&rsaquo;</span><span class="text-slate-300">My Orders</span></nav>
+<h1 class="mb-6 text-3xl font-bold text-white">My Orders</h1>
+<% if (!orders.length) { %>
+  <div class="rounded-2xl border border-dashed border-[#263b70] p-10 text-center text-slate-400">No orders yet. <a href="/store" class="text-amber-400 hover:underline">Visit the Store</a></div>
+<% } else { %>
+  <ul class="space-y-3" data-orders>
+    <% orders.forEach((o) => { %>
+      <li>
+        <a href="/store/orders/<%= o.orderNumber %>" class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#263b70] bg-[#111b3a] p-4 hover:border-amber-400/60">
+          <div>
+            <p class="font-mono text-sm text-slate-300"><%= o.orderNumber %></p>
+            <p class="text-sm text-slate-400"><%= o.items.map((i) => `${i.quantity} × ${i.productName} (${i.label})`).join(', ') %></p>
+            <p class="text-xs text-slate-500"><%= new Date(o.createdAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }) %></p>
+          </div>
+          <div class="text-right">
+            <span class="inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold <%= badge[o.status] || badge.CANCELLED %>"><%= o.statusLabel %></span>
+            <p class="mt-1 font-semibold tabular-nums text-white"><%= peso(o.total) %></p>
+          </div>
+        </a>
+      </li>
+    <% }) %>
+  </ul>
+<% } %>

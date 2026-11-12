@@ -135,7 +135,10 @@ async function getPaymentForViewer(paymentId, viewer) {
   if (!payment) throw new AppError('Payment not found', 404);
 
   const isOwner = payment.userId === viewer.id;
-  const isMainAdmin = viewer.role === 'ADMIN';
+  // adminRoute: reached through /api/admin/payments, whose gate already
+  // allowed this person (the main admin, or a President or Finance & Logistics
+  // account given Payments).
+  const isMainAdmin = viewer.role === 'ADMIN' || viewer.adminRoute === true;
 
   if (!isOwner && !isMainAdmin) {
     auditService.log({
@@ -457,6 +460,34 @@ async function createEventCheckout(userId, eventId, invitation = null, { amountC
   });
 }
 
+// A merchandise order (merchStore.service checkout / payOrder). The amount is
+// the order's own subtotal, computed on the server; PayMongo's channel fee is
+// added on top by createCheckout as for every other payment. Merchandise can
+// be bought again and again, so a past paid order never blocks a new one
+// (allowRenewal). A buyer has one unpaid order at a time, which is what lets
+// createCheckout's "reuse the active payment" rule stay correct here.
+// linkOrder runs inside createCheckout's transaction, tying the payment to
+// the order.
+async function createMerchCheckout(order, linkOrder) {
+  if (!order || order.status !== 'AWAITING_PAYMENT') throw new AppError('This order is not waiting for payment', 409);
+  return createCheckout({
+    userId: order.userId,
+    purpose: 'MERCHANDISE',
+    eventId: null,
+    // Items plus the delivery fee; PayMongo's own fee goes on top.
+    amount: order.subtotalCentavos + (order.deliveryFeeCentavos || 0),
+    description: `JPSME Merchandise, ${order.orderNumber}`,
+    referencePrefix: `merch-${order.id}`,
+    successUrl: `${appUrl()}/store/orders/${order.orderNumber}`,
+    cancelUrl: `${appUrl()}/store/orders/${order.orderNumber}`,
+    alreadyPaidMessage: 'This order is already paid.',
+    allowRenewal: true,
+    withinTransaction: linkOrder,
+  });
+}
+
+const merchStore = () => require('./merchStore.service'); // eslint-disable-line global-require
+
 // --- Webhook processing ---
 
 async function processWebhookEvent(eventEnvelope, ipAddress) {
@@ -617,18 +648,50 @@ async function applyPaymentPaid(localPayment, { gatewayPaymentId, gatewayFeeCent
       }
     }
 
+    // Merchandise: the order's stock hold becomes a sale here, in the same
+    // transaction as the payment, or (late payment, stock gone) the order is
+    // marked for the automatic refund below.
+    let merchResult = null;
+    if (localPayment.purpose === 'MERCHANDISE') {
+      merchResult = await merchStore().onPaymentPaid(tx, localPayment);
+      if (merchResult.anomaly) console.error('applyPaymentPaid: merchandise anomaly for payment', localPayment.id, '-', merchResult.anomaly);
+    }
+
     await tx.auditLog.create({
       data: {
         action: 'PAYMENT_SUCCEEDED',
         targetUserId: localPayment.userId,
         paymentId: localPayment.id,
-        metadata: JSON.stringify({ amount: localPayment.amount, currency: localPayment.currency, source, registrationAnomaly }),
+        metadata: JSON.stringify({ amount: localPayment.amount, currency: localPayment.currency, source, registrationAnomaly, merch: merchResult }),
         ipAddress,
       },
     });
 
-    return { registrationFlipped, flippedInvitationId };
+    return { registrationFlipped, flippedInvitationId, merchResult };
   });
+
+  // Merchandise after the payment is committed: tell the buyer; and when the
+  // stock sold out before a late payment arrived, give the money straight
+  // back. Never rolls back the payment itself.
+  if (result.merchResult && (result.merchResult.paid || result.merchResult.autoRefund)) {
+    try {
+      const order = await prisma.merchOrder.findUnique({ where: { id: result.merchResult.orderId }, include: { items: true } });
+      if (result.merchResult.autoRefund) {
+        await requestRefund({ paymentId: localPayment.id, adminUserId: null, reason: 'others', notes: `Sold out at payment: ${order.orderNumber}, refunded automatically` });
+        mailService.sendMerchOrderEmail(order, 'SOLD_OUT_REFUND');
+      } else {
+        mailService.sendMerchOrderEmail(order, 'PAID');
+      }
+    } catch (err) {
+      console.error('applyPaymentPaid: merchandise follow-up failed for payment', localPayment.id, err.message);
+      await auditService.log({
+        action: 'REFUND_FAILED',
+        targetUserId: localPayment.userId,
+        paymentId: localPayment.id,
+        metadata: { reason: 'merchandise follow-up failed', autoRefund: Boolean(result.merchResult.autoRefund), error: err.message },
+      }).catch(() => {});
+    }
+  }
 
   if (result.registrationFlipped && result.flippedInvitationId) {
     invitationService.markRegistered(result.flippedInvitationId);
@@ -937,8 +1000,16 @@ async function handleRefundEvent({ webhookRecord, resource, eventType, ipAddress
   await prisma.$transaction(async (tx) => {
     await tx.refund.update({ where: { id: refund.id }, data: { status } });
 
-    if (status === 'SUCCEEDED') {
+    // A partial refund (some merchandise items) leaves the payment PAID: most
+    // of the money stayed. Membership and event refunds are always full.
+    if (status === 'SUCCEEDED' && refund.amount >= (payment ? payment.amount : 0)) {
       await tx.payment.update({ where: { id: refund.paymentId }, data: { status: 'REFUNDED' } });
+    }
+    if (status === 'FAILED' && payment && payment.purpose === 'MERCHANDISE') {
+      await merchStore().onRefundFailed(tx, payment, refund);
+    }
+
+    if (status === 'SUCCEEDED') {
 
       if (payment && payment.purpose === 'EVENT_REGISTRATION' && payment.eventId) {
         const registration = await tx.eventRegistration.findUnique({
@@ -947,6 +1018,9 @@ async function handleRefundEvent({ webhookRecord, resource, eventType, ipAddress
         if (registration && registration.status === 'REGISTERED') {
           await tx.eventRegistration.update({ where: { id: registration.id }, data: { status: 'CANCELLED' } });
         }
+      }
+      if (payment && payment.purpose === 'MERCHANDISE') {
+        await merchStore().onRefundSucceeded(tx, payment, refund);
       }
     }
 
@@ -1039,7 +1113,10 @@ async function findStuckPayments(olderThanMinutes) {
 
 // --- Refunds (MAIN_ADMIN only — enforced by the route middleware, not here) ---
 
-async function requestRefund({ paymentId, adminUserId, reason, notes }) {
+// amountCentavos: part of the payment (a merchandise refund of some items);
+// omitted, the whole payment, as membership and event refunds always are.
+// One refund per payment either way (refunds.paymentId is unique).
+async function requestRefund({ paymentId, adminUserId, reason, notes, amountCentavos }) {
   const payment = await prisma.payment.findUnique({ where: { id: Number(paymentId) } });
   if (!payment) throw new AppError('Payment not found', 404);
   if (payment.status !== 'PAID') throw new AppError('Only a paid payment can be refunded', 400);
@@ -1048,11 +1125,16 @@ async function requestRefund({ paymentId, adminUserId, reason, notes }) {
   const existingRefund = await prisma.refund.findUnique({ where: { paymentId: payment.id } });
   if (existingRefund) throw new AppError('This payment already has a refund on record', 409);
 
+  const amount = amountCentavos === undefined || amountCentavos === null ? payment.amount : Number(amountCentavos);
+  if (!Number.isInteger(amount) || amount <= 0 || amount > payment.amount) {
+    throw new AppError('The refund must be more than zero and no more than was paid', 422);
+  }
+
   let gatewayRefund;
   try {
     gatewayRefund = await paymongoService.createRefund({
       gatewayPaymentId: payment.gatewayPaymentId,
-      amountCentavos: payment.amount,
+      amountCentavos: amount,
       reason: reason || 'requested_by_customer',
       notes,
     });
@@ -1071,9 +1153,10 @@ async function requestRefund({ paymentId, adminUserId, reason, notes }) {
     const created = await tx.refund.create({
       data: {
         paymentId: payment.id,
-        requestedBy: Number(adminUserId),
+        // NULL = the system (the automatic merchandise "sold out" refund).
+        requestedBy: adminUserId ? Number(adminUserId) : null,
         reason: notes || reason || null,
-        amount: payment.amount,
+        amount,
         gatewayRefundId: gatewayRefund.id,
         status: 'REQUESTED',
       },
@@ -1081,7 +1164,7 @@ async function requestRefund({ paymentId, adminUserId, reason, notes }) {
     await tx.auditLog.create({
       data: {
         action: 'REFUND_REQUESTED',
-        actorId: Number(adminUserId),
+        actorId: adminUserId ? Number(adminUserId) : null,
         targetUserId: payment.userId,
         paymentId: payment.id,
         metadata: JSON.stringify({ amount: payment.amount, gatewayRefundId: gatewayRefund.id }),
@@ -1107,6 +1190,7 @@ module.exports = {
   getPaymentSummary,
   createMembershipCheckout,
   createEventCheckout,
+  createMerchCheckout,
   calculateGatewaySurcharge,
   processWebhookEvent,
   requestRefund,

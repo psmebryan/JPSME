@@ -74,6 +74,66 @@
 </script>
 
 <%#
+  Finance & Logistics. Each account with that role gets its own ticks:
+  Finance tasks, Logistics tasks, Payments (view only), Reports. Saved per
+  account through PUT /api/admin/settings/finance-logistics/:userId (main
+  admin only). What each task group may do in the store: adminAccess.merchCapsFor.
+%>
+<% const flAccounts = locals.financeLogistics || []; %>
+<div id="fl-access-module" class="admin-card p-6 mb-6">
+  <h2 class="font-semibold mb-1">Finance &amp; Logistics access</h2>
+  <p class="text-sm text-slate-500 max-w-3xl">
+    For the people who run the merchandise store. Tick what each account may do. Finance approves refunds, sees cost
+    and profit and checks each day against PayMongo; Logistics handles stock, packing, shipping, pickups and returns.
+    One person can have both, but then they still cannot approve a refund they raised themselves.
+  </p>
+  <% if (!flAccounts.length) { %>
+    <p class="mt-4 rounded-lg border border-dashed border-slate-300 px-4 py-3 text-sm text-slate-600">
+      Nobody has the role yet. Give it on a member's account: <span class="font-medium">Users &rarr; Edit &rarr; Role &rarr; Finance &amp; Logistics</span>, then tick their tasks here.
+    </p>
+  <% } %>
+  <div class="mt-4 space-y-4">
+    <% flAccounts.forEach((a) => { %>
+      <div class="rounded-lg border border-slate-200 p-4" data-fl-account="<%= a.id %>">
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+          <p class="text-sm"><a href="/admin/users/<%= a.id %>/edit" class="font-semibold text-indigo-600 hover:underline"><%= a.name %></a> <span class="text-slate-500"><%= a.email %></span></p>
+          <p class="text-xs text-slate-500"><%= a.grants.length ? '' : 'No tasks yet: they can sign in but see nothing.' %></p>
+        </div>
+        <div class="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <% (locals.flGrantList || []).forEach((g) => { %>
+            <label class="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 p-3 hover:bg-slate-50 has-[:checked]:border-indigo-300 has-[:checked]:bg-indigo-50/50">
+              <input type="checkbox" class="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600" value="<%= g.key %>" <%= a.grants.includes(g.key) ? 'checked' : '' %>>
+              <span><span class="block text-sm font-medium text-slate-900"><%= g.label %></span><span class="block text-xs text-slate-500"><%= g.hint %></span></span>
+            </label>
+          <% }) %>
+        </div>
+        <div class="mt-3 text-right"><button type="button" class="btn-primary px-4 py-1.5 text-sm" data-fl-save>Save</button></div>
+      </div>
+    <% }) %>
+  </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  document.querySelectorAll('[data-fl-account]').forEach((card) => {
+    const save = card.querySelector('[data-fl-save]');
+    save.addEventListener('click', async () => {
+      save.disabled = true;
+      try {
+        const grants = Array.from(card.querySelectorAll('input[type="checkbox"]')).filter((b) => b.checked).map((b) => b.value);
+        const res = await apiFetch(`/api/admin/settings/finance-logistics/${card.dataset.flAccount}`, { method: 'PUT', body: JSON.stringify({ grants }) });
+        showToast(res.message);
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        save.disabled = false;
+      }
+    });
+  });
+}());
+</script>
+
+<%#
   The four site images, together, because they are one decision: what the
   organisation looks like everywhere it appears. Each says where it shows up,
   since the difference between them is not obvious from a filename.

@@ -1,0 +1,202 @@
+<%#
+  Merchandise -> Inventory (phase 1). Stock on hand per variant, from the
+  ledger. Stock is never typed over: Receive, Write off and Count each add one
+  recorded movement (who, when, why), and History shows them all. Filters live
+  in the URL; Export downloads on-hand and every movement. See merch.service.
+%>
+<%
+  const f = filters;
+  const peso = (c) => '₱' + (c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const qs = new URLSearchParams(Object.entries({ q: f.q, product: f.product || '', state: f.state || '', showOff: f.showOff ? '1' : '' }).filter(([, v]) => v)).toString();
+  const stockBadge = { OK: ['badge-green', 'In stock'], LOW: ['badge-amber', 'Low'], SOLD_OUT: ['badge-red', 'Sold out'] };
+  const when = (d) => (d ? new Date(d).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric' }) : '—');
+%>
+<div class="w-full">
+  <div class="admin-card overflow-hidden">
+    <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+      <div>
+        <h1 class="admin-h1">Inventory</h1>
+        <p class="admin-subtitle">Stock on hand, changed only by recorded movements</p>
+      </div>
+      <div class="flex gap-2">
+        <a href="/admin/merch/products" class="btn-secondary px-4 py-2.5">Products</a>
+        <a href="/admin/merch/inventory/export.xlsx<%= qs ? '?' + qs : '' %>" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-export>
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg>
+          Export XLS
+        </a>
+      </div>
+    </div>
+
+    <%# Phase 4: value at cost and unit cost only with cost.view; Receive, Write off
+        and Count only with stock.edit (Logistics, the main admin). %>
+    <% const seeCost = totals.valueCentavos !== undefined; const canStock = locals.merchCaps ? merchCaps.has('stock.edit') : true; %>
+    <div class="space-y-5 px-6 py-5">
+      <div class="grid grid-cols-2 gap-3 lg:grid-cols-4" data-totals>
+        <div class="rounded-lg border border-slate-200 px-4 py-3" data-total="units"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Units on hand</p><p class="mt-1 text-2xl font-semibold tabular-nums text-slate-900"><%= totals.units.toLocaleString('en-PH') %></p><p class="text-xs text-slate-500"><%= totals.variants %> variants</p></div>
+        <div class="rounded-lg border border-slate-200 px-4 py-3" data-total="low"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Low stock</p><p class="mt-1 text-2xl font-semibold tabular-nums text-amber-700"><%= totals.low %></p></div>
+        <div class="rounded-lg border border-slate-200 px-4 py-3" data-total="soldOut"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Sold out</p><p class="mt-1 text-2xl font-semibold tabular-nums text-red-700"><%= totals.soldOut %></p></div>
+        <% if (seeCost) { %><div class="rounded-lg border border-slate-200 px-4 py-3" data-total="value"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Value at cost</p><p class="mt-1 text-2xl font-semibold tabular-nums text-slate-900"><%= peso(totals.valueCentavos) %></p><% if (totals.costMissing) { %><p class="text-xs text-amber-700"><%= totals.costMissing %> without a cost yet</p><% } %></div><% } %>
+      </div>
+
+      <form method="get" action="/admin/merch/inventory" id="inv-filters" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_auto_auto] lg:items-end">
+        <div>
+          <label for="if-q" class="form-label">Search</label>
+          <input id="if-q" name="q" type="search" value="<%= f.q %>" maxlength="80" placeholder="Product, variant or SKU" class="form-input">
+        </div>
+        <div>
+          <label for="if-product" class="form-label">Product</label>
+          <select id="if-product" name="product" class="form-input" data-autosubmit>
+            <option value="">All products</option>
+            <% products.forEach((p) => { %><option value="<%= p.id %>" <%= f.product === p.id ? 'selected' : '' %>><%= p.name %></option><% }) %>
+          </select>
+        </div>
+        <div>
+          <label for="if-state" class="form-label">Stock</label>
+          <select id="if-state" name="state" class="form-input" data-autosubmit>
+            <option value="">All</option>
+            <option value="LOW" <%= f.state === 'LOW' ? 'selected' : '' %>>Low</option>
+            <option value="SOLD_OUT" <%= f.state === 'SOLD_OUT' ? 'selected' : '' %>>Sold out</option>
+            <option value="OK" <%= f.state === 'OK' ? 'selected' : '' %>>In stock</option>
+          </select>
+        </div>
+        <label class="flex items-center gap-2 pb-2 text-sm text-slate-700"><input type="checkbox" name="showOff" value="1" <%= f.showOff ? 'checked' : '' %> data-autosubmit> Include switched-off</label>
+        <span class="flex gap-2"><button type="submit" class="btn-primary px-4 py-2">Search</button><a href="/admin/merch/inventory" class="btn-secondary px-3 py-2">Clear</a></span>
+      </form>
+
+      <div class="overflow-x-auto">
+        <table class="admin-table" id="inv-table">
+          <thead class="admin-table-head">
+            <tr>
+              <th class="admin-th">Product</th>
+              <th class="admin-th">Variant</th>
+              <th class="admin-th">SKU</th>
+              <th class="admin-th text-right">On hand</th>
+              <th class="admin-th text-right">Low at</th>
+              <th class="admin-th">Stock</th>
+              <th class="admin-th">Last change</th>
+              <th class="admin-th text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody class="admin-tbody">
+            <% rows.forEach((r) => { %>
+              <tr class="admin-tr" data-row="<%= r.id %>" data-label="<%= r.productName %> · <%= r.label %>" data-on-hand="<%= r.onHand %>">
+                <td class="admin-td"><a href="/admin/merch/products/<%= r.productId %>" class="font-medium text-slate-900 hover:text-indigo-700"><%= r.productName %></a></td>
+                <td class="admin-td"><%= r.label %><% if (!r.isActive) { %> <span class="badge-slate">Off</span><% } %></td>
+                <td class="admin-td font-mono text-xs"><%= r.sku %></td>
+                <td class="admin-td text-right text-base font-semibold tabular-nums"><%= r.onHand %></td>
+                <td class="admin-td text-right tabular-nums text-slate-500"><%= r.lowStockLevel === null ? '—' : r.lowStockLevel %></td>
+                <td class="admin-td"><span class="<%= stockBadge[r.stockState][0] %>"><%= stockBadge[r.stockState][1] %></span></td>
+                <td class="admin-td whitespace-nowrap tabular-nums text-slate-500"><%= when(r.lastMovementAt) %></td>
+                <td class="admin-td whitespace-nowrap text-right">
+                  <% if (canStock) { %><button type="button" class="text-sm font-medium text-emerald-700 hover:underline" data-stock="receive">Receive</button>
+                  <button type="button" class="ml-3 text-sm text-red-600 hover:underline" data-stock="writeoff">Write off</button>
+                  <button type="button" class="ml-3 mr-3 text-sm text-indigo-600 hover:underline" data-stock="count">Count</button><% } %>
+                  <button type="button" class="text-sm text-slate-600 hover:underline" data-moves>History</button>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <% if (!rows.length) { %>
+          <p class="py-8 text-center text-sm text-slate-500">No variants match. Add products and their variants on the <a href="/admin/merch/products" class="text-indigo-600 hover:underline">Products</a> page.</p>
+        <% } %>
+      </div>
+      <p class="text-xs text-slate-500">
+        <strong>Receive</strong> adds stock from a supplier. <strong>Write off</strong> removes damaged or lost items, with a reason.
+        <strong>Count</strong> records a physical count: the difference from the ledger is saved as a count correction
+        (a matching count is saved too, as proof it was done). Value at cost counts only variants with a unit cost.
+      </p>
+    </div>
+  </div>
+</div>
+
+<dialog id="stock-dialog" class="w-full max-w-md rounded-xl p-0 shadow-xl backdrop:bg-slate-900/40">
+  <form id="stock-form" class="space-y-4 p-6">
+    <input type="hidden" name="variantId"><input type="hidden" name="action">
+    <div class="flex items-start justify-between">
+      <div><h2 class="text-lg font-semibold text-slate-900" data-stock-title></h2><p class="text-sm text-slate-500" data-stock-sub></p></div>
+      <button type="button" class="text-xl text-slate-400 hover:text-slate-600" data-close aria-label="Close">&times;</button>
+    </div>
+    <div data-field="quantity"><label for="sf-q" class="form-label">Quantity</label><input id="sf-q" name="quantity" type="number" min="1" step="1" class="form-input"></div>
+    <div data-field="counted"><label for="sf-c" class="form-label">Counted on the shelf</label><input id="sf-c" name="counted" type="number" min="0" step="1" class="form-input"></div>
+    <div data-field="supplier"><label for="sf-s" class="form-label">Supplier <span class="font-normal text-slate-400">(optional)</span></label><input id="sf-s" name="supplier" maxlength="120" class="form-input"></div>
+    <% if (seeCost) { %><div data-field="unitCost"><label for="sf-u" class="form-label">Unit cost (PHP) <span class="font-normal text-slate-400">(optional)</span></label><input id="sf-u" name="unitCost" type="text" inputmode="decimal" autocomplete="off" class="form-input"></div><% } %>
+    <div><label for="sf-r" class="form-label" data-reason-label>Reason</label><input id="sf-r" name="reason" maxlength="300" class="form-input"></div>
+    <div class="flex justify-end gap-2 border-t border-slate-100 pt-4">
+      <button type="button" class="btn-secondary px-4 py-2" data-close>Cancel</button>
+      <button type="submit" class="btn-primary px-4 py-2">Record</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="moves-dialog" class="w-full max-w-2xl rounded-xl p-0 shadow-xl backdrop:bg-slate-900/40">
+  <div class="space-y-4 p-6">
+    <div class="flex items-start justify-between">
+      <div><h2 class="text-lg font-semibold text-slate-900">Stock history</h2><p class="text-sm text-slate-500" data-moves-title></p></div>
+      <button type="button" class="text-xl text-slate-400 hover:text-slate-600" data-close aria-label="Close">&times;</button>
+    </div>
+    <div class="max-h-[60vh] overflow-y-auto" data-moves-body></div>
+  </div>
+</dialog>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const filters = document.getElementById('inv-filters');
+  filters.querySelectorAll('[data-autosubmit]').forEach((el) => el.addEventListener('change', () => filters.submit()));
+  document.querySelectorAll('dialog [data-close]').forEach((b) => b.addEventListener('click', () => b.closest('dialog').close()));
+
+  const sdialog = document.getElementById('stock-dialog');
+  const sform = document.getElementById('stock-form');
+  const sf = (n) => sform.elements.namedItem(n);
+  const TITLES = { receive: 'Receive stock', writeoff: 'Write off', count: 'Record a count' };
+  const SHOW = { receive: ['quantity', 'supplier', 'unitCost'], writeoff: ['quantity'], count: ['counted'] };
+
+  document.getElementById('inv-table').addEventListener('click', async (e) => {
+    const tr = e.target.closest('tr[data-row]');
+    if (!tr) return;
+    const stock = e.target.closest('[data-stock]');
+    if (stock) {
+      const action = stock.getAttribute('data-stock');
+      sform.reset();
+      sf('variantId').value = tr.getAttribute('data-row');
+      sf('action').value = action;
+      sdialog.querySelector('[data-stock-title]').textContent = TITLES[action];
+      sdialog.querySelector('[data-stock-sub]').textContent = `${tr.getAttribute('data-label')} · on hand ${tr.getAttribute('data-on-hand')}`;
+      sform.querySelectorAll('[data-field]').forEach((el) => { el.hidden = !SHOW[action].includes(el.getAttribute('data-field')); });
+      sdialog.querySelector('[data-reason-label]').textContent = action === 'receive' ? 'Note (optional)' : 'Reason (required)';
+      sdialog.showModal();
+      (action === 'count' ? sf('counted') : sf('quantity')).focus();
+      return;
+    }
+    if (e.target.closest('[data-moves]')) {
+      const md = document.getElementById('moves-dialog');
+      const body = md.querySelector('[data-moves-body]');
+      md.querySelector('[data-moves-title]').textContent = tr.getAttribute('data-label');
+      body.innerHTML = '<p class="text-sm text-slate-400">Loading…</p>';
+      md.showModal();
+      try {
+        const res = await apiFetch(`/api/admin/merch/variants/${tr.getAttribute('data-row')}/movements`);
+        const m = res.data.movements;
+        body.innerHTML = m.length ? `<p class="mb-2 text-sm text-slate-600">On hand now: <strong>${res.data.onHand}</strong></p><table class="admin-table"><thead class="admin-table-head"><tr><th class="admin-th">When</th><th class="admin-th">Movement</th><th class="admin-th text-right">Qty</th><th class="admin-th">Reason</th><th class="admin-th">By</th></tr></thead><tbody class="admin-tbody">${m.map((x) => `
+          <tr class="admin-tr"><td class="admin-td whitespace-nowrap">${esc(new Date(x.at).toLocaleString('en-PH'))}</td><td class="admin-td">${esc(x.typeLabel)}</td>
+          <td class="admin-td text-right tabular-nums ${x.quantity < 0 ? 'text-red-700' : 'text-emerald-700'}">${x.quantity > 0 ? '+' : ''}${x.quantity}</td>
+          <td class="admin-td">${esc([x.reason, x.supplier ? `from ${x.supplier}` : ''].filter(Boolean).join(' · ') || '—')}</td><td class="admin-td">${esc(x.by)}</td></tr>`).join('')}</tbody></table>`
+          : '<p class="text-sm text-slate-500">No movements yet. Receive stock to start.</p>';
+      } catch (err) { body.innerHTML = ''; showToast(err.message, 'error'); }
+    }
+  });
+
+  sform.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const action = sf('action').value;
+    const body = { action, reason: sf('reason').value };
+    SHOW[action].forEach((k) => { if (sf(k)) body[k] = sf(k).value; });
+    try {
+      const res = await apiFetch(`/api/admin/merch/variants/${sf('variantId').value}/stock`, { method: 'POST', body: JSON.stringify(body) });
+      showToast(res.message);
+      setTimeout(() => window.location.reload(), 500);
+    } catch (err) { showToast(err.message, 'error'); }
+  });
+}());
+</script>

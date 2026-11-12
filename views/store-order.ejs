@@ -1,0 +1,268 @@
+<%#
+  One merchandise order, and where PayMongo returns the buyer. Unpaid: time
+  left, Pay now / Cancel, and it checks again every few seconds (the payment is
+  confirmed by PayMongo's notice to the server, not by the buyer coming back).
+  Paid: where it is going (address or pickup point), courier and tracking,
+  the pickup QR once ready, the address form when Logistics paused it for a
+  wrong address, and the order's timeline.
+%>
+<% const o = order; const peso = (c) => '₱' + (c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); %>
+<% const when = (d) => new Date(d).toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }); %>
+<% const badge = { AWAITING_PAYMENT: 'bg-amber-400/15 text-amber-300', PAID: 'bg-emerald-500/15 text-emerald-300', PACKED: 'bg-sky-500/15 text-sky-300', SHIPPED: 'bg-sky-500/15 text-sky-300', READY_FOR_PICKUP: 'bg-emerald-500/15 text-emerald-300', DELIVERED: 'bg-emerald-500/15 text-emerald-300', PICKED_UP: 'bg-emerald-500/15 text-emerald-300', ADDRESS_HOLD: 'bg-red-500/15 text-red-300', UNCLAIMED: 'bg-amber-400/15 text-amber-300', CANCELLED: 'bg-slate-500/20 text-slate-300', REFUNDED: 'bg-purple-500/15 text-purple-300' }; %>
+<nav class="mb-6 flex items-center gap-2 text-sm text-slate-400"><a href="/store" class="hover:text-amber-300">Store</a><span>&rsaquo;</span><a href="/store/orders" class="hover:text-amber-300">My Orders</a><span>&rsaquo;</span><span class="text-slate-300"><%= o.orderNumber %></span></nav>
+
+<div class="mx-auto max-w-3xl space-y-6" id="store-order" data-order="<%= o.orderNumber %>" data-status="<%= o.status %>" data-hold="<%= o.holdExpiresAt ? new Date(o.holdExpiresAt).toISOString() : '' %>">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h1 class="text-3xl font-bold text-white">Order <span class="font-mono"><%= o.orderNumber %></span></h1>
+    <span class="rounded-full px-3 py-1 text-sm font-semibold <%= badge[o.status] || badge.CANCELLED %>" data-status-label><%= o.statusLabel %></span>
+  </div>
+
+  <% if (o.status === 'AWAITING_PAYMENT') { %>
+    <div class="rounded-2xl border border-amber-400/40 bg-amber-400/10 p-5" data-awaiting>
+      <p class="font-semibold text-amber-100">Waiting for your payment</p>
+      <p class="mt-1 text-sm text-amber-100/80">Your items are held for <span class="font-semibold" data-countdown>—</span>. If you already paid, this page updates by itself within a minute.</p>
+      <div class="mt-4 flex flex-wrap gap-3">
+        <button type="button" class="rounded-lg bg-amber-400 px-5 py-2.5 font-semibold text-[#071126] hover:bg-amber-300" data-pay>Pay now with GCash</button>
+        <button type="button" class="rounded-lg border border-[#263b70] px-5 py-2.5 font-semibold text-slate-200 hover:border-red-400 hover:text-red-300" data-cancel>Cancel order</button>
+      </div>
+    </div>
+  <% } else if (o.status === 'ADDRESS_HOLD') { %>
+    <div class="rounded-2xl border border-red-500/40 bg-red-500/10 p-5" data-address-hold>
+      <p class="font-semibold text-red-100">Please fix your delivery address</p>
+      <p class="mt-1 text-sm text-red-100/90">We paused your order: <%= o.addressNote %></p>
+      <form class="mt-4 space-y-3" data-fix-form>
+        <%- include('partials/address-form', { prefix: 'fix', addressTypes, value: o.shipTo }) %>
+        <label class="flex items-start gap-2 text-sm text-slate-200"><input type="checkbox" name="confirmAddress" class="mt-0.5"> This address is complete and correct</label>
+        <button type="submit" class="rounded-lg bg-amber-400 px-5 py-2.5 font-semibold text-[#071126] hover:bg-amber-300">Save the corrected address</button>
+        <p class="text-xs text-slate-400">It must stay in the <%= o.zoneName %> delivery zone you paid for.</p>
+      </form>
+    </div>
+  <% } else if (o.paidAt && !['CANCELLED', 'REFUNDED'].includes(o.status)) { %>
+    <p class="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-100" data-paid>Paid on <%= when(o.paidAt) %>. Thank you!
+      <%= o.status === 'PAID' ? (o.fulfilment === 'PICKUP' ? 'We will email you when it is ready for pickup.' : 'We will email you when it ships.') : '' %></p>
+  <% } %>
+  <% if (o.status === 'CANCELLED') { %>
+    <p class="rounded-2xl border border-[#263b70] bg-[#111b3a] p-5 text-slate-300">Cancelled<%= o.cancelReason ? `: ${o.cancelReason}` : '' %>.<% if (o.cancelReason === 'Sold out at payment') { %> Your payment is being refunded in full.<% } %></p>
+  <% } else if (o.status === 'REFUNDED') { %>
+    <p class="rounded-2xl border border-purple-500/30 bg-purple-500/10 p-5 text-purple-100">Refunded.</p>
+  <% } %>
+
+  <% if (qr) { %>
+    <div class="flex flex-wrap items-center gap-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5" data-pickup-qr>
+      <img src="<%= qr %>" alt="Pickup QR code for <%= o.orderNumber %>" class="h-44 w-44 rounded-lg bg-white p-2">
+      <div>
+        <p class="text-lg font-semibold text-emerald-100">Ready for pickup</p>
+        <p class="mt-1 text-sm text-emerald-100/80">Show this QR code at <strong><%= o.pickupPoint ? o.pickupPoint.name : 'the pickup point' %></strong>.</p>
+        <% if (o.pickupPoint) { %><p class="mt-2 text-sm text-slate-300"><%= o.pickupPoint.address %><% if (o.pickupPoint.hours) { %><br><%= o.pickupPoint.hours %><% } %></p><% } %>
+      </div>
+    </div>
+  <% } %>
+
+  <% if (o.fulfilment) { %>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div class="rounded-2xl border border-[#263b70] bg-[#111b3a] p-4 text-sm" data-ship-to>
+        <% if (o.fulfilment === 'DELIVERY') { %>
+          <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Delivery to <%= o.zoneName %></p>
+          <% (o.shipLines || []).forEach((l, i) => { %><p class="<%= i === 0 ? 'font-semibold text-white' : 'text-slate-300' %>"><%= l %></p><% }) %>
+        <% } else if (o.pickupPoint) { %>
+          <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Pickup at</p>
+          <p class="font-semibold text-white"><%= o.pickupPoint.name %></p>
+          <p class="text-slate-300"><%= o.pickupPoint.address %></p>
+          <% if (o.pickupPoint.hours) { %><p class="text-slate-400"><%= o.pickupPoint.hours %></p><% } %>
+        <% } %>
+      </div>
+      <div class="rounded-2xl border border-[#263b70] bg-[#111b3a] p-4 text-sm" data-timeline>
+        <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Progress</p>
+        <% if (o.trackingNumber) { %><p class="mb-2 text-slate-200"><%= o.courier %> · tracking <span class="font-mono text-amber-300"><%= o.trackingNumber %></span></p><% } %>
+        <ol class="space-y-2">
+          <% o.events.forEach((e) => { %>
+            <li><span class="font-medium text-white"><%= e.label %></span> <span class="text-xs text-slate-500"><%= when(e.at) %></span><% if (e.note && !/tracking/.test(e.note)) { %><br><span class="text-slate-400"><%= e.note %></span><% } %></li>
+          <% }) %>
+        </ol>
+      </div>
+    </div>
+  <% } %>
+
+  <%# ---------- refunds and exchanges (phase 3b) ---------- %>
+  <% const rf = locals.returnForm; const rets = locals.returns || []; const opt = rf ? rf.options : {}; %>
+  <% if (rets.length || opt.cancel || opt.lostInTransit || opt.refund || opt.exchange || opt.why) { %>
+    <section class="rounded-2xl border border-[#263b70] bg-[#111b3a] p-5" id="returns" data-returns>
+      <h2 class="text-lg font-semibold text-white">Returns &amp; refunds</h2>
+      <% rets.forEach((r) => { %>
+        <div class="mt-3 rounded-xl border border-[#263b70] p-3 text-sm" data-return="<%= r.returnNumber %>">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <p class="font-semibold text-white"><%= r.kindLabel %> <span class="font-mono text-slate-400"><%= r.returnNumber %></span></p>
+            <span class="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold text-slate-200"><%= r.statusLabel %></span>
+          </div>
+          <p class="text-slate-400"><%= r.reasonLabel %> · <%= r.items.map((i) => `${i.quantity} × ${i.productName} (${i.label})${i.newVariant ? ` → ${i.newVariant.label}` : ''}`).join(', ') %></p>
+          <% if (r.refundCentavos) { %><p class="text-slate-300">Refund: <%= peso(r.refundCentavos) %></p><% } %>
+          <% if (r.rejectReason) { %><p class="text-red-300">Not approved: <%= r.rejectReason %></p><% } %>
+          <% if (r.trackingNumber) { %><p class="text-slate-300">New item: <%= r.courier %> · <span class="font-mono"><%= r.trackingNumber %></span></p><% } %>
+          <% if (['REQUESTED', 'CHECKED'].includes(r.status)) { %><button type="button" class="mt-2 text-sm text-red-300 hover:underline" data-withdraw="<%= r.returnNumber %>">Withdraw this request</button><% } %>
+        </div>
+      <% }) %>
+
+      <% if (opt.why && !opt.openRequest) { %><p class="mt-3 text-sm text-slate-400"><%= opt.why %>.</p><% } %>
+
+      <% if (opt.cancel) { %>
+        <div class="mt-4">
+          <p class="text-sm text-slate-300">Changed your mind? This order is not packed yet, so you can cancel it for a full refund.</p>
+          <button type="button" class="mt-2 rounded-lg border border-red-400/60 px-4 py-2 text-sm font-semibold text-red-200 hover:bg-red-500/10" data-cancel-paid>Cancel order and get a refund</button>
+        </div>
+      <% } %>
+
+      <% if (opt.lostInTransit) { %>
+        <form class="mt-4 space-y-2" data-lost-form>
+          <p class="text-sm text-slate-300">Has the courier lost your parcel?</p>
+          <textarea name="details" rows="2" maxlength="1000" placeholder="What the courier told you, and when" class="jp-field"></textarea>
+          <button type="submit" class="rounded-lg border border-[#263b70] px-4 py-2 text-sm font-semibold text-slate-200 hover:border-amber-400">Report it lost in transit</button>
+        </form>
+      <% } %>
+
+      <% if ((opt.refund || opt.exchange) && rf.items.length) { %>
+        <details class="mt-4" <%= rets.length ? '' : 'open' %>>
+          <summary class="cursor-pointer text-sm font-semibold text-amber-300">Ask for a refund or exchange<%= opt.windowDays ? ` (within ${opt.windowDays} days of receiving it)` : '' %></summary>
+          <form class="mt-3 space-y-4" data-return-form>
+            <div class="flex flex-wrap gap-3" role="radiogroup">
+              <% if (opt.refund) { %><label class="flex items-center gap-2 text-sm text-slate-200"><input type="radio" name="kind" value="REFUND" checked> Refund</label><% } %>
+              <% if (opt.exchange) { %><label class="flex items-center gap-2 text-sm text-slate-200"><input type="radio" name="kind" value="EXCHANGE" <%= opt.refund ? '' : 'checked' %>> Exchange for another size or colour</label><% } %>
+            </div>
+            <div class="space-y-2">
+              <% rf.items.forEach((i) => { %>
+                <div class="flex flex-wrap items-center gap-3 rounded-xl border border-[#263b70] p-3 text-sm" data-return-item="<%= i.id %>">
+                  <label class="flex flex-1 items-center gap-2 text-slate-200"><input type="checkbox" data-pick> <%= i.productName %> (<%= i.label %>)</label>
+                  <input type="number" min="1" max="<%= i.quantity %>" value="<%= i.quantity %>" aria-label="How many" class="w-20 rounded-lg border border-[#263b70] bg-[#0b1430] px-2 py-1 text-white" data-qty>
+                  <select class="jp-field w-44" data-swap aria-label="Exchange for" hidden>
+                    <% if (!i.swaps.length) { %><option value="">No other size in stock</option><% } %>
+                    <% i.swaps.forEach((s) => { %><option value="<%= s.id %>"><%= s.label %></option><% }) %>
+                  </select>
+                </div>
+              <% }) %>
+            </div>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <label class="text-sm text-slate-300">Reason
+                <select name="reason" class="jp-field mt-1">
+                  <% ['WRONG_SIZE', 'CHANGE_OF_MIND', 'DAMAGED', 'OTHER'].forEach((k) => { %><option value="<%= k %>"><%= rf.reasons[k] %></option><% }) %>
+                </select>
+              </label>
+              <label class="text-sm text-slate-300">Photo <span class="text-slate-500">(needed for damage)</span>
+                <input type="file" name="photo" accept="image/png,image/jpeg,image/webp" class="jp-field mt-1">
+              </label>
+            </div>
+            <textarea name="details" rows="2" maxlength="1000" placeholder="Anything we should know" class="jp-field"></textarea>
+            <button type="submit" class="rounded-lg bg-amber-400 px-5 py-2.5 font-semibold text-[#071126] hover:bg-amber-300">Send request</button>
+          </form>
+        </details>
+      <% } %>
+    </section>
+  <% } %>
+
+  <div class="overflow-hidden rounded-2xl border border-[#263b70] bg-[#111b3a]">
+    <ul class="divide-y divide-[#263b70]">
+      <% o.items.forEach((i) => { %>
+        <li class="flex items-center justify-between gap-4 p-4">
+          <div><p class="font-semibold text-white"><%= i.productName %></p><p class="text-sm text-slate-400"><%= i.label %> · <%= i.quantity %> × <%= peso(i.unitPrice) %><%= i.priceType === 'MEMBER' ? ' (member price)' : '' %></p></div>
+          <p class="font-semibold tabular-nums text-white"><%= peso(i.lineTotal) %></p>
+        </li>
+      <% }) %>
+    </ul>
+    <dl class="space-y-1 border-t border-[#263b70] p-4 text-sm">
+      <div class="flex justify-between text-slate-300"><dt>Items</dt><dd class="tabular-nums"><%= peso(o.subtotal) %></dd></div>
+      <% if (o.fulfilment) { %><div class="flex justify-between text-slate-300"><dt>Delivery</dt><dd class="tabular-nums"><%= o.fulfilment === 'PICKUP' ? 'Pickup, free' : peso(o.deliveryFee) %></dd></div><% } %>
+      <div class="flex justify-between text-slate-300"><dt>Payment processing fee</dt><dd class="tabular-nums"><%= peso(o.channelFee) %></dd></div>
+      <div class="flex justify-between text-base font-bold text-white"><dt>Total</dt><dd class="tabular-nums"><%= peso(o.total) %></dd></div>
+      <% if (o.paymentReference) { %><div class="flex justify-between pt-2 text-xs text-slate-500"><dt>PayMongo reference</dt><dd class="font-mono"><%= o.paymentReference %></dd></div><% } %>
+    </dl>
+  </div>
+</div>
+
+<script src="/js/address-form.js"></script>
+<script nonce="<%= cspNonce %>">
+(function () {
+  const root = document.getElementById('store-order');
+  const number = root.dataset.order;
+
+  // Fixing a paused delivery address.
+  const fix = root.querySelector('[data-fix-form]');
+  if (fix) {
+    const form = fix.querySelector('[data-address-form]');
+    window.AddressForm.init(form);
+    fix.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const body = { ...window.AddressForm.read(form), confirmAddress: fix.querySelector('input[name="confirmAddress"]').checked };
+      try { const res = await apiFetch(`/api/store/orders/${number}/address`, { method: 'POST', body: JSON.stringify(body) }); showToast(res.message); setTimeout(() => window.location.reload(), 900); } catch (err) { showToast(err.message, 'error'); }
+    });
+  }
+
+  // Refunds and exchanges.
+  const sendReturn = async (fd) => {
+    try {
+      const res = await apiFetch(`/api/store/orders/${number}/returns`, { method: 'POST', body: fd });
+      showToast(res.message);
+      setTimeout(() => window.location.reload(), 900);
+    } catch (err) { showToast(err.message, 'error'); }
+  };
+  const cancelPaid = root.querySelector('[data-cancel-paid]');
+  if (cancelPaid) cancelPaid.addEventListener('click', () => {
+    if (!confirm('Cancel this order? You get a full refund once it is approved.')) return;
+    const fd = new FormData(); fd.append('kind', 'CANCEL'); fd.append('reason', 'CANCELLED_BEFORE_PACKING');
+    sendReturn(fd);
+  });
+  const lost = root.querySelector('[data-lost-form]');
+  if (lost) lost.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const fd = new FormData(); fd.append('kind', 'REFUND'); fd.append('reason', 'LOST_IN_TRANSIT'); fd.append('details', lost.elements.namedItem('details').value);
+    sendReturn(fd);
+  });
+  const rform = root.querySelector('[data-return-form]');
+  if (rform) {
+    const kind = () => (rform.querySelector('input[name="kind"]:checked') || {}).value;
+    const syncKind = () => rform.querySelectorAll('[data-swap]').forEach((s) => { s.hidden = kind() !== 'EXCHANGE'; });
+    rform.querySelectorAll('input[name="kind"]').forEach((r) => r.addEventListener('change', syncKind));
+    syncKind();
+    rform.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const items = Array.from(rform.querySelectorAll('[data-return-item]')).filter((row) => row.querySelector('[data-pick]').checked)
+        .map((row) => ({ orderItemId: Number(row.dataset.returnItem), quantity: Number(row.querySelector('[data-qty]').value), newVariantId: kind() === 'EXCHANGE' ? Number(row.querySelector('[data-swap]').value) || null : null }));
+      if (!items.length) { showToast('Tick the items this is about.', 'error'); return; }
+      const fd = new FormData();
+      fd.append('kind', kind());
+      fd.append('reason', rform.elements.namedItem('reason').value);
+      fd.append('details', rform.elements.namedItem('details').value);
+      fd.append('items', JSON.stringify(items));
+      const photo = rform.elements.namedItem('photo').files[0];
+      if (photo) {
+        if (photo.size > 5 * 1024 * 1024) { showToast('The photo must be 5 MB or less.', 'error'); return; }
+        fd.append('photo', photo);
+      }
+      sendReturn(fd);
+    });
+  }
+  root.querySelectorAll('[data-withdraw]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('Withdraw this request?')) return;
+    try { await apiFetch(`/api/store/returns/${b.getAttribute('data-withdraw')}/withdraw`, { method: 'POST' }); window.location.reload(); } catch (err) { showToast(err.message, 'error'); }
+  }));
+
+  if (root.dataset.status !== 'AWAITING_PAYMENT') return;
+  const until = Date.parse(root.dataset.hold);
+  const cd = root.querySelector('[data-countdown]');
+  function tick() {
+    const left = Math.max(0, until - Date.now());
+    const m = Math.floor(left / 60000); const s = Math.floor((left % 60000) / 1000);
+    cd.textContent = left ? `${m}:${String(s).padStart(2, '0')}` : 'no more time';
+    if (!left) root.querySelector('[data-pay]').disabled = true;
+  }
+  tick(); setInterval(tick, 1000);
+  setInterval(async () => {
+    try { const res = await apiFetch(`/api/store/orders/${number}`); if (res.data.order.status !== 'AWAITING_PAYMENT') window.location.reload(); } catch (e) { /* try again */ }
+  }, 8000);
+  root.querySelector('[data-pay]').addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    try { const res = await apiFetch(`/api/store/orders/${number}/pay`, { method: 'POST' }); window.location.href = res.data.checkoutUrl; } catch (err) { showToast(err.message, 'error'); e.target.disabled = false; }
+  });
+  root.querySelector('[data-cancel]').addEventListener('click', async () => {
+    if (!confirm('Cancel this order? Its items go back on sale.')) return;
+    try { await apiFetch(`/api/store/orders/${number}/cancel`, { method: 'POST' }); window.location.reload(); } catch (err) { showToast(err.message, 'error'); setTimeout(() => window.location.reload(), 1500); }
+  });
+}());
+</script>

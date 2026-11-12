@@ -3,8 +3,8 @@ const prisma = require('../config/prisma');
 
 // Reports (admin sidebar -> Reports). Read-only; nothing here writes.
 //
-//   Transaction report        every event registration or every membership
-//                             payment, filtered by date range, payment
+//   Transaction report        every event registration, every membership
+//                             payment or every merchandise order, filtered by date range, payment
 //                             (online / offline / free), payment status,
 //                             student organization, event and a search.
 //   Org member summary        members per student organization, with region
@@ -111,7 +111,7 @@ const ymd = { numFmt: 'yyyy-mm-dd hh:mm' };
 
 // --- transaction report --------------------------------------------------------------
 
-const KINDS = { EVENT: 'Event Registration', MEMBERSHIP: 'Membership Registration' };
+const KINDS = { EVENT: 'Event Registration', MEMBERSHIP: 'Membership Registration', MERCH: 'Merchandise' };
 const CHANNELS = { ONLINE: 'Online (PayMongo)', OFFLINE: 'Offline (to organizers)', FREE: 'Free' };
 const TX_STATUSES = {
   PAID: 'Paid',
@@ -131,7 +131,8 @@ function paymentStatus(s) {
 }
 
 function parseTransactionFilters(query = {}) {
-  const kind = String(query.kind || '').toUpperCase() === 'MEMBERSHIP' ? 'MEMBERSHIP' : 'EVENT';
+  const asked = String(query.kind || '').toUpperCase();
+  const kind = asked === 'MEMBERSHIP' ? 'MEMBERSHIP' : (asked === 'MERCH' || asked === 'MERCHANDISE' ? 'MERCH' : 'EVENT');
   return {
     kind,
     from: dateParam(query.from),
@@ -235,9 +236,48 @@ async function membershipTransactions(f, orgs) {
   });
 }
 
+// Merchandise: one row per order that reached checkout (an order still in
+// the cart has no row). The organization is the buyer's when they ordered.
+// A partly refunded order stays Paid; the refunds are in Merchandise Reports.
+async function merchTransactions(f, orgs) {
+  const created = dateRange(f.from, f.to);
+  const orders = await prisma.merchOrder.findMany({
+    where: { orderNumber: { not: null }, ...(created ? { createdAt: created } : {}) },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: ROW_LIMIT,
+    select: {
+      orderNumber: true, buyerName: true, buyerEmail: true, organizationId: true, status: true, fulfilment: true,
+      totalCentavos: true, createdAt: true, paidAt: true,
+      items: { select: { quantity: true, productName: true, variantLabel: true } },
+      payment: { select: { status: true, paidAt: true, gatewayPaymentId: true } },
+    },
+  });
+  return orders.map((o) => {
+    const org = o.organizationId ? orgs.byId.get(o.organizationId) : null;
+    let status = o.payment ? paymentStatus(o.payment.status) : 'PENDING';
+    if (o.status === 'CANCELLED' && status !== 'PAID' && status !== 'REFUNDED') status = 'CANCELLED';
+    return {
+      date: o.createdAt,
+      reference: o.orderNumber,
+      name: o.buyerName,
+      email: o.buyerEmail,
+      orgId: o.organizationId || null,
+      organization: org ? org.name : null,
+      event: o.items.map((i) => `${i.quantity} x ${i.productName} (${i.variantLabel})`).join('; '),
+      option: o.fulfilment === 'PICKUP' ? 'Pickup' : (o.fulfilment === 'DELIVERY' ? 'Delivery' : ''),
+      amount: o.totalCentavos,
+      channel: 'ONLINE',
+      status,
+      paidAt: o.payment && ['PAID', 'REFUNDED'].includes(o.payment.status) ? o.payment.paidAt || o.paidAt : null,
+      gatewayRef: o.payment ? o.payment.gatewayPaymentId || '' : '',
+    };
+  });
+}
+
 async function transactionRows(f) {
   const orgs = await loadOrgs();
-  const all = f.kind === 'MEMBERSHIP' ? await membershipTransactions(f, orgs) : await eventTransactions(f, orgs);
+  const load = { MEMBERSHIP: membershipTransactions, MERCH: merchTransactions, EVENT: eventTransactions }[f.kind];
+  const all = await load(f, orgs);
   const rows = all.filter((r) => (!f.payment || r.channel === f.payment)
     && (!f.status || r.status === f.status)
     && (f.org === null || (f.org === 'NONE' ? !r.orgId : r.orgId === f.org))
@@ -283,6 +323,7 @@ async function exportTransactions(query) {
   const f = parseTransactionFilters(query);
   const { rows } = await transactionRows(f);
   const isEvent = f.kind === 'EVENT';
+  const isMerch = f.kind === 'MERCH';
   const s = transactionSummary(rows);
   return workbook([{
     name: KINDS[f.kind],
@@ -293,7 +334,8 @@ async function exportTransactions(query) {
       { header: 'Email', key: 'email', width: 32 },
       { header: 'Student organization', key: 'organization', width: 32 },
       ...(isEvent ? [{ header: 'Event', key: 'event', width: 32 }, { header: 'Fee option', key: 'option', width: 18 }]
-        : [{ header: 'Member type', key: 'option', width: 18 }]),
+        : isMerch ? [{ header: 'Items', key: 'event', width: 44 }, { header: 'Delivery / pickup', key: 'option', width: 16 }]
+          : [{ header: 'Member type', key: 'option', width: 18 }]),
       { header: 'Amount', key: 'amount', width: 14, style: peso },
       { header: 'Payment', key: 'channel', width: 22 },
       { header: 'Payment status', key: 'status', width: 16 },

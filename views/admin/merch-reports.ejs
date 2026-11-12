@@ -1,0 +1,117 @@
+<%#
+  Merchandise -> Sales reports (phase 4). For a period (this month by
+  default): the money summary, sales by product (with cost and profit for
+  whoever may see costs), sales by student organization, and refunds and
+  exchanges. Export downloads the same period as a workbook. See
+  merchFinance.service salesReport.
+%>
+<%
+  const peso = (c) => (c === null || c === undefined ? '—' : '₱' + ((Number(c) || 0) / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  const when = (d) => (d ? new Date(d).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' }) : '—');
+  const s = summary;
+  const showCost = s.profitCentavos !== undefined;
+  const tile = 'rounded-lg border border-slate-200 px-4 py-3';
+  const lbl = 'text-xs font-medium uppercase tracking-wide text-slate-500';
+  const big = 'mt-1 text-xl font-semibold tabular-nums text-slate-900';
+  const qs = `from=${period.from}&to=${period.to}`;
+%>
+<div class="w-full space-y-6">
+  <div class="admin-card overflow-hidden">
+    <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+      <div>
+        <h1 class="admin-h1">Merchandise Reports</h1>
+        <p class="admin-subtitle">Sales on the day PayMongo took the payment; refunds on the day PayMongo confirmed them</p>
+      </div>
+      <a href="/admin/merch/reports/export.xlsx?<%= qs %>" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-export>Export XLS</a>
+    </div>
+    <div class="space-y-5 px-6 py-5">
+      <form method="get" action="/admin/merch/reports" class="flex flex-wrap items-end gap-3" id="period-form">
+        <div><label for="mr-from" class="form-label">From</label><input id="mr-from" name="from" type="date" value="<%= period.from %>" class="form-input"></div>
+        <div><label for="mr-to" class="form-label">To</label><input id="mr-to" name="to" type="date" value="<%= period.to %>" class="form-input"></div>
+        <button type="submit" class="btn-primary px-4 py-2">Show</button>
+        <a href="/admin/merch/reports" class="btn-secondary px-3 py-2">This month</a>
+      </form>
+
+      <div class="grid grid-cols-2 gap-3 md:grid-cols-4 <%= showCost ? 'xl:grid-cols-6' : 'xl:grid-cols-5' %>" data-summary>
+        <div class="<%= tile %>"><p class="<%= lbl %>">Orders</p><p class="<%= big %>"><%= s.orders %></p><p class="text-xs text-slate-500"><%= s.units %> items</p></div>
+        <div class="<%= tile %>"><p class="<%= lbl %>">Item sales</p><p class="<%= big %>"><%= peso(s.itemSalesCentavos) %></p><p class="text-xs text-slate-500">+ <%= peso(s.deliveryCentavos) %> delivery, <%= peso(s.channelCentavos) %> channel fees</p></div>
+        <div class="<%= tile %>"><p class="<%= lbl %>">Charged</p><p class="<%= big %>"><%= peso(s.chargedCentavos) %></p><p class="text-xs text-slate-500"><%= peso(s.paymongoFeeCentavos) %> PayMongo fees</p></div>
+        <div class="<%= tile %>"><p class="<%= lbl %>">Refunds</p><p class="<%= big %> <%= s.refundsCentavos ? 'text-purple-700' : '' %>"><%= peso(s.refundsCentavos) %></p><p class="text-xs text-slate-500"><%= s.refundCount %> confirmed</p></div>
+        <div class="<%= tile %>"><p class="<%= lbl %>">Net received</p><p class="<%= big %> text-emerald-700"><%= peso(s.netCentavos) %></p></div>
+        <% if (showCost) { %>
+          <div class="<%= tile %>" data-profit><p class="<%= lbl %>">Profit on items</p><p class="<%= big %> <%= s.profitCentavos < 0 ? 'text-red-700' : '' %>"><%= peso(s.profitCentavos) %></p><p class="text-xs <%= s.costMissingUnits ? 'text-amber-700' : 'text-slate-500' %>"><%= s.costMissingUnits ? `${s.costMissingUnits} item(s) with no cost yet` : `cost ${peso(s.costCentavos)}` %></p></div>
+        <% } %>
+      </div>
+    </div>
+  </div>
+
+  <div class="admin-card overflow-hidden" data-products>
+    <h2 class="border-b border-slate-200 px-6 py-4 font-semibold">By product</h2>
+    <div class="overflow-x-auto">
+      <table class="admin-table">
+        <thead class="admin-table-head"><tr>
+          <th class="admin-th">Product</th><th class="admin-th">SKU</th><th class="admin-th text-right">Units</th><th class="admin-th text-right">Sales</th>
+          <% if (showCost) { %><th class="admin-th text-right">Cost</th><th class="admin-th text-right">Profit</th><th class="admin-th text-right">Margin</th><% } %>
+        </tr></thead>
+        <tbody class="admin-tbody">
+          <% products.forEach((r) => { %>
+            <tr class="admin-tr">
+              <td class="admin-td"><span class="font-medium text-slate-900"><%= r.productName %></span> <span class="text-slate-500"><%= r.label %></span></td>
+              <td class="admin-td font-mono text-xs"><%= r.sku %></td>
+              <td class="admin-td text-right tabular-nums"><%= r.units %></td>
+              <td class="admin-td text-right tabular-nums"><%= peso(r.salesCentavos) %></td>
+              <% if (showCost) { %>
+                <td class="admin-td text-right tabular-nums"><%= peso(r.costCentavos) %><% if (r.costMissingUnits) { %><span class="block text-xs text-amber-700"><%= r.costMissingUnits %> without cost</span><% } %></td>
+                <td class="admin-td text-right tabular-nums <%= r.profitCentavos < 0 ? 'text-red-700' : '' %>"><%= peso(r.profitCentavos) %></td>
+                <td class="admin-td text-right tabular-nums"><%= r.salesCentavos && !r.costMissingUnits ? `${Math.round((r.profitCentavos / r.salesCentavos) * 100)}%` : '—' %></td>
+              <% } %>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+      <% if (!products.length) { %><p class="py-8 text-center text-sm text-slate-500">No sales in this period.</p><% } %>
+    </div>
+  </div>
+
+  <div class="grid gap-6 xl:grid-cols-2">
+    <div class="admin-card overflow-hidden" data-orgs>
+      <h2 class="border-b border-slate-200 px-6 py-4 font-semibold">By student organization</h2>
+      <div class="overflow-x-auto">
+        <table class="admin-table">
+          <thead class="admin-table-head"><tr><th class="admin-th">Organization</th><th class="admin-th text-right">Orders</th><th class="admin-th text-right">Buyers</th><th class="admin-th text-right">Items</th><th class="admin-th text-right">Item sales</th></tr></thead>
+          <tbody class="admin-tbody">
+            <% organizations.forEach((r) => { %>
+              <tr class="admin-tr"><td class="admin-td"><%= r.organization %></td><td class="admin-td text-right tabular-nums"><%= r.orders %></td><td class="admin-td text-right tabular-nums"><%= r.buyers %></td><td class="admin-td text-right tabular-nums"><%= r.units %></td><td class="admin-td text-right tabular-nums"><%= peso(r.salesCentavos) %></td></tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <% if (!organizations.length) { %><p class="py-8 text-center text-sm text-slate-500">No sales in this period.</p><% } %>
+      </div>
+    </div>
+
+    <div class="admin-card overflow-hidden" data-returns>
+      <h2 class="border-b border-slate-200 px-6 py-4 font-semibold">Refunds &amp; exchanges</h2>
+      <div class="overflow-x-auto">
+        <table class="admin-table">
+          <thead class="admin-table-head"><tr><th class="admin-th">Request</th><th class="admin-th">Reason</th><th class="admin-th">Status</th><th class="admin-th text-right">Refund</th><th class="admin-th">Asked</th></tr></thead>
+          <tbody class="admin-tbody">
+            <% returns.forEach((r) => { %>
+              <tr class="admin-tr">
+                <td class="admin-td whitespace-nowrap"><a href="/admin/merch/returns/<%= r.returnNumber %>" class="font-mono text-xs text-indigo-700 hover:underline"><%= r.returnNumber %></a><span class="block text-xs text-slate-500"><%= r.kind %> · <%= r.orderNumber %></span></td>
+                <td class="admin-td"><%= r.reason %></td>
+                <td class="admin-td text-xs"><%= r.status %></td>
+                <td class="admin-td text-right tabular-nums"><%= r.refundCentavos ? peso(r.refundCentavos) : '—' %></td>
+                <td class="admin-td whitespace-nowrap text-xs text-slate-500"><%= when(r.createdAt) %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <% if (!returns.length) { %><p class="py-8 text-center text-sm text-slate-500">None in this period.</p><% } %>
+      </div>
+    </div>
+  </div>
+  <p class="text-xs text-slate-500">
+    Net received = charged − PayMongo fees − refunds.<% if (showCost) { %> Profit uses each item's cost when it was sold and leaves out items with no cost yet; refunds are not taken off it.<% } %>
+    The organization is the buyer's when they ordered. Delivery addresses are never in these reports.
+  </p>
+</div>

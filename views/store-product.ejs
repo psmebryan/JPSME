@@ -1,0 +1,120 @@
+<%#
+  One product in the Store: photos, its options (size / colour) with the
+  buyer's own price and what is left, a quantity, and Add to cart. The server
+  re-checks price, stock and the limit per buyer on every add and at checkout.
+%>
+<% const peso = (c) => '₱' + (c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); %>
+<% const p = product; const first = p.variants.find((v) => v.buyable) || p.variants[0]; %>
+<nav class="mb-6 flex flex-wrap items-center gap-2 text-sm text-slate-400">
+  <a href="/" class="hover:text-amber-300">Home</a><span>&rsaquo;</span><a href="/store" class="hover:text-amber-300">Store</a><span>&rsaquo;</span><span class="text-slate-300"><%= p.name %></span>
+</nav>
+<% if (access.preview) { %>
+  <div class="mb-6 rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">Preview: the Store is closed to members.</div>
+<% } %>
+
+<div class="grid gap-8 lg:grid-cols-2" id="store-product" data-product-id="<%= p.id %>">
+  <div>
+    <div class="overflow-hidden rounded-2xl border border-[#263b70] bg-[#0b1430]">
+      <% if (p.images.length) { %>
+        <img src="<%= p.images[0] %>" alt="<%= p.name %>" class="aspect-square w-full object-contain" data-main-photo>
+      <% } else { %>
+        <div class="flex aspect-square items-center justify-center text-slate-500">No photo yet</div>
+      <% } %>
+    </div>
+    <% if (p.images.length > 1) { %>
+      <div class="mt-3 grid grid-cols-6 gap-2">
+        <% p.images.forEach((src, i) => { %>
+          <button type="button" class="overflow-hidden rounded-lg border <%= i === 0 ? 'border-amber-400' : 'border-[#263b70]' %>" data-thumb="<%= src %>" aria-label="Photo <%= i + 1 %>">
+            <img src="<%= src %>" alt="" class="aspect-square w-full object-cover">
+          </button>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+
+  <div>
+    <h1 class="text-3xl font-bold text-white"><%= p.name %></h1>
+    <p class="mt-3 text-3xl font-bold text-amber-300" data-price><%= first.yourPrice === null ? 'Price coming soon' : peso(first.yourPrice) %></p>
+    <p class="mt-1 text-sm text-slate-400" data-price-type>
+      <% if (!locals.currentUser) { %>Member price shown after you sign in.<% } else if (member) { %>Member price<% } else { %>Non-member price<% if (first.memberPriceCentavos !== null) { %> · members pay <%= peso(first.memberPriceCentavos) %><% } %><% } %>
+    </p>
+    <% if (p.description) { %><p class="mt-5 whitespace-pre-line leading-relaxed text-slate-300"><%= p.description %></p><% } %>
+
+    <fieldset class="mt-6">
+      <legend class="mb-2 text-sm font-medium text-slate-300">Choose an option</legend>
+      <div class="flex flex-wrap gap-2" data-variants>
+        <% p.variants.forEach((v) => { %>
+          <button type="button"
+                  class="rounded-lg border px-4 py-2 text-sm font-medium <%= v.id === first.id ? 'border-amber-400 bg-amber-400/10 text-amber-200' : 'border-[#263b70] text-slate-200 hover:border-amber-400/60' %> <%= v.buyable ? '' : 'opacity-50' %>"
+                  data-variant='<%= JSON.stringify(v) %>' aria-pressed="<%= v.id === first.id %>">
+            <%= v.label %><% if (v.available <= 0) { %> · sold out<% } %>
+          </button>
+        <% }) %>
+      </div>
+      <p class="mt-2 text-sm" data-stock-note></p>
+    </fieldset>
+
+    <% if (locals.currentUser) { %>
+      <div class="mt-6 flex items-center gap-3">
+        <label for="qty" class="text-sm text-slate-300">Quantity</label>
+        <input id="qty" type="number" min="1" max="100" value="1" class="w-24 rounded-lg border border-[#263b70] bg-[#0b1430] px-3 py-2 text-white">
+      </div>
+      <div class="mt-6 flex flex-wrap gap-3">
+        <button type="button" class="rounded-lg bg-amber-400 px-6 py-3 font-semibold text-[#071126] hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50" data-add>Add to cart</button>
+        <a href="/store/cart" class="rounded-lg border border-[#263b70] px-6 py-3 font-semibold text-slate-200 hover:border-amber-400">Go to cart</a>
+      </div>
+    <% } else { %>
+      <a href="/login?next=/store/products/<%= p.id %>" class="mt-6 inline-block rounded-lg bg-amber-400 px-6 py-3 font-semibold text-[#071126] hover:bg-amber-300">Sign in to buy</a>
+    <% } %>
+  </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  const root = document.getElementById('store-product');
+  const peso = (c) => '₱' + (c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const signedIn = <%= locals.currentUser ? 'true' : 'false' %>;
+  const member = <%= member ? 'true' : 'false' %>;
+  const buttons = Array.from(root.querySelectorAll('[data-variant]'));
+  const addBtn = root.querySelector('[data-add]');
+  const qty = root.querySelector('#qty');
+  let current = JSON.parse(buttons.find((b) => b.getAttribute('aria-pressed') === 'true').getAttribute('data-variant'));
+
+  function show(v) {
+    current = v;
+    buttons.forEach((b) => {
+      const on = JSON.parse(b.getAttribute('data-variant')).id === v.id;
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle('border-amber-400', on); b.classList.toggle('bg-amber-400/10', on); b.classList.toggle('text-amber-200', on);
+      b.classList.toggle('border-[#263b70]', !on); b.classList.toggle('text-slate-200', !on);
+    });
+    root.querySelector('[data-price]').textContent = v.yourPrice === null ? 'Price coming soon' : peso(v.yourPrice);
+    if (signedIn && !member) {
+      root.querySelector('[data-price-type]').textContent = `Non-member price${v.memberPriceCentavos !== null ? ` · members pay ${peso(v.memberPriceCentavos)}` : ''}`;
+    }
+    const note = root.querySelector('[data-stock-note]');
+    note.className = 'mt-2 text-sm';
+    if (v.yourPrice === null) { note.textContent = 'Not on sale yet: the price is still being set.'; note.classList.add('text-slate-400'); }
+    else if (v.available <= 0) { note.textContent = 'Sold out.'; note.classList.add('text-red-400'); }
+    else if (v.fewLeft) { note.textContent = `Only ${v.available} left.`; note.classList.add('text-amber-300'); }
+    else { note.textContent = 'In stock.'; note.classList.add('text-emerald-400'); }
+    if (v.limitPerBuyer) note.textContent += ` Limit ${v.limitPerBuyer} per member.`;
+    if (addBtn) addBtn.disabled = !v.buyable;
+    if (qty) qty.max = String(Math.max(1, Math.min(100, v.available, v.limitPerBuyer || 100)));
+  }
+  buttons.forEach((b) => b.addEventListener('click', () => show(JSON.parse(b.getAttribute('data-variant')))));
+  root.querySelectorAll('[data-thumb]').forEach((t) => t.addEventListener('click', () => {
+    root.querySelector('[data-main-photo]').src = t.getAttribute('data-thumb');
+    root.querySelectorAll('[data-thumb]').forEach((o) => { o.classList.toggle('border-amber-400', o === t); o.classList.toggle('border-[#263b70]', o !== t); });
+  }));
+  if (addBtn) addBtn.addEventListener('click', async () => {
+    addBtn.disabled = true;
+    try {
+      const res = await apiFetch('/api/store/cart', { method: 'POST', body: JSON.stringify({ variantId: current.id, quantity: Number(qty.value) || 1 }) });
+      showToast(`${res.message} ${res.data.cart.items.length} item${res.data.cart.items.length === 1 ? '' : 's'} in your cart.`);
+    } catch (err) { showToast(err.message, 'error'); }
+    addBtn.disabled = !current.buyable;
+  });
+  show(current);
+}());
+</script>

@@ -341,7 +341,8 @@ function initPaymentsModule() {
   const module = document.getElementById('payments-module');
   if (!module) return;
 
-  const isMainAdmin = module.dataset.isMainAdmin === '1';
+  // data-can-act 0: view only (Finance & Logistics), no refund or reconcile.
+  const isMainAdmin = module.dataset.isMainAdmin === '1' && module.dataset.canAct !== '0';
   const table = document.getElementById('payments-table');
   const filterForm = document.getElementById('payments-filter-form');
   const pagination = document.getElementById('payments-pagination');

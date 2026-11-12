@@ -62,6 +62,9 @@ async function apiFetch(url, options = {}) {
     // Set only for the failures the server has deliberately tagged, so a caller
     // can branch on the reason instead of on the wording. Null everywhere else.
     err.code = payload.code || null;
+    // Anything the server attached to the refusal (e.g. the store's unpaid
+    // order number, so the page can go to it).
+    err.data = payload.data || null;
     throw err;
   }
 

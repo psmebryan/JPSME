@@ -1,0 +1,73 @@
+<%#
+  The delivery address form (Store checkout, My Addresses, fixing an order's
+  address). Region -> Province -> City/Municipality -> Barangay are linked
+  dropdowns from the PSA's PSGC list (public/js/address-form.js fills them).
+  Locals: prefix (id prefix), addressTypes, value (an address to start from, or
+  null). The server checks every rule again (merchFulfilment.validateAddress).
+%>
+<% const v = locals.value || {}; const p = locals.prefix || 'addr'; %>
+<div class="grid gap-3 sm:grid-cols-2" data-address-form
+     data-region="<%= v.regionCode || '' %>" data-province="<%= v.provinceCode || '' %>" data-city="<%= v.cityCode || '' %>" data-barangay="<%= v.barangayCode || '' %>">
+  <div class="sm:col-span-2">
+    <label for="<%= p %>-name" class="mb-1 block text-sm text-slate-300">Recipient full name <span class="text-red-400">*</span></label>
+    <input id="<%= p %>-name" name="recipientName" required maxlength="150" value="<%= v.recipientName || '' %>" placeholder="First and last name" class="jp-field">
+  </div>
+  <div>
+    <label for="<%= p %>-mobile" class="mb-1 block text-sm text-slate-300">Mobile number <span class="text-red-400">*</span></label>
+    <input id="<%= p %>-mobile" name="mobile" required inputmode="tel" maxlength="16" value="<%= v.mobile ? v.mobile.replace(/^\+63/, '0') : '' %>" placeholder="09XXXXXXXXX" class="jp-field">
+  </div>
+  <div>
+    <label for="<%= p %>-alt" class="mb-1 block text-sm text-slate-300">Alternate number</label>
+    <input id="<%= p %>-alt" name="altMobile" inputmode="tel" maxlength="16" value="<%= v.altMobile ? v.altMobile.replace(/^\+63/, '0') : '' %>" placeholder="Optional, for the courier" class="jp-field">
+  </div>
+  <div>
+    <label for="<%= p %>-house" class="mb-1 block text-sm text-slate-300">House, unit or lot and block no. <span class="text-red-400">*</span></label>
+    <input id="<%= p %>-house" name="houseNo" required maxlength="100" value="<%= v.houseNo || '' %>" placeholder="e.g. Unit 4B, or Lot 12 Blk 3" class="jp-field">
+  </div>
+  <div>
+    <label for="<%= p %>-bldg" class="mb-1 block text-sm text-slate-300">Building or compound</label>
+    <input id="<%= p %>-bldg" name="building" maxlength="120" value="<%= v.building || '' %>" placeholder="For condos, dorms, offices" class="jp-field">
+  </div>
+  <div>
+    <label for="<%= p %>-street" class="mb-1 block text-sm text-slate-300">Street <span class="text-red-400">*</span></label>
+    <input id="<%= p %>-street" name="street" required maxlength="150" value="<%= v.street || '' %>" placeholder="Street, or purok / sitio" class="jp-field">
+  </div>
+  <div>
+    <label for="<%= p %>-subd" class="mb-1 block text-sm text-slate-300">Subdivision, village or zone</label>
+    <input id="<%= p %>-subd" name="subdivision" maxlength="120" value="<%= v.subdivision || '' %>" class="jp-field">
+  </div>
+  <div>
+    <label for="<%= p %>-region" class="mb-1 block text-sm text-slate-300">Region <span class="text-red-400">*</span></label>
+    <select id="<%= p %>-region" name="regionCode" required class="jp-field" data-level="region"><option value="">Loading…</option></select>
+  </div>
+  <div>
+    <label for="<%= p %>-province" class="mb-1 block text-sm text-slate-300">Province <span class="text-red-400">*</span></label>
+    <select id="<%= p %>-province" name="provinceCode" class="jp-field" data-level="province" disabled><option value="">Choose a region first</option></select>
+  </div>
+  <div>
+    <label for="<%= p %>-city" class="mb-1 block text-sm text-slate-300">City or municipality <span class="text-red-400">*</span></label>
+    <select id="<%= p %>-city" name="cityCode" required class="jp-field" data-level="city" disabled><option value="">Choose a province first</option></select>
+  </div>
+  <div>
+    <label for="<%= p %>-bgy" class="mb-1 block text-sm text-slate-300">Barangay <span class="text-red-400">*</span></label>
+    <select id="<%= p %>-bgy" name="barangayCode" required class="jp-field" data-level="barangay" disabled><option value="">Choose a city first</option></select>
+  </div>
+  <div>
+    <label for="<%= p %>-zip" class="mb-1 block text-sm text-slate-300">ZIP code <span class="text-red-400">*</span></label>
+    <input id="<%= p %>-zip" name="zip" required inputmode="numeric" pattern="\d{4}" maxlength="4" value="<%= v.zip || '' %>" placeholder="4 digits" class="jp-field">
+  </div>
+  <div>
+    <label for="<%= p %>-type" class="mb-1 block text-sm text-slate-300">Address type <span class="text-red-400">*</span></label>
+    <select id="<%= p %>-type" name="addressType" required class="jp-field">
+      <% Object.entries(addressTypes).forEach(([k, label]) => { %><option value="<%= k %>" <%= v.addressType === k ? 'selected' : '' %>><%= label %></option><% }) %>
+    </select>
+  </div>
+  <div class="sm:col-span-2">
+    <label for="<%= p %>-landmark" class="mb-1 block text-sm text-slate-300">Landmark <span class="text-red-400">*</span></label>
+    <input id="<%= p %>-landmark" name="landmark" required maxlength="200" value="<%= v.landmark || '' %>" placeholder="Nearby church, school, store or gate, to help the rider" class="jp-field">
+  </div>
+  <div class="sm:col-span-2">
+    <label for="<%= p %>-notes" class="mb-1 block text-sm text-slate-300">Delivery notes</label>
+    <input id="<%= p %>-notes" name="notes" maxlength="300" value="<%= v.notes || '' %>" placeholder="Gate code, best time to deliver, leave with the guard" class="jp-field">
+  </div>
+</div>

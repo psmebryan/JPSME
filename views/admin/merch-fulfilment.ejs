@@ -1,0 +1,182 @@
+<%#
+  Merchandise -> Delivery & Pickup. Delivery fee per zone (no fee = delivery to
+  that zone not offered) and which zone each region belongs to; pickup points
+  (office, chapter, or an upcoming event, with a last day); and the PSA's PSGC
+  list behind the address dropdowns, with when it was last imported. See
+  merchFulfilment.service. Phase 4: editable with settings.edit (Logistics, the
+  main admin, a President with Merchandise); the refund limit and window only
+  by the main admin (policy.edit), so nobody sets the limit on their own
+  approvals. Everyone else sees it read only (a disabled fieldset).
+%>
+<% const mcF = (c) => (locals.merchCaps ? merchCaps.has(c) : true); %>
+<% const pesoField = (c) => (c === null || c === undefined ? '' : (c / 100).toFixed(2)); %>
+<% const day = (d) => (d ? new Date(d).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium' }) : ''); %>
+<div class="w-full" id="merch-fulfilment">
+<fieldset class="space-y-6" <%= mcF('settings.edit') ? '' : 'disabled' %>>
+  <div>
+    <h1 class="admin-h1">Delivery &amp; Pickup</h1>
+    <p class="admin-subtitle">Delivery fees by zone, pickup points, and the address list</p>
+  </div>
+
+  <div class="grid gap-6 xl:grid-cols-2">
+    <%# ---------- zones ---------- %>
+    <section class="admin-card overflow-hidden" data-zones>
+      <div class="border-b border-slate-200 px-5 py-4">
+        <h2 class="font-semibold text-slate-900">Delivery fees</h2>
+        <p class="text-xs text-slate-500">The fee follows the region of the buyer's address. Leave a fee empty to not deliver there yet.</p>
+      </div>
+      <table class="admin-table">
+        <thead class="admin-table-head"><tr><th class="admin-th">Zone</th><th class="admin-th">Fee (PHP)</th><th class="admin-th">On</th><th class="admin-th"></th></tr></thead>
+        <tbody class="admin-tbody">
+          <% zones.forEach((z) => { %>
+            <tr class="admin-tr" data-zone="<%= z.id %>">
+              <td class="admin-td"><p class="font-medium text-slate-900"><%= z.name %></p><p class="text-xs text-slate-500"><%= z.regions.length %> region<%= z.regions.length === 1 ? '' : 's' %></p></td>
+              <td class="admin-td"><input name="fee" type="text" inputmode="decimal" value="<%= pesoField(z.feeCentavos) %>" placeholder="Not offered" class="form-input w-32"></td>
+              <td class="admin-td"><input type="checkbox" name="isActive" <%= z.isActive ? 'checked' : '' %> aria-label="<%= z.name %> on"></td>
+              <td class="admin-td text-right"><button type="button" class="btn-secondary px-3 py-1.5 text-sm" data-save-zone>Save</button></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+      <details class="border-t border-slate-200 px-5 py-3 text-sm">
+        <summary class="cursor-pointer font-medium text-slate-700">Which zone each region is in</summary>
+        <div class="mt-3 space-y-2" data-region-zones>
+          <% regions.forEach((r) => { const z = zones.find((x) => x.regions.some((y) => y.code === r.code)); %>
+            <label class="flex items-center justify-between gap-3">
+              <span class="text-slate-700"><%= r.name %></span>
+              <select class="form-input w-44" data-region="<%= r.code %>">
+                <% if (!z) { %><option value="">No zone (no delivery)</option><% } %>
+                <% zones.forEach((x) => { %><option value="<%= x.id %>" <%= z && z.id === x.id ? 'selected' : '' %>><%= x.name %></option><% }) %>
+              </select>
+            </label>
+          <% }) %>
+          <% if (!regions.length) { %><p class="text-amber-700">Import the PSGC list below first.</p><% } %>
+        </div>
+      </details>
+    </section>
+
+    <%# ---------- PSGC ---------- %>
+    <section class="admin-card p-5" data-psgc>
+      <h2 class="font-semibold text-slate-900">Address list (PSA PSGC)</h2>
+      <% if (psgcImport) { %>
+        <p class="mt-1 text-sm text-slate-600">Last imported <strong><%= day(psgcImport.at) %></strong> from <span class="font-mono text-xs"><%= psgcImport.source %></span>:
+          <%= psgcImport.regions %> regions, <%= psgcImport.provinces %> provinces, <%= psgcImport.cities.toLocaleString('en-PH') %> cities and municipalities, <%= psgcImport.barangays.toLocaleString('en-PH') %> barangays.</p>
+      <% } else { %>
+        <p class="mt-1 text-sm text-amber-700">Not imported yet: buyers cannot enter a delivery address until it is.</p>
+      <% } %>
+      <p class="mt-3 text-xs text-slate-500">Download the latest "PSGC Publication Datafile" (.xlsx) from <a href="https://psa.gov.ph/classification/psgc" target="_blank" rel="noopener" class="text-indigo-600 hover:underline">psa.gov.ph/classification/psgc</a> and upload it here whenever the PSA releases a new one (every quarter). Saved addresses keep working.</p>
+      <form class="mt-3 flex flex-wrap items-center gap-2" data-psgc-form>
+        <input type="file" name="workbook" accept=".xlsx" required class="form-input max-w-xs">
+        <button type="submit" class="btn-primary px-4 py-2">Import</button>
+      </form>
+    </section>
+  </div>
+
+  <%# ---------- refunds and exchanges ---------- %>
+  <section class="admin-card p-5" data-return-settings>
+    <fieldset <%= mcF('policy.edit') ? '' : 'disabled' %>>
+    <h2 class="font-semibold text-slate-900">Refunds &amp; exchanges<% if (!mcF('policy.edit')) { %> <span class="text-xs font-normal text-slate-500">(set by the main admin)</span><% } %></h2>
+    <div class="mt-3 grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+      <label class="text-sm text-slate-700">Approval limit (PHP)
+        <input name="approvalLimit" type="text" inputmode="decimal" value="<%= returnSettings.approvalLimitCentavos === null ? '' : (returnSettings.approvalLimitCentavos / 100).toFixed(2) %>" placeholder="No limit" class="form-input mt-1">
+        <span class="mt-1 block text-xs text-slate-500">A refund above this needs a second approval, from the main admin or the National President. Empty: one approval for every refund.</span>
+      </label>
+      <label class="text-sm text-slate-700">Return window (days)
+        <input name="windowDays" type="number" min="1" max="365" value="<%= returnSettings.windowDays === null ? '' : returnSettings.windowDays %>" placeholder="No limit" class="form-input mt-1">
+        <span class="mt-1 block text-xs text-slate-500">How long after delivery or pickup a buyer can ask for a refund or exchange.</span>
+      </label>
+      <button type="button" class="btn-primary px-4 py-2" data-save-returns>Save</button>
+    </div>
+    </fieldset>
+  </section>
+
+  <%# ---------- pickup points ---------- %>
+  <section class="admin-card overflow-hidden" data-pickup-points>
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+      <div>
+        <h2 class="font-semibold text-slate-900">Pickup points</h2>
+        <p class="text-xs text-slate-500">Where buyers can collect their orders. An event pickup point stops being offered after its last day.</p>
+      </div>
+    </div>
+    <table class="admin-table">
+      <thead class="admin-table-head"><tr><th class="admin-th">Name</th><th class="admin-th">Address</th><th class="admin-th">Hours</th><th class="admin-th">Last day</th><th class="admin-th">On</th><th class="admin-th"></th></tr></thead>
+      <tbody class="admin-tbody">
+        <% pickupPoints.forEach((p) => { %>
+          <tr class="admin-tr" data-point="<%= p.id %>">
+            <td class="admin-td"><input name="name" value="<%= p.name %>" maxlength="120" class="form-input"></td>
+            <td class="admin-td"><input name="address" value="<%= p.address %>" maxlength="300" class="form-input"></td>
+            <td class="admin-td"><input name="hours" value="<%= p.hours || '' %>" maxlength="200" class="form-input"></td>
+            <td class="admin-td"><input name="endsAt" type="date" value="<%= p.endsAt ? new Date(new Date(p.endsAt).getTime() + 8 * 3600e3).toISOString().slice(0, 10) : '' %>" class="form-input"></td>
+            <td class="admin-td"><input type="checkbox" name="isActive" <%= p.isActive ? 'checked' : '' %> aria-label="<%= p.name %> on"></td>
+            <td class="admin-td text-right"><button type="button" class="btn-secondary px-3 py-1.5 text-sm" data-save-point>Save</button></td>
+          </tr>
+        <% }) %>
+        <tr class="admin-tr bg-slate-50" data-new-point>
+          <td class="admin-td"><input name="name" maxlength="120" placeholder="e.g. PSME National Office" class="form-input"></td>
+          <td class="admin-td"><input name="address" maxlength="300" placeholder="19 Scout Bayoran St., Quezon City" class="form-input"></td>
+          <td class="admin-td"><input name="hours" maxlength="200" placeholder="Mon–Fri, 9am–5pm" class="form-input"></td>
+          <td class="admin-td"><input name="endsAt" type="date" class="form-input"></td>
+          <td class="admin-td">
+            <select name="eventId" class="form-input" aria-label="Or an event">
+              <option value="">Not an event</option>
+              <% events.forEach((e) => { %><option value="<%= e.id %>" data-title="<%= e.title %>" data-location="<%= e.location || '' %>" data-date="<%= new Date(new Date(e.startDate).getTime() + 8 * 3600e3).toISOString().slice(0, 10) %>"><%= e.title %></option><% }) %>
+            </select>
+          </td>
+          <td class="admin-td text-right"><button type="button" class="btn-primary px-3 py-1.5 text-sm" data-add-point>Add</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+</fieldset>
+</div>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  const root = document.getElementById('merch-fulfilment');
+  const val = (row, n) => row.querySelector(`[name="${n}"]`);
+  const ok = (res) => showToast(res.message);
+  const fail = (err) => showToast(err.message, 'error');
+
+  root.querySelectorAll('[data-save-zone]').forEach((b) => b.addEventListener('click', async () => {
+    const row = b.closest('[data-zone]');
+    try { ok(await apiFetch(`/api/admin/merch/zones/${row.dataset.zone}`, { method: 'PUT', body: JSON.stringify({ fee: val(row, 'fee').value, isActive: val(row, 'isActive').checked }) })); } catch (err) { fail(err); }
+  }));
+  root.querySelectorAll('[data-region]').forEach((s) => s.addEventListener('change', async () => {
+    if (!s.value) return;
+    try { ok(await apiFetch('/api/admin/merch/zone-regions', { method: 'PUT', body: JSON.stringify({ regionCode: s.dataset.region, zoneId: Number(s.value) }) })); } catch (err) { fail(err); }
+  }));
+
+  const fields = (row) => ({ name: val(row, 'name').value, address: val(row, 'address').value, hours: val(row, 'hours').value, endsAt: val(row, 'endsAt').value });
+  root.querySelectorAll('[data-save-point]').forEach((b) => b.addEventListener('click', async () => {
+    const row = b.closest('[data-point]');
+    try { ok(await apiFetch(`/api/admin/merch/pickup-points/${row.dataset.point}`, { method: 'PUT', body: JSON.stringify({ ...fields(row), isActive: val(row, 'isActive').checked }) })); } catch (err) { fail(err); }
+  }));
+  const add = root.querySelector('[data-new-point]');
+  // Choosing an event fills its name, place and last day.
+  val(add, 'eventId').addEventListener('change', (e) => {
+    const o = e.target.selectedOptions[0];
+    if (!o || !o.value) return;
+    if (!val(add, 'name').value) val(add, 'name').value = `${o.dataset.title} (event pickup)`;
+    if (!val(add, 'address').value) val(add, 'address').value = o.dataset.location || '';
+    if (!val(add, 'endsAt').value) val(add, 'endsAt').value = o.dataset.date;
+  });
+  root.querySelector('[data-add-point]').addEventListener('click', async () => {
+    try {
+      ok(await apiFetch('/api/admin/merch/pickup-points', { method: 'POST', body: JSON.stringify({ ...fields(add), eventId: val(add, 'eventId').value }) }));
+      setTimeout(() => window.location.reload(), 600);
+    } catch (err) { fail(err); }
+  });
+
+  const rs = root.querySelector('[data-return-settings]');
+  rs.querySelector('[data-save-returns]').addEventListener('click', async () => {
+    try { ok(await apiFetch('/api/admin/merch/return-settings', { method: 'PUT', body: JSON.stringify({ approvalLimit: rs.querySelector('[name="approvalLimit"]').value, windowDays: rs.querySelector('[name="windowDays"]').value }) })); } catch (err) { fail(err); }
+  });
+
+  root.querySelector('[data-psgc-form]').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector('button');
+    btn.disabled = true; btn.textContent = 'Importing… (about 20 seconds)';
+    try { ok(await apiFetch('/api/admin/merch/psgc/import', { method: 'POST', body: new FormData(e.target) })); setTimeout(() => window.location.reload(), 1200); } catch (err) { fail(err); btn.disabled = false; btn.textContent = 'Import'; }
+  });
+}());
+</script>

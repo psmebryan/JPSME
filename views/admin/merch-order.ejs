@@ -1,0 +1,178 @@
+<%#
+  Merchandise -> one order. Who bought what, where it goes (the address as a
+  courier label, or the pickup point), the payment, the buttons for the steps
+  this order can take next (merchOrders.service STEPS), and its timeline.
+  Phase 4: the steps need orders.fulfil; the address is blank (addressHidden)
+  for anyone who may not see it, or once the order no longer needs it.
+%>
+<%
+  const o = order;
+  const peso = (c) => '₱' + (c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const when = (d) => new Date(d).toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' });
+  const tone = { PAID: 'badge-amber', PACKED: 'badge-blue', SHIPPED: 'badge-blue', READY_FOR_PICKUP: 'badge-green', DELIVERED: 'badge-green', PICKED_UP: 'badge-green', ADDRESS_HOLD: 'badge-red', UNCLAIMED: 'badge-amber', CANCELLED: 'badge-slate', REFUNDED: 'badge-purple', AWAITING_PAYMENT: 'badge-slate' };
+  const d = o.fulfilment === 'DELIVERY';
+  const mc = (c) => (locals.merchCaps ? merchCaps.has(c) : true);
+  const fulfil = mc('orders.fulfil');
+  const raiseOk = mc('returns.goods') || mc('refund.approve');
+  const can = !fulfil ? {} : {
+    pack: o.status === 'PAID',
+    ship: d && o.status === 'PACKED',
+    deliver: d && o.status === 'SHIPPED',
+    ready: !d && o.status === 'PACKED',
+    pickedUp: !d && ['READY_FOR_PICKUP', 'UNCLAIMED'].includes(o.status),
+    unclaimed: !d && o.status === 'READY_FOR_PICKUP',
+    reopen: !d && o.status === 'UNCLAIMED',
+    holdAddress: d && ['PAID', 'PACKED'].includes(o.status),
+    resume: o.status === 'ADDRESS_HOLD',
+  };
+%>
+<div class="w-full space-y-6" id="merch-order" data-order="<%= o.orderNumber %>">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <a href="/admin/merch/orders" class="text-sm text-indigo-600 hover:underline">&larr; All orders</a>
+      <h1 class="admin-h1 mt-1">Order <span class="font-mono"><%= o.orderNumber %></span> <span class="<%= tone[o.status] || 'badge-slate' %> align-middle text-sm"><%= o.statusLabel %></span></h1>
+    </div>
+    <% if (fulfil) { %><a href="/admin/merch/orders/print?orders=<%= o.orderNumber %>" target="_blank" rel="noopener" class="btn-secondary px-4 py-2">Print packing slip</a><% } %>
+  </div>
+
+  <% if (o.status === 'ADDRESS_HOLD') { %>
+    <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">Paused for the address: <%= o.addressNote %>. The buyer was emailed a link to fix it.</div>
+  <% } %>
+
+  <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+    <div class="space-y-6">
+      <div class="admin-card overflow-hidden">
+        <table class="admin-table">
+          <thead class="admin-table-head"><tr><th class="admin-th">Item</th><th class="admin-th">SKU</th><th class="admin-th text-right">Qty</th><th class="admin-th text-right">Price</th><th class="admin-th text-right">Line</th></tr></thead>
+          <tbody class="admin-tbody">
+            <% o.items.forEach((i) => { %>
+              <tr class="admin-tr"><td class="admin-td font-medium"><%= i.productName %> <span class="text-slate-500">(<%= i.label %>)</span></td><td class="admin-td font-mono text-xs"><%= i.sku %></td><td class="admin-td text-right tabular-nums"><%= i.quantity %></td><td class="admin-td text-right tabular-nums"><%= peso(i.unitPrice) %><%= i.priceType === 'MEMBER' ? ' (M)' : '' %></td><td class="admin-td text-right tabular-nums"><%= peso(i.lineTotal) %></td></tr>
+            <% }) %>
+          </tbody>
+        </table>
+        <dl class="grid grid-cols-2 gap-1 border-t border-slate-200 px-5 py-3 text-sm">
+          <dt class="text-slate-500">Items</dt><dd class="text-right tabular-nums"><%= peso(o.subtotal) %></dd>
+          <dt class="text-slate-500">Delivery</dt><dd class="text-right tabular-nums"><%= o.fulfilment === 'PICKUP' ? 'Pickup' : peso(o.deliveryFee) %></dd>
+          <dt class="text-slate-500">Channel fee</dt><dd class="text-right tabular-nums"><%= peso(o.channelFee) %></dd>
+          <dt class="font-semibold">Total paid</dt><dd class="text-right font-semibold tabular-nums"><%= peso(o.total) %></dd>
+          <% if (o.paymentReference) { %><dt class="text-slate-500">PayMongo</dt><dd class="text-right font-mono text-xs"><%= o.paymentReference %></dd><% } %>
+        </dl>
+      </div>
+
+      <div class="admin-card p-5" data-timeline>
+        <h2 class="mb-3 font-semibold text-slate-900">Timeline</h2>
+        <ol class="space-y-3 border-l border-slate-200 pl-4 text-sm">
+          <% o.events.forEach((e) => { %>
+            <li><p class="font-medium text-slate-900"><%= e.label %> <span class="font-normal text-slate-500">· <%= when(e.at) %><%= e.by ? ` · ${e.by}` : '' %></span></p><% if (e.note) { %><p class="text-slate-600"><%= e.note %></p><% } %></li>
+          <% }) %>
+        </ol>
+      </div>
+    </div>
+
+    <div class="space-y-6">
+      <div class="admin-card space-y-3 p-5" data-actions>
+        <h2 class="font-semibold text-slate-900">Next step</h2>
+        <% if (!fulfil) { %><p class="text-sm text-slate-500">Packing, shipping and pickups are done by Logistics. This order is <%= o.statusLabel.toLowerCase() %>.</p><% } else if (!Object.values(can).some(Boolean)) { %><p class="text-sm text-slate-500">Nothing to do: this order is <%= o.statusLabel.toLowerCase() %>.</p><% } %>
+        <% if (can.pack) { %><button type="button" class="btn-primary w-full py-2" data-step="pack">Mark packed</button><% } %>
+        <% if (can.ship) { %>
+          <div class="space-y-2 rounded-lg border border-slate-200 p-3" data-ship-form>
+            <input name="courier" maxlength="80" placeholder="Courier (e.g. LBC, J&T)" class="form-input">
+            <input name="trackingNumber" maxlength="80" placeholder="Tracking number" class="form-input">
+            <button type="button" class="btn-primary w-full py-2" data-step="ship">Mark shipped</button>
+          </div>
+        <% } %>
+        <% if (can.deliver) { %><button type="button" class="btn-primary w-full py-2" data-step="deliver">Mark delivered</button><% } %>
+        <% if (can.ready) { %><button type="button" class="btn-primary w-full py-2" data-step="ready">Mark ready for pickup</button><% } %>
+        <% if (can.pickedUp) { %><button type="button" class="btn-primary w-full py-2" data-step="pickedUp" data-confirm="Hand this order over now? Scanning the buyer's QR on the Pickup handover page is better.">Mark picked up</button><% } %>
+        <% if (can.reopen) { %><button type="button" class="btn-secondary w-full py-2" data-step="reopen">Ready for pickup again</button><% } %>
+        <% if (can.resume) { %><button type="button" class="btn-secondary w-full py-2" data-step="resume" data-confirm="Lift the address hold without the buyer changing it?">Lift the address hold</button><% } %>
+        <% if (can.holdAddress || can.unclaimed) { %>
+          <div class="space-y-2 rounded-lg border border-slate-200 p-3">
+            <input name="note" maxlength="300" placeholder="<%= can.holdAddress ? 'What looks wrong with the address?' : 'Note, e.g. reminded twice' %>" class="form-input" data-note>
+            <% if (can.holdAddress) { %><button type="button" class="btn-secondary w-full py-2 text-red-700" data-step="holdAddress">Address needs fixing</button><% } %>
+            <% if (can.unclaimed) { %><button type="button" class="btn-secondary w-full py-2" data-step="unclaimed">Mark not collected</button><% } %>
+          </div>
+        <% } %>
+      </div>
+
+      <div class="admin-card p-5 text-sm" data-where>
+        <h2 class="mb-2 font-semibold text-slate-900"><%= d ? `Delivery · ${o.zoneName}` : 'Pickup' %></h2>
+        <% if (d) { %>
+          <% if (o.addressHidden) { %><p class="text-slate-500" data-address-hidden>The delivery address is not shown: <%= mc('addresses.view') ? 'this order no longer needs it.' : 'only Logistics and the main admin see it.' %></p><% } %>
+          <% (o.shipLines || []).forEach((l, i) => { %><p class="<%= i === 0 ? 'font-semibold' : 'text-slate-700' %>"><%= l %></p><% }) %>
+          <% if (o.trackingNumber) { %><p class="mt-2 text-slate-600"><%= o.courier %> · <span class="font-mono"><%= o.trackingNumber %></span></p><% } %>
+        <% } else if (o.pickupPoint) { %>
+          <p class="font-semibold"><%= o.pickupPoint.name %></p><p class="text-slate-700"><%= o.pickupPoint.address %></p>
+        <% } %>
+      </div>
+
+      <div class="admin-card space-y-2 p-5 text-sm" data-order-returns>
+        <h2 class="font-semibold text-slate-900">Refunds &amp; exchanges</h2>
+        <% (locals.returns || []).forEach((r) => { %>
+          <a href="/admin/merch/returns/<%= r.returnNumber %>" class="block rounded border border-slate-200 px-3 py-2 hover:bg-slate-50"><span class="font-mono"><%= r.returnNumber %></span> · <%= r.kindLabel %> · <%= r.reasonLabel %><br><span class="text-xs text-slate-500"><%= r.statusLabel %></span></a>
+        <% }) %>
+        <% if (!(locals.returns || []).length) { %><p class="text-slate-500">None.</p><% } %>
+        <% if (raiseOk && o.paidAt && !['CANCELLED', 'REFUNDED', 'AWAITING_PAYMENT'].includes(o.status)) { %>
+          <details class="pt-1">
+            <summary class="cursor-pointer text-indigo-600">Raise one for the buyer</summary>
+            <div class="mt-2 space-y-2" data-raise>
+              <select class="form-input" data-raise-kind><option value="REFUND">Refund</option></select>
+              <select class="form-input" data-raise-reason>
+                <% Object.entries(locals.reasons || {}).forEach(([k, label]) => { %><option value="<%= k %>"><%= label %></option><% }) %>
+              </select>
+              <textarea rows="2" maxlength="1000" placeholder="What happened" class="form-input" data-raise-details></textarea>
+              <p class="text-xs text-slate-500">Covers every item on the order. For part of an order, ask the buyer to request it from their order page.</p>
+              <button type="button" class="btn-secondary w-full py-2" data-raise-send>Raise request</button>
+            </div>
+          </details>
+        <% } %>
+      </div>
+
+      <div class="admin-card p-5 text-sm">
+        <h2 class="mb-2 font-semibold text-slate-900">Buyer</h2>
+        <p class="font-medium"><%= o.buyerName %></p>
+        <p class="text-slate-600"><%= o.buyerEmail %></p>
+        <p class="mt-1 text-slate-500"><%= o.memberPricing ? 'Member prices' : 'Non-member prices' %> · placed <%= when(o.createdAt) %></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  const root = document.getElementById('merch-order');
+  const number = root.dataset.order;
+  const raise = root.querySelector('[data-raise]');
+  if (raise) raise.querySelector('[data-raise-send]').addEventListener('click', async () => {
+    try {
+      const res = await apiFetch(`/api/admin/merch/orders/${number}/returns`, {
+        method: 'POST',
+        body: JSON.stringify({
+          kind: raise.querySelector('[data-raise-kind]').value,
+          reason: raise.querySelector('[data-raise-reason]').value,
+          details: raise.querySelector('[data-raise-details]').value,
+          allItems: true,
+        }),
+      });
+      window.location.href = `/admin/merch/returns/${res.data.request.returnNumber}`;
+    } catch (err) { showToast(err.message, 'error'); }
+  });
+  root.querySelector('[data-actions]').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-step]');
+    if (!btn) return;
+    if (btn.dataset.confirm && !confirm(btn.dataset.confirm)) return;
+    const action = btn.getAttribute('data-step');
+    const body = {};
+    const ship = root.querySelector('[data-ship-form]');
+    if (action === 'ship') { body.courier = ship.querySelector('[name="courier"]').value; body.trackingNumber = ship.querySelector('[name="trackingNumber"]').value; }
+    const note = root.querySelector('[data-note]');
+    if (note && ['holdAddress', 'unclaimed'].includes(action)) body.note = note.value;
+    btn.disabled = true;
+    try {
+      const res = await apiFetch(`/api/admin/merch/orders/${number}/steps/${action}`, { method: 'POST', body: JSON.stringify(body) });
+      showToast(res.message);
+      setTimeout(() => window.location.reload(), 600);
+    } catch (err) { showToast(err.message, 'error'); btn.disabled = false; }
+  });
+}());
+</script>

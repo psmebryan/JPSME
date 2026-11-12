@@ -114,6 +114,21 @@ const MODULES = [
     patterns: [/^\/admin\/articles(\/|$)/, /^\/api\/articles(\/|$)/],
   },
   {
+    key: 'merchandise',
+    home: '/admin/merch/products',
+    label: 'Merchandise',
+    hint: 'Store products, photos, variants, prices and cost, and the stock ledger.',
+    patterns: [/^\/admin\/merch(\/|$)/, /^\/api\/admin\/merch(\/|$)/],
+  },
+  {
+    // A capability, not pages: whether a President with Merchandise also sees
+    // unit costs and profit. No paths of its own.
+    key: 'merchCosts',
+    label: 'Merchandise: costs and profit',
+    hint: 'With Merchandise ticked: also see each item\'s unit cost, stock value and profit.',
+    patterns: [],
+  },
+  {
     key: 'reports',
     home: '/admin/reports/transactions',
     label: 'Reports',
@@ -166,4 +181,15 @@ function modulesForPath(path) {
   return hit ? [hit.key] : null;
 }
 
-module.exports = { MODULES, KEYS, DEFAULT_PRESIDENT_MODULES, modulesForPath };
+// What a Finance & Logistics account can be given, ticked per account (Site
+// Settings -> Finance & Logistics). The two task groups both open the
+// Merchandise pages; what each may DO there is decided by merchCapsFor
+// (services/adminAccess). Payments is view only for this role.
+const FINANCE_LOGISTICS_GRANTS = [
+  { key: 'merchFinance', label: 'Finance tasks', hint: 'Approve refunds, see costs and profit, run the daily reconciliation, sales reports.', opens: 'merchandise' },
+  { key: 'merchLogistics', label: 'Logistics tasks', hint: 'Stock in and counts, pack and ship, pickup handover, returns and exchanges, delivery and pickup settings.', opens: 'merchandise' },
+  { key: 'payments', label: 'Payments (view only)', hint: 'See all payments. Refunds there stay with the main admin.', opens: 'payments' },
+  { key: 'reports', label: 'Reports', hint: 'The Transaction Report and the organization reports, with exports.', opens: 'reports' },
+];
+
+module.exports = { MODULES, KEYS, DEFAULT_PRESIDENT_MODULES, FINANCE_LOGISTICS_GRANTS, modulesForPath };

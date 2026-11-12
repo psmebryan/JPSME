@@ -14,6 +14,7 @@ const { startInProcessWorker, stopInProcessWorker } = require('./jobs/inProcessW
 const preflight = require('./config/preflight');
 const logger = require('./utils/logger');
 const { startInvitationReconciliationSweep, stopInvitationReconciliationSweep } = require('./jobs/invitationReconciliationSweep.job');
+const { startMerchHoldSweep, stopMerchHoldSweep } = require('./jobs/merchHoldSweep.job');
 
 const PORT = config.port;
 
@@ -154,6 +155,7 @@ function shutdown(signal, exitCode = 0) {
   stopWebhookHealthCheck();
   stopInProcessWorker();
   stopInvitationReconciliationSweep();
+  stopMerchHoldSweep();
   const finish = async () => {
     try { await prisma.$disconnect(); } catch (e) { /* exiting anyway */ }
     process.exit(exitCode);
@@ -191,6 +193,7 @@ async function start() {
     startWebhookHealthCheck();
     startInProcessWorker();
     startInvitationReconciliationSweep();
+    startMerchHoldSweep();
   } catch (err) {
     // The useful advice differs completely by environment, and giving the
     // wrong one sends someone looking in a place that does not exist. "Is
