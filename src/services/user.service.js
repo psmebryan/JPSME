@@ -44,10 +44,22 @@ async function listByStatus(status, { awaitingApproval = false } = {}) {
 // beneath it. `organizationId` alone filters to exactly one organization,
 // which is what the admin's filter dropdown passes.
 async function listMembersForAdmin({
-  status, organizationId, organizationIds, search, membership, memberType, paymentStatus, page = 1, pageSize = 25,
+  status, organizationId, organizationIds, search, membership, memberType, paymentStatus, studentOrg, page = 1, pageSize = 25,
 } = {}) {
   const where = { role: { not: 'ADMIN' } };
   if (status) where.status = status;
+
+  // Student organization (an organization of type STUDENT_UNIT): one by id,
+  // ANY = in some student organization, NONE = not in one (no organization,
+  // or one higher up such as a province). On AND so it narrows the
+  // Organization filter instead of replacing it.
+  if (studentOrg === 'ANY') {
+    where.AND = [...(where.AND || []), { organization: { is: { type: 'STUDENT_UNIT' } } }];
+  } else if (studentOrg === 'NONE') {
+    where.AND = [...(where.AND || []), { OR: [{ organizationId: null }, { organization: { is: { type: { not: 'STUDENT_UNIT' } } } }] }];
+  } else if (studentOrg && Number.isInteger(Number(studentOrg))) {
+    where.AND = [...(where.AND || []), { organizationId: Number(studentOrg) }];
+  }
 
   // Member type from the Master List; NONE = no type (non-members and guests).
   if (memberType === 'NONE') where.memberTypeId = null;

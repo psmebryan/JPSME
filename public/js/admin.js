@@ -1063,7 +1063,7 @@ function renderMembersPagination(pagination, page, totalPages) {
 // Server-side search/filter/pagination for the "Manage Users" (list) view —
 // the full member roster, the one admin table most likely to actually reach
 // thousands of rows, unlike the naturally-small pending-approvals queue.
-const MEMBER_FILTER_KEYS = ['search', 'organizationId', 'status', 'memberType', 'paymentStatus'];
+const MEMBER_FILTER_KEYS = ['search', 'organizationId', 'studentOrg', 'status', 'memberType', 'paymentStatus'];
 
 function initMembersFilterAndPagination(table) {
   const tbody = table.querySelector('tbody');

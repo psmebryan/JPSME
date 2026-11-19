@@ -292,6 +292,66 @@
   </label>
 </div>
 
+<%# Flood guard (src/middleware/floodGuard.middleware.js): an IP that sends too
+    many requests too fast is refused for a while. Listed here so a block that
+    caught a real network (a campus, a venue) can be lifted at once. %>
+<% const fg = locals.floodGuard; %>
+<% if (fg) { %>
+<div id="blocked-ips-module" class="admin-card p-6 max-w-2xl mt-6">
+  <h2 class="font-semibold mb-1">Blocked IP addresses</h2>
+  <p class="mb-4 text-xs text-slate-500">
+    <% if (fg.enabled) { %>
+      An address that sends more than <strong><%= fg.max %></strong> requests in <strong><%= fg.windowSeconds %> seconds</strong> is blocked for
+      <strong><%= fg.blockMinutes %> minutes</strong>. Pictures, styles and scripts do not count. A whole campus or venue can share one
+      address, so lift a block here if real people were caught. Large attacks from many addresses are stopped at Cloudflare.
+    <% } else { %>
+      The flood guard is <strong>off</strong> on this server (it is on by default in production; FLOOD_GUARD in the environment).
+    <% } %>
+  </p>
+  <% if (!fg.blocked.length) { %>
+    <p class="text-sm text-emerald-700" data-no-blocked>No address is blocked right now.</p>
+  <% } else { %>
+    <div class="relative overflow-x-auto">
+      <table class="admin-table">
+        <thead class="admin-table-head"><tr><th class="admin-th">Address</th><th class="admin-th">Blocked</th><th class="admin-th">Until</th><th class="admin-th text-right">Refused since</th><th class="admin-th"></th></tr></thead>
+        <tbody class="admin-tbody">
+          <% fg.blocked.forEach((b) => { %>
+            <tr class="admin-tr" data-blocked-ip="<%= b.ip %>">
+              <td class="admin-td font-mono text-xs"><%= b.ip %></td>
+              <td class="admin-td text-xs"><%= b.since.toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) %></td>
+              <td class="admin-td text-xs"><%= b.until.toLocaleString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' }) %></td>
+              <td class="admin-td text-right tabular-nums"><%= b.refused %></td>
+              <td class="admin-td text-right"><button type="button" class="btn-secondary px-3 py-1 text-sm" data-unblock>Unblock</button></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+  <% if (fg.allowlist.length) { %><p class="mt-3 text-xs text-slate-500">Never blocked: <span class="font-mono"><%= fg.allowlist.join(', ') %></span></p><% } %>
+</div>
+<script nonce="<%= cspNonce %>">
+(function () {
+  const box = document.getElementById('blocked-ips-module');
+  if (!box) return;
+  box.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-unblock]');
+    if (!btn) return;
+    const row = btn.closest('[data-blocked-ip]');
+    btn.disabled = true;
+    try {
+      const res = await apiFetch('/api/admin/settings/blocked-ips/unblock', { method: 'POST', body: JSON.stringify({ ip: row.getAttribute('data-blocked-ip') }) });
+      showToast(res.message);
+      row.remove();
+    } catch (err) {
+      showToast(err.message, 'error');
+      btn.disabled = false;
+    }
+  });
+}());
+</script>
+<% } %>
+
 <div id="data-export-module" class="admin-card p-6 max-w-2xl mt-6">
   <h2 class="font-semibold mb-1">Data export</h2>
   <p class="mb-4 text-xs text-slate-500">

@@ -69,10 +69,11 @@ const listUsers = asyncHandler(async (req, res) => {
 const listMembers = asyncHandler(async (req, res) => {
   if (!checkValidation(req, res)) return;
 
-  const { status, organizationId, search, membership, memberType, paymentStatus, page } = req.query;
+  const { status, organizationId, search, membership, memberType, paymentStatus, studentOrg, page } = req.query;
   const result = await userService.listMembersForAdmin({
     status: status || undefined,
     organizationId: organizationId || undefined,
+    studentOrg: studentOrg || undefined,
     search: search || undefined,
     membership: membership || undefined,
     memberType: memberType || undefined,
@@ -287,6 +288,16 @@ const updateFinanceLogisticsAccess = asyncHandler(async (req, res) => {
   const grants = await adminAccessService.setGrant(req.params.userId, req.body.grants, req.session.user.id);
   return success(res, { grants }, 'Finance & Logistics access saved. It applies on their next page.');
 });
+
+// Lifts a flood-guard block (Site Settings -> Blocked IP addresses). The
+// guard's list is in memory, so this is logged, not audited in the database.
+const unblockIp = (req, res) => {
+  if (!checkValidation(req, res)) return undefined;
+  const guard = req.app.locals.floodGuard;
+  const lifted = guard ? guard.unblock(req.body.ip) : false;
+  if (lifted) (req.log || console).info('flood guard: block lifted by admin', { ip: req.body.ip, adminId: req.session.user.id });
+  return success(res, { lifted, blocked: guard ? guard.blockedList() : [] }, lifted ? 'Unblocked.' : 'That address is not blocked any more.');
+};
 
 const getPaymentsEnabled = asyncHandler(async (req, res) => {
   const enabled = await settingsService.getPaymentsEnabled();
@@ -523,6 +534,7 @@ const resendActivation = asyncHandler(async (req, res) => {
 module.exports = {
   updatePresidentAccess,
   updateFinanceLogisticsAccess,
+  unblockIp,
   activationStatus,
   sendActivations,
   resendActivation,

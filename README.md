@@ -99,6 +99,40 @@ this code against a deployment database. On the managed host, use the project's
 direct migration runner (`RUN_MIGRATIONS_ON_BOOT=true`) before enabling the
 Mergo workflow.
 
+## Flood guard and Cloudflare
+
+The app blocks an IP address that sends too many requests too fast
+(`src/middleware/floodGuard.middleware.js`): more than 100 in 10 seconds and
+it gets `429 Too many requests` on every request for 15 minutes. Static files
+(`/css`, `/js`, `/img`), PayMongo webhooks and the check-in integration do not
+count. Main admins see blocked addresses in Site Settings and can unblock them.
+
+| Variable | Default | |
+| --- | --- | --- |
+| `FLOOD_GUARD` | on in production, off elsewhere | `on` / `off` |
+| `FLOOD_MAX_REQUESTS` | `100` | per window, per IP |
+| `FLOOD_WINDOW_SECONDS` | `10` | |
+| `FLOOD_BLOCK_MINUTES` | `15` | |
+| `FLOOD_ALLOWLIST` | empty | comma-separated IPs never blocked |
+
+The limit is per address and generous on purpose: a campus or a venue's wifi
+is one address for everybody on it.
+
+Through Cloudflare the visitor's address is read from `CF-Connecting-IP`, but
+only when the request really came from a Cloudflare range, so the header cannot
+be faked by going around Cloudflare.
+
+This stops one machine hammering the site. A distributed attack (thousands of
+addresses) has to be stopped before it reaches the server, in Cloudflare:
+
+- **Security → WAF → Rate limiting rules:** one rule, for example *same IP,
+  more than 100 requests in 10 seconds → Block*, excluding `/css/`, `/js/`,
+  `/img/` and `/api/webhooks/`.
+- **Security → Bots:** Bot Fight Mode on.
+- **Under Attack mode** (Overview) during an attack: every visitor gets a short
+  browser check first. Turn it off afterwards. It also stops PayMongo's
+  webhooks, so check Payments → Reconcile once it is off.
+
 ## Architecture
 
 Read the code — `src/routes/` for the entry points, `src/services/` for the

@@ -25,6 +25,22 @@
         </select>
       </div>
       <div>
+        <%# Student organizations (type STUDENT_UNIT), all of them, by name. %>
+        <label class="form-label" for="members-student-org">Student organization</label>
+        <select name="studentOrg" id="members-student-org" class="form-input max-w-xs">
+          <option value="">All</option>
+          <option value="ANY">In any student organization</option>
+          <option value="NONE">Not in a student organization</option>
+          <% if ((locals.studentOrgs || []).length) { %>
+            <optgroup label="Student organizations">
+              <% studentOrgs.forEach((o) => { %>
+                <option value="<%= o.id %>"><%= o.name %><%= o.institution && o.institution !== o.name ? ` (${o.institution})` : '' %></option>
+              <% }) %>
+            </optgroup>
+          <% } %>
+        </select>
+      </div>
+      <div>
         <%# By member type from the Master List, plus everyone without one. %>
         <label class="form-label">Member type</label>
         <select name="memberType" class="form-input">

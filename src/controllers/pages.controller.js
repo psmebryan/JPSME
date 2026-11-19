@@ -521,7 +521,14 @@ const adminUsersPage = asyncHandler(async (req, res) => {
     : { role: null, organizationId: null };
   // For the Member type filter.
   const memberTypes = await memberTypeService.listMemberTypes();
-  renderAdmin(req, res, 'admin/users', { title, viewMode, organizations, currentUser, memberTypes });
+  // For the Student organization filter: every active one, by name (the
+  // Organization list above stops at 50 and is mostly regions and provinces).
+  const studentOrgs = viewMode === 'list'
+    ? (await organizationService.searchOrganizations({ type: 'STUDENT_UNIT', page: 1, pageSize: 1000 })).organizations
+      .map((o) => ({ id: o.id, name: o.name, institution: o.institution }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+    : [];
+  renderAdmin(req, res, 'admin/users', { title, viewMode, organizations, currentUser, memberTypes, studentOrgs });
 });
 
 // The Activations page. Which members have an invitation out, which bounced,
@@ -847,6 +854,10 @@ const adminSettingsPage = asyncHandler(async (req, res) => {
     adminModuleList: adminAccessService.MODULES, presidentModules, presidents,
     financeLogistics: await adminAccessService.listFinanceLogistics(),
     flGrantList: adminAccessService.FINANCE_LOGISTICS_GRANTS,
+    // Flood guard (floodGuard.middleware): its limits and who is blocked now.
+    floodGuard: req.app.locals.floodGuard
+      ? { ...req.app.locals.floodGuard.settings(), blocked: req.app.locals.floodGuard.blockedList() }
+      : null,
   });
 });
 

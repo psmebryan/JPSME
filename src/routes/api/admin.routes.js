@@ -132,6 +132,8 @@ router.get(
   '/members',
   query('page').optional({ checkFalsy: true }).isInt({ min: 1 }).withMessage('Invalid page'),
   query('organizationId').optional({ checkFalsy: true }).isInt().withMessage('Invalid organizationId filter'),
+  // A student organization id, ANY (in one) or NONE (not in one).
+  query('studentOrg').optional({ checkFalsy: true }).matches(/^(ANY|NONE|[1-9]\d*)$/).withMessage('Invalid student organization filter'),
   query('status').optional({ checkFalsy: true }).isIn(['PENDING', 'APPROVED', 'REJECTED']).withMessage('Invalid status filter'),
   query('membership').optional({ checkFalsy: true }).isIn(['MEMBER', 'NON_MEMBER', 'LAPSED', 'NEVER']).withMessage('Invalid membership filter'),
   // A member type id from the Master List, or NONE for members without one.
@@ -227,6 +229,14 @@ router.put(
   verifyCsrfToken,
   body('modules').isArray({ max: 50 }).withMessage('modules must be a list'),
   adminApi.updatePresidentAccess
+);
+// Lifts a flood-guard block (floodGuard.middleware). Under /settings: main
+// admin only. The address goes in the body, not the path (IPv6 has colons).
+router.post(
+  '/settings/blocked-ips/unblock',
+  verifyCsrfToken,
+  body('ip').isIP().withMessage('Enter a valid IP address'),
+  adminApi.unblockIp
 );
 // One Finance & Logistics account's ticks. Under /settings too: main admin only.
 router.put(
