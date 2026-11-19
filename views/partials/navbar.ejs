@@ -51,12 +51,15 @@
         <a href="/events" class="jp-nav-link <%= navAt('Events') %>">Events</a>
         <a href="/organizations" class="jp-nav-link <%= locals.title === 'Organizations' || locals.organization ? 'is-active' : '' %>">Organizations</a>
         <a href="/articles" class="jp-nav-link <%= navAt('News') %>">News</a>
+        <%# Store: open to all, or a preview for admins while closed. %>
+        <% if (locals.storeAccess && storeAccess.visible) { %><a href="/store" class="jp-nav-link <%= navAt('Store') %>">Store<% if (storeAccess.preview) { %> <span class="text-[10px] uppercase text-gold-300">preview</span><% } %></a><% } %>
         <a href="/contact" class="jp-nav-link <%= navAt('Contact Us') %>">Contact Us</a>
       </nav>
 
       <div class="flex items-center gap-3">
         <% if (locals.currentUser) { %>
-          <% const canAccessAdmin = ['ADMIN', 'CHAPTER_ADMIN', 'PRESIDENT'].includes(currentUser.role); %>
+          <% const canAccessAdmin = ['ADMIN', 'CHAPTER_ADMIN', 'PRESIDENT', 'FINANCE_LOGISTICS'].includes(currentUser.role); %>
+          <% const adminLinkLabel = { CHAPTER_ADMIN: 'Chapter Admin', PRESIDENT: 'President Admin', FINANCE_LOGISTICS: 'Store Admin' }[currentUser.role] || 'Admin Dashboard'; %>
           <div class="relative hidden sm:block" id="userMenuDropdown">
             <button type="button" id="userMenuBtn"
                     class="flex h-11 items-center gap-2.5 rounded-lg px-2 text-sm font-semibold text-mist-200 transition-colors hover:bg-white/[.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-400"
@@ -77,9 +80,10 @@
               <div class="my-1.5 h-px bg-white/10"></div>
               <a href="/profile">My Profile</a>
               <a href="/profile#registrations">My Registrations</a>
+              <% if (locals.storeAccess && storeAccess.visible) { %><a href="/store/orders">My Orders</a><a href="/store/addresses">My Addresses</a><% } %>
               <% if (canAccessAdmin) { %>
                 <div class="my-1.5 h-px bg-white/10"></div>
-                <a href="/admin/dashboard" class="text-gold-300"><%= currentUser.role === 'CHAPTER_ADMIN' ? 'Chapter Admin' : (currentUser.role === 'PRESIDENT' ? 'President Admin' : 'Admin Dashboard') %></a>
+                <a href="/admin/dashboard" class="text-gold-300"><%= adminLinkLabel %></a>
               <% } %>
               <div class="my-1.5 h-px bg-white/10"></div>
               <a href="/logout">Log Out</a>
@@ -127,11 +131,14 @@
         <a href="/events" class="jp-mobile-link">Events</a>
         <a href="/organizations" class="jp-mobile-link">Organizations</a>
         <a href="/articles" class="jp-mobile-link">News</a>
+        <% if (locals.storeAccess && storeAccess.visible) { %><a href="/store" class="jp-mobile-link">Store</a><% } %>
         <a href="/contact" class="jp-mobile-link">Contact Us</a>
       </div>
 
       <div class="mt-4 border-t border-white/10 pt-4">
         <% if (locals.currentUser) { %>
+          <% const canAccessAdmin = ['ADMIN', 'CHAPTER_ADMIN', 'PRESIDENT', 'FINANCE_LOGISTICS'].includes(currentUser.role); %>
+          <% const adminLinkLabel = { CHAPTER_ADMIN: 'Chapter Admin', PRESIDENT: 'President Admin', FINANCE_LOGISTICS: 'Store Admin' }[currentUser.role] || 'Admin Dashboard'; %>
           <div class="flex items-center gap-3 px-3 pb-3">
             <img src="<%= currentUser.profileImage || '/img/default-avatar.svg' %>" alt=""
                  class="h-10 w-10 shrink-0 rounded-full bg-ink-800 object-cover ring-2 ring-gold-400/30">
@@ -140,8 +147,9 @@
           <div class="flex flex-col gap-0.5">
             <a href="/profile" class="jp-mobile-link">My Profile</a>
             <a href="/profile#registrations" class="jp-mobile-link">My Registrations</a>
-            <% if (['ADMIN', 'CHAPTER_ADMIN', 'PRESIDENT'].includes(currentUser.role)) { %>
-              <a href="/admin/dashboard" class="jp-mobile-link text-gold-300"><%= currentUser.role === 'CHAPTER_ADMIN' ? 'Chapter Admin' : (currentUser.role === 'PRESIDENT' ? 'President Admin' : 'Admin Dashboard') %></a>
+            <% if (locals.storeAccess && storeAccess.visible) { %><a href="/store/orders" class="jp-mobile-link">My Orders</a><a href="/store/addresses" class="jp-mobile-link">My Addresses</a><% } %>
+            <% if (canAccessAdmin) { %>
+              <a href="/admin/dashboard" class="jp-mobile-link text-gold-300"><%= adminLinkLabel %></a>
             <% } %>
             <a href="/logout" class="jp-mobile-link">Log Out</a>
           </div>

@@ -1,0 +1,170 @@
+<%#
+  Merchandise -> one refund or exchange request: what was asked and why (with
+  the buyer's photo), the order it belongs to, who has done what, and the next
+  step for this request's status. The server enforces who may approve; the
+  page only says so up front. Phase 4: each step shows only to the team that
+  owns it (merchReturns.api needs): Logistics the goods, Finance the first
+  approval, the main admin or the President the second.
+%>
+<%
+  const r = ret;
+  const peso = (c) => '₱' + (c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const when = (d) => (d ? new Date(d).toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }) : '');
+  const limit = settings.approvalLimitCentavos;
+  const ownRequest = r.requestedById === me.id;
+  const mc = (c) => (locals.merchCaps ? merchCaps.has(c) : true);
+  const goods = mc('returns.goods');
+  const first = mc('refund.approve');
+  const second = mc('refund.second');
+  const canReject = (r.kind === 'EXCHANGE' || r.status === 'REQUESTED') ? (goods || first) : (r.status === 'NEEDS_SECOND' ? (second || first) : first);
+  const mine = (r.kind === 'REFUND' && r.status === 'REQUESTED' && goods) || (r.kind === 'REFUND' && r.status === 'CHECKED' && first)
+    || (r.status === 'NEEDS_SECOND' && second) || (r.kind === 'EXCHANGE' && ['REQUESTED', 'NEW_HELD', 'OLD_RECEIVED'].includes(r.status) && goods);
+  const waitingFor = { REQUESTED: r.kind === 'EXCHANGE' ? 'Logistics' : 'Logistics', CHECKED: 'Finance', NEEDS_SECOND: 'the main admin or the National President', NEW_HELD: 'Logistics', OLD_RECEIVED: 'Logistics' }[r.status];
+%>
+<div class="w-full space-y-6" id="merch-return" data-return="<%= r.returnNumber %>">
+  <div>
+    <a href="/admin/merch/returns" class="text-sm text-indigo-600 hover:underline">&larr; Refunds &amp; Exchanges</a>
+    <h1 class="admin-h1 mt-1"><%= r.kindLabel %> <span class="font-mono"><%= r.returnNumber %></span> <span class="<%= r.open ? 'badge-amber' : 'badge-slate' %> align-middle text-sm"><%= r.statusLabel %></span></h1>
+    <p class="admin-subtitle">Order <a href="/admin/merch/orders/<%= r.orderNumber %>" class="font-mono text-indigo-600 hover:underline"><%= r.orderNumber %></a> · <%= r.buyerName %> · <%= order.fulfilment === 'PICKUP' ? 'pickup' : 'delivery' %> · paid <%= peso(r.paidCentavos || 0) %></p>
+  </div>
+
+  <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
+    <div class="space-y-6">
+      <div class="admin-card p-5 text-sm">
+        <p><span class="font-semibold"><%= r.reasonLabel %></span> · asked <%= when(r.createdAt) %> by <%= r.requestedBy || 'the buyer' %><%= r.byBuyer ? '' : ' (staff, for the buyer)' %></p>
+        <% if (r.details) { %><p class="mt-2 whitespace-pre-line text-slate-700"><%= r.details %></p><% } %>
+        <% if (r.photoUrl) { %><a href="<%= r.photoUrl %>" target="_blank" rel="noopener"><img src="<%= r.photoUrl %>" alt="Buyer's photo" class="mt-3 max-h-64 rounded-lg ring-1 ring-slate-200"></a><% } %>
+      </div>
+
+      <div class="admin-card overflow-hidden">
+        <table class="admin-table">
+          <thead class="admin-table-head"><tr><th class="admin-th">Item</th><th class="admin-th text-right">Qty</th><th class="admin-th text-right">Price paid</th><% if (r.kind === 'EXCHANGE') { %><th class="admin-th">Swap for</th><% } %><th class="admin-th text-right">Came back</th><th class="admin-th text-right">Can resell</th></tr></thead>
+          <tbody class="admin-tbody">
+            <% r.items.forEach((i) => { %>
+              <tr class="admin-tr" data-item="<%= i.id %>">
+                <td class="admin-td"><%= i.productName %> <span class="text-slate-500">(<%= i.label %>)</span></td>
+                <td class="admin-td text-right tabular-nums"><%= i.quantity %></td>
+                <td class="admin-td text-right tabular-nums"><%= peso(i.unitPrice) %></td>
+                <% if (r.kind === 'EXCHANGE') { %><td class="admin-td"><%= i.newVariant ? i.newVariant.label : '—' %></td><% } %>
+                <td class="admin-td text-right tabular-nums"><%= i.receivedQty === null ? '—' : i.receivedQty %></td>
+                <td class="admin-td text-right tabular-nums"><%= i.resaleableQty === null ? '—' : i.resaleableQty %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="admin-card p-5 text-sm">
+        <h2 class="mb-2 font-semibold text-slate-900">Who did what</h2>
+        <ul class="space-y-1 text-slate-700">
+          <li>Asked: <%= r.requestedBy || 'the buyer' %>, <%= when(r.createdAt) %></li>
+          <% if (r.checkedAt) { %><li><%= r.kind === 'EXCHANGE' ? 'Accepted' : 'Checked' %>: <%= r.checkedBy || 'automatically' %>, <%= when(r.checkedAt) %><%= r.checkNote ? ` · ${r.checkNote}` : '' %></li><% } %>
+          <% if (r.approvedAt) { %><li>Approved <%= peso(r.refundCentavos) %>: <%= r.approvedBy %>, <%= when(r.approvedAt) %></li><% } %>
+          <% if (r.secondApprovedAt) { %><li>Second approval: <%= r.secondApprovedBy %>, <%= when(r.secondApprovedAt) %></li><% } %>
+          <% if (r.rejectReason) { %><li class="text-red-700">Rejected: <%= r.rejectReason %></li><% } %>
+          <% if (r.completedAt) { %><li>Closed: <%= when(r.completedAt) %></li><% } %>
+        </ul>
+      </div>
+    </div>
+
+    <div class="admin-card h-fit space-y-3 p-5" data-actions>
+      <h2 class="font-semibold text-slate-900">Next step</h2>
+
+      <% if (r.open && !mine && waitingFor) { %><p class="text-sm text-slate-600" data-waiting>Waiting for <%= waitingFor %>.</p><% } %>
+
+      <% if (goods && r.kind === 'REFUND' && r.status === 'REQUESTED') { %>
+        <% if (r.noItemBack) { %>
+          <p class="text-sm text-slate-600">Nothing comes back (<%= r.reasonLabel.toLowerCase() %>). Confirm with the courier, then note what they said.</p>
+        <% } else { %>
+          <p class="text-sm text-slate-600">Record what came back and what can be sold again; resaleable items go back on the shelf.</p>
+          <% r.items.forEach((i) => { %>
+            <div class="grid grid-cols-[1fr_5rem_5rem] items-center gap-2 text-sm" data-check-item="<%= i.id %>">
+              <span><%= i.productName %> (<%= i.label %>)</span>
+              <input type="number" min="0" max="<%= i.quantity %>" value="<%= i.quantity %>" class="form-input" aria-label="Came back" data-received>
+              <input type="number" min="0" max="<%= i.quantity %>" value="0" class="form-input" aria-label="Can resell" data-resaleable>
+            </div>
+          <% }) %>
+          <p class="text-xs text-slate-500">Columns: came back · can resell</p>
+        <% } %>
+        <input maxlength="300" placeholder="Note" class="form-input" data-note>
+        <button type="button" class="btn-primary w-full py-2" data-act="check">Logistics checked</button>
+      <% } %>
+
+      <% if (first && r.kind === 'REFUND' && r.status === 'CHECKED') { %>
+        <label class="block text-sm text-slate-700">Refund amount (PHP)
+          <input type="text" inputmode="decimal" value="<%= ((r.suggestedCentavos || 0) / 100).toFixed(2) %>" class="form-input mt-1" data-amount>
+        </label>
+        <p class="text-xs text-slate-500">Suggested: <%= r.suggestedCentavos === r.paidCentavos ? 'everything that was paid' : 'the items\' value' %>. At most <%= peso(r.paidCentavos || 0) %>.<% if (limit !== null) { %> Above <%= peso(limit) %> a second person approves.<% } %></p>
+        <% if (ownRequest) { %><p class="text-sm text-amber-700">You raised this request, so someone else has to approve it.</p><% } %>
+        <button type="button" class="btn-primary w-full py-2" data-act="approve" <%= ownRequest ? 'disabled' : '' %>>Approve the refund</button>
+      <% } %>
+
+      <% if (second && r.status === 'NEEDS_SECOND') { %>
+        <p class="text-sm text-slate-700"><%= r.approvedBy %> approved <%= peso(r.refundCentavos) %>, which is above the <%= limit !== null ? peso(limit) : '' %> limit. A second person (the main admin or the National President) approves to send it.</p>
+        <button type="button" class="btn-primary w-full py-2" data-act="approve" <%= r.approvedById === me.id || ownRequest ? 'disabled' : '' %>>Give the second approval</button>
+      <% } %>
+
+      <% if (goods && r.kind === 'EXCHANGE' && r.status === 'REQUESTED') { %>
+        <p class="text-sm text-slate-600">Accepting holds the new size for this buyer until the swap is done.</p>
+        <button type="button" class="btn-primary w-full py-2" data-act="accept">Accept and hold the new size</button>
+      <% } %>
+      <% if (goods && r.kind === 'EXCHANGE' && r.status === 'NEW_HELD') { %>
+        <p class="text-sm text-slate-600">When the old item is back, how many can be sold again?</p>
+        <% r.items.forEach((i) => { %>
+          <div class="grid grid-cols-[1fr_5rem] items-center gap-2 text-sm" data-check-item="<%= i.id %>"><span><%= i.productName %> (<%= i.label %>)</span><input type="number" min="0" max="<%= i.quantity %>" value="<%= i.quantity %>" class="form-input" aria-label="Can resell" data-resaleable></div>
+        <% }) %>
+        <button type="button" class="btn-primary w-full py-2" data-act="receive">Old item received</button>
+      <% } %>
+      <% if (goods && r.kind === 'EXCHANGE' && r.status === 'OLD_RECEIVED') { %>
+        <% if (order.fulfilment === 'DELIVERY') { %>
+          <input maxlength="80" placeholder="Courier" class="form-input" data-courier>
+          <input maxlength="80" placeholder="Tracking number" class="form-input" data-tracking>
+          <button type="button" class="btn-primary w-full py-2" data-act="send">New item shipped</button>
+        <% } else { %>
+          <button type="button" class="btn-primary w-full py-2" data-act="send">New item handed over</button>
+        <% } %>
+      <% } %>
+
+      <% if (canReject && ['REQUESTED', 'CHECKED', 'NEEDS_SECOND', 'NEW_HELD'].includes(r.status)) { %>
+        <div class="space-y-2 border-t border-slate-100 pt-3">
+          <input maxlength="300" placeholder="Why it is rejected (the buyer is told)" class="form-input" data-reject-reason>
+          <button type="button" class="btn-secondary w-full py-2 text-red-700" data-act="reject">Reject</button>
+        </div>
+      <% } %>
+      <% if (r.status === 'REFUND_SENT') { %><p class="text-sm text-slate-600">Sent to PayMongo. This closes by itself when PayMongo confirms the refund.</p><% } %>
+      <% if (r.status === 'REFUND_FAILED') { %><p class="text-sm text-red-700">PayMongo could not complete this refund. Take it up with PayMongo support; it cannot be sent again from here.</p><% } %>
+      <% if (!r.open && r.status !== 'REFUND_FAILED') { %><p class="text-sm text-slate-500">Nothing more to do.</p><% } %>
+    </div>
+  </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  const root = document.getElementById('merch-return');
+  const number = root.dataset.return;
+  const $ = (s) => root.querySelector(s);
+  root.querySelector('[data-actions]').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    const action = btn.getAttribute('data-act');
+    const body = {};
+    const items = Array.from(root.querySelectorAll('[data-check-item]')).map((row) => ({
+      id: Number(row.dataset.checkItem),
+      receivedQty: row.querySelector('[data-received]') ? Number(row.querySelector('[data-received]').value) : undefined,
+      resaleableQty: row.querySelector('[data-resaleable]') ? Number(row.querySelector('[data-resaleable]').value) : undefined,
+    }));
+    if (items.length) body.items = items;
+    if ($('[data-note]')) body.note = $('[data-note]').value;
+    if (action === 'approve' && $('[data-amount]')) body.amount = $('[data-amount]').value;
+    if (action === 'reject') { body.reason = $('[data-reject-reason]').value; if (!confirm('Reject this request? The buyer is emailed the reason.')) return; }
+    if (action === 'send' && $('[data-courier]')) { body.courier = $('[data-courier]').value; body.trackingNumber = $('[data-tracking]').value; }
+    if (action === 'approve' && !confirm('Approve? If no second approval is needed, the refund goes to PayMongo now.')) return;
+    btn.disabled = true;
+    try {
+      const res = await apiFetch(`/api/admin/merch/returns/${number}/${action}`, { method: 'POST', body: JSON.stringify(body) });
+      showToast(res.message);
+      setTimeout(() => window.location.reload(), 700);
+    } catch (err) { showToast(err.message, 'error'); btn.disabled = false; }
+  });
+}());
+</script>

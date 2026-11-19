@@ -176,7 +176,7 @@ async function finalizeLogin(user, { context = "user" } = {}) {
     throw new AppError("Your account registration was rejected", 403);
   }
 
-  if (context === "admin" && !["ADMIN", "CHAPTER_ADMIN", "PRESIDENT"].includes(user.role)) {
+  if (context === "admin" && !["ADMIN", "CHAPTER_ADMIN", "PRESIDENT", "FINANCE_LOGISTICS"].includes(user.role)) {
     throw new AppError("This account does not have admin access", 403);
   }
 

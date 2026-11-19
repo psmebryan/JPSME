@@ -13,9 +13,11 @@ const logger = require('./utils/logger');
 const pagesRoutes = require('./routes/pages.routes');
 const apiRoutes = require('./routes/api');
 const { issueCsrfToken } = require('./middleware/csrf.middleware');
+const { createFloodGuard, realClientIp } = require('./middleware/floodGuard.middleware');
 const AppError = require('./utils/AppError');
 const settingsService = require('./services/settings.service');
 const adminAccessService = require('./services/adminAccess.service');
+const merchStoreService = require('./services/merchStore.service');
 const sessionStore = require('./config/sessionStore');
 
 const app = express();
@@ -26,6 +28,11 @@ const app = express();
 if (config.trustProxy) {
   app.set('trust proxy', 1);
 }
+
+// Through Cloudflare, req.ip becomes the visitor's address (CF-Connecting-IP)
+// instead of a Cloudflare edge shared by many visitors. Only for requests that
+// really came from a Cloudflare range; see floodGuard.middleware.
+app.use(realClientIp);
 
 // Health checks — mounted before every other middleware (session, CSRF,
 // helmet, static) on purpose: a load balancer or uptime monitor can hit
@@ -85,6 +92,15 @@ app.get('/health/dependencies', (req, res, next) => {
     },
   });
 });
+
+// Flood guard: an IP sending more than FLOOD_MAX_REQUESTS (100) requests in
+// FLOOD_WINDOW_SECONDS (10) is refused with 429 for FLOOD_BLOCK_MINUTES (15).
+// Before the request log, the session and everything else, so a flood costs
+// next to nothing and does not fill the log. Main admins see and lift blocks
+// in Settings. See floodGuard.middleware.
+const floodGuard = createFloodGuard({ logger });
+app.locals.floodGuard = floodGuard;
+app.use(floodGuard);
 
 // Every request gets a correlation id — generated fresh, or reused from an
 // upstream X-Request-Id header if one arrives already set (e.g. from a
@@ -321,6 +337,9 @@ app.use((req, res, next) => {
 app.use('/admin', async (req, res, next) => {
   try {
     res.locals.adminModules = await adminAccessService.modulesFor(req.session.user);
+    // What this person may do inside the store, for the sidebar and pages.
+    res.locals.merchCaps = res.locals.adminModules.includes('merchandise')
+      ? await adminAccessService.merchCapsFor(req.session.user) : new Set();
     next();
   } catch (err) {
     next(err);
@@ -350,6 +369,9 @@ app.use(async (req, res, next) => {
     // be read by the browser. Empty when unconfigured, which is how the views
     // know to render nothing rather than a broken widget.
     res.locals.turnstileSiteKey = config.captcha.turnstileSiteKey || '';
+    // Whether the menu shows Store: open to everyone, or a preview for the
+    // main admin / a President with Merchandise while it is closed.
+    res.locals.storeAccess = await merchStoreService.storeAccess(req.session.user).catch(() => ({ visible: false }));
   }
   next();
 });

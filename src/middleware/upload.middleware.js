@@ -104,6 +104,8 @@ const uploadLogo = makeUpload(ALLOWED_MIME_TYPES, 'Only PNG, JPEG, WEBP, or SVG 
 const uploadProfileImage = makeUpload(MEMBER_IMAGE_MIME_TYPES, 'Only PNG, JPEG, or WEBP images are allowed', 5 * 1024 * 1024);
 const uploadEventImage = makeUpload(ALLOWED_MIME_TYPES, 'Only PNG, JPEG, WEBP, or SVG images are allowed', 3 * 1024 * 1024);
 const uploadSponsorLogo = makeUpload(ALLOWED_MIME_TYPES, 'Only PNG, JPEG, WEBP, or SVG images are allowed', 5 * 1024 * 1024);
+// Merchandise product photos: raster only (no SVG), 5 MB each, several at once.
+const uploadMerchPhotos = makeUpload(MEMBER_IMAGE_MIME_TYPES, 'Only PNG, JPEG or WEBP photos are allowed', 5 * 1024 * 1024);
 const uploadArticleImage = makeUpload(ALLOWED_MIME_TYPES, 'Only PNG, JPEG, WEBP, or SVG images are allowed', 3 * 1024 * 1024);
 const uploadCertificateBackground = makeUpload(CERTIFICATE_MIME_TYPES, 'Only PNG or JPEG images are allowed for certificate backgrounds', 3 * 1024 * 1024);
 const uploadEmailAttachment = makeUpload(ALLOWED_MIME_TYPES, 'Only PNG, JPEG, WEBP, or SVG images are allowed', 3 * 1024 * 1024);
@@ -127,5 +129,6 @@ module.exports = {
   uploadCertificateBackground,
   uploadEmailAttachment,
   uploadArticleImage,
+  uploadMerchPhotos,
   uploadDataWorkbook,
 };

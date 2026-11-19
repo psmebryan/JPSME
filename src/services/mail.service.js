@@ -425,6 +425,138 @@ async function sendEventRegistrationEmail(user, event) {
 // actually succeeded so it can persist SENT vs FAILED onto the
 // EventInvitation row; swallowing the error here would silently leave every
 // failed send looking identical to a successful one.
+// Merchandise order emails (merchStore.service). PAID: the order is confirmed.
+// SOLD_OUT_REFUND: the payment came in after the 30-minute hold ran out and
+// the items had sold out, so the money is being returned automatically.
+// `order` carries its items and the buyer's name and email as copied on it.
+async function sendMerchOrderEmail(order, kind) {
+  const money = (c) => `PHP ${(c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const first = String(order.buyerName || '').split(' ')[0] || 'there';
+  const link = `${getAppUrl()}/store/orders/${encodeURIComponent(order.orderNumber)}`;
+  const lines = (order.items || []).map((i) => `${i.quantity} x ${i.productName} (${i.variantLabel}) — ${money(i.unitPriceCentavos * i.quantity)}`);
+  const paid = kind === 'PAID';
+  const subject = paid
+    ? `Your JPSME order ${order.orderNumber} is confirmed`
+    : `Your JPSME order ${order.orderNumber} could not be filled — refund on the way`;
+  const lead = paid
+    ? 'Thank you. We received your payment and your order is confirmed.'
+    : 'Your payment arrived after the time to pay had run out, and by then the items had sold out. We are refunding the full amount to your GCash; it usually reaches you within a few days.';
+  try {
+    await transporter.sendMail({
+      from: MAIL_FROM,
+      to: order.buyerEmail,
+      subject,
+      text: `Hi ${first},\n\n${lead}\n\nOrder ${order.orderNumber}\n${lines.join('\n')}\n`
+        + `Items: ${money(order.subtotalCentavos)}\nPayment processing fee: ${money(order.channelFeeCentavos)}\nTotal: ${money(order.totalCentavos)}\n\n`
+        + `See your order: ${link}`,
+      html: `
+        <p>Hi ${escapeHtml(first)},</p>
+        <p>${escapeHtml(lead)}</p>
+        <p><strong>Order ${escapeHtml(order.orderNumber)}</strong></p>
+        <ul>${lines.map((l) => `<li>${escapeHtml(l)}</li>`).join('')}</ul>
+        <p>Items: ${money(order.subtotalCentavos)}<br>Payment processing fee: ${money(order.channelFeeCentavos)}<br><strong>Total: ${money(order.totalCentavos)}</strong></p>
+        <p><a href="${escapeHtml(link)}">See your order</a></p>
+      `,
+    });
+    return true;
+  } catch (err) {
+    return reportSendFailure(`merchandise order ${kind}`, order.buyerEmail, err);
+  }
+}
+
+// Merchandise order status emails (merchOrders.service). `order` is the
+// presented order. Only the steps a buyer needs to hear about: shipped (with
+// tracking), delivered, ready for pickup, address needs fixing, and a
+// pickup reminder. The pickup QR is on the order page; the email links to it
+// rather than embedding it, since many mail apps block embedded images.
+async function sendMerchStatusEmail(order, kind) {
+  const first = String(order.buyerName || '').split(' ')[0] || 'there';
+  const link = `${getAppUrl()}/store/orders/${encodeURIComponent(order.orderNumber)}`;
+  const point = order.pickupPoint || {};
+  const copy = {
+    SHIPPED: {
+      subject: `Your JPSME order ${order.orderNumber} is on its way`,
+      lines: [`Your order has been shipped with ${order.courier}.`, `Tracking number: ${order.trackingNumber}`],
+    },
+    DELIVERED: {
+      subject: `Your JPSME order ${order.orderNumber} was delivered`,
+      lines: ['Your order has been marked as delivered. Thank you for supporting JPSME!', 'If anything is wrong with it, reply to this email.'],
+    },
+    READY_FOR_PICKUP: {
+      subject: `Your JPSME order ${order.orderNumber} is ready for pickup`,
+      lines: [
+        `Your order is ready at ${point.name || 'the pickup point'}${point.address ? `, ${point.address}` : ''}.`,
+        point.hours ? `Hours: ${point.hours}` : null,
+        'Open your order page and show its QR code at pickup.',
+      ],
+    },
+    PICKUP_REMINDER: {
+      subject: `Reminder: your JPSME order ${order.orderNumber} is waiting for you`,
+      lines: [`Your order has been ready at ${point.name || 'the pickup point'} for a week.`, 'Please collect it soon, and bring the QR code from your order page.'],
+    },
+    ADDRESS_HOLD: {
+      subject: `Please check the delivery address for order ${order.orderNumber}`,
+      lines: ['We paused your order because the delivery address needs fixing:', order.addressNote, 'Open your order page to correct it; we ship as soon as it is fixed.'],
+    },
+  }[kind];
+  if (!copy) return false;
+  const lines = copy.lines.filter(Boolean);
+  try {
+    await transporter.sendMail({
+      from: MAIL_FROM,
+      to: order.buyerEmail,
+      subject: copy.subject,
+      text: `Hi ${first},\n\n${lines.join('\n')}\n\nOrder ${order.orderNumber}: ${link}`,
+      html: `
+        <p>Hi ${escapeHtml(first)},</p>
+        ${lines.map((l) => `<p>${escapeHtml(l)}</p>`).join('')}
+        <p><a href="${escapeHtml(link)}">Open order ${escapeHtml(order.orderNumber)}</a></p>
+      `,
+    });
+    return true;
+  } catch (err) {
+    return reportSendFailure(`merchandise ${kind}`, order.buyerEmail, err);
+  }
+}
+
+// Merchandise refund and exchange emails (merchReturns.service): the refund
+// was sent to PayMongo, the request was rejected (with the reason), or the
+// exchange item went out. Requests themselves send nothing, to keep within
+// the daily email limit; the buyer sees them on the order page.
+async function sendMerchReturnEmail(order, ret, kind) {
+  const first = String(order.buyerName || '').split(' ')[0] || 'there';
+  const link = `${getAppUrl()}/store/orders/${encodeURIComponent(order.orderNumber)}`;
+  const amount = ret.refundCentavos ? `PHP ${(ret.refundCentavos / 100).toLocaleString('en-PH', { minimumFractionDigits: 2 })}` : '';
+  const copy = {
+    REFUND_SENT: {
+      subject: `Your refund for order ${order.orderNumber} is on its way`,
+      lines: [`We approved your refund (${ret.returnNumber}) of ${amount} and sent it to PayMongo.`, 'It usually reaches your GCash within a few working days.'],
+    },
+    REJECTED: {
+      subject: `About your ${ret.kindLabel.toLowerCase()} request for order ${order.orderNumber}`,
+      lines: [`We could not approve your request ${ret.returnNumber}:`, ret.rejectReason, 'Reply to this email if you would like to talk it over.'],
+    },
+    EXCHANGE_SENT: {
+      subject: `Your exchange for order ${order.orderNumber} is ${ret.courier ? 'on its way' : 'done'}`,
+      lines: [ret.courier ? `Your new item has been shipped with ${ret.courier}. Tracking number: ${ret.trackingNumber}` : `Your exchange (${ret.returnNumber}) is complete.`],
+    },
+  }[kind];
+  if (!copy) return false;
+  const lines = copy.lines.filter(Boolean);
+  try {
+    await transporter.sendMail({
+      from: MAIL_FROM,
+      to: order.buyerEmail,
+      subject: copy.subject,
+      text: `Hi ${first},\n\n${lines.join('\n')}\n\nOrder ${order.orderNumber}: ${link}`,
+      html: `<p>Hi ${escapeHtml(first)},</p>${lines.map((l) => `<p>${escapeHtml(l)}</p>`).join('')}<p><a href="${escapeHtml(link)}">Open order ${escapeHtml(order.orderNumber)}</a></p>`,
+    });
+    return true;
+  } catch (err) {
+    return reportSendFailure(`merchandise return ${kind}`, order.buyerEmail, err);
+  }
+}
+
 async function sendEventInvitationEmail(invitation, event) {
   const inviteUrl = `${getAppUrl()}/events/${event.id}/invite/${invitation.token}`;
   const template = await emailTemplateService.getEventInvitationTemplate(event.id);
@@ -491,6 +623,9 @@ async function sendContactMessage({ firstName, lastName, email, message }) {
 }
 
 module.exports = {
+  sendMerchOrderEmail,
+  sendMerchStatusEmail,
+  sendMerchReturnEmail,
   sendContactMessage,
   sendActivationEmail,
   sendEventCertificateEmail,

@@ -44,10 +44,22 @@ async function listByStatus(status, { awaitingApproval = false } = {}) {
 // beneath it. `organizationId` alone filters to exactly one organization,
 // which is what the admin's filter dropdown passes.
 async function listMembersForAdmin({
-  status, organizationId, organizationIds, search, membership, memberType, paymentStatus, page = 1, pageSize = 25,
+  status, organizationId, organizationIds, search, membership, memberType, paymentStatus, studentOrg, page = 1, pageSize = 25,
 } = {}) {
   const where = { role: { not: 'ADMIN' } };
   if (status) where.status = status;
+
+  // Student organization (an organization of type STUDENT_UNIT): one by id,
+  // ANY = in some student organization, NONE = not in one (no organization,
+  // or one higher up such as a province). On AND so it narrows the
+  // Organization filter instead of replacing it.
+  if (studentOrg === 'ANY') {
+    where.AND = [...(where.AND || []), { organization: { is: { type: 'STUDENT_UNIT' } } }];
+  } else if (studentOrg === 'NONE') {
+    where.AND = [...(where.AND || []), { OR: [{ organizationId: null }, { organization: { is: { type: { not: 'STUDENT_UNIT' } } } }] }];
+  } else if (studentOrg && Number.isInteger(Number(studentOrg))) {
+    where.AND = [...(where.AND || []), { organizationId: Number(studentOrg) }];
+  }
 
   // Member type from the Master List; NONE = no type (non-members and guests).
   if (memberType === 'NONE') where.memberTypeId = null;
@@ -262,6 +274,9 @@ async function updateUser(userId, data, {
   if (data.role === 'PRESIDENT' && !allowPresidentRole) {
     throw new AppError('Only the main admin can make someone National President', 403);
   }
+  if (data.role === 'FINANCE_LOGISTICS' && !allowPresidentRole) {
+    throw new AppError('Only the main admin can give the Finance & Logistics role', 403);
+  }
 
   const losesAdmin = target.role === 'ADMIN' && data.role && data.role !== 'ADMIN';
 
@@ -307,7 +322,7 @@ async function updateUser(userId, data, {
     const assignable = allowAdminRole
       ? ['ADMIN', 'CHAPTER_ADMIN', 'USER']
       : ['CHAPTER_ADMIN', 'USER'];
-    if (allowPresidentRole) assignable.push('PRESIDENT');
+    if (allowPresidentRole) assignable.push('PRESIDENT', 'FINANCE_LOGISTICS');
     if (assignable.includes(roleVal)) allowed.role = roleVal;
   }
   // Member type, from the Master List. Main admins only: the scoped (chapter
@@ -331,6 +346,11 @@ async function updateUser(userId, data, {
   }
 
   const updated = await prisma.user.update({ where: { id: Number(userId) }, data: allowed, include: { organization: true, memberType: true } });
+  // Leaving Finance & Logistics drops that account's ticks, so giving the role
+  // again later starts from nothing rather than from old access.
+  if (target.role === 'FINANCE_LOGISTICS' && allowed.role && allowed.role !== 'FINANCE_LOGISTICS') {
+    await prisma.adminGrant.deleteMany({ where: { userId: target.id } });
+  }
 
   // Logged after the write, so nothing claims a change that did not happen.
   // Awaited rather than fired and forgotten: granting ADMIN hands over every

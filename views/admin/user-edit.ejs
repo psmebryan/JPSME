@@ -71,6 +71,7 @@
                 National President roles; the server refuses them from anyone else. %>
             <% if (locals.currentUser && currentUser.role === 'ADMIN') { %>
               <option value="PRESIDENT" <%= user.role === 'PRESIDENT' ? 'selected' : '' %>>National President</option>
+              <option value="FINANCE_LOGISTICS" <%= user.role === 'FINANCE_LOGISTICS' ? 'selected' : '' %>>Finance &amp; Logistics (store)</option>
               <option value="ADMIN" <%= user.role === 'ADMIN' ? 'selected' : '' %>>Admin</option>
             <% } %>
           </select>

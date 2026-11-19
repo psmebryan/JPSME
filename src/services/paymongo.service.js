@@ -135,6 +135,17 @@ async function getCheckoutSession(checkoutId) {
   return json?.data;
 }
 
+// Expires a Checkout Session so it can no longer take a payment (PayMongo:
+// POST /checkout_sessions/:id/expire, "Expire Checkout Session"; it also
+// cancels its payment intent). Used when a merchandise order's stock hold runs
+// out, so the link the buyer still has open cannot be paid after the stock it
+// held was given back. PayMongo refuses it for a session already paid or
+// expired; the caller then reads the session to see which.
+async function expireCheckoutSession(checkoutId) {
+  const json = await paymongoRequest('POST', `/checkout_sessions/${checkoutId}/expire`);
+  return json?.data;
+}
+
 // Requests a refund for a previously PAID PayMongo payment. The returned
 // resource's status starts as "pending"/"processing" — it only reaches
 // "succeeded"/"failed" once PayMongo's own refund webhook confirms it, never
@@ -225,6 +236,7 @@ async function listWebhooks() {
 module.exports = {
   createGcashCheckout,
   getCheckoutSession,
+  expireCheckoutSession,
   createRefund,
   verifyWebhookSignature,
   listWebhooks,

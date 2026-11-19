@@ -74,6 +74,66 @@
 </script>
 
 <%#
+  Finance & Logistics. Each account with that role gets its own ticks:
+  Finance tasks, Logistics tasks, Payments (view only), Reports. Saved per
+  account through PUT /api/admin/settings/finance-logistics/:userId (main
+  admin only). What each task group may do in the store: adminAccess.merchCapsFor.
+%>
+<% const flAccounts = locals.financeLogistics || []; %>
+<div id="fl-access-module" class="admin-card p-6 mb-6">
+  <h2 class="font-semibold mb-1">Finance &amp; Logistics access</h2>
+  <p class="text-sm text-slate-500 max-w-3xl">
+    For the people who run the merchandise store. Tick what each account may do. Finance approves refunds, sees cost
+    and profit and checks each day against PayMongo; Logistics handles stock, packing, shipping, pickups and returns.
+    One person can have both, but then they still cannot approve a refund they raised themselves.
+  </p>
+  <% if (!flAccounts.length) { %>
+    <p class="mt-4 rounded-lg border border-dashed border-slate-300 px-4 py-3 text-sm text-slate-600">
+      Nobody has the role yet. Give it on a member's account: <span class="font-medium">Users &rarr; Edit &rarr; Role &rarr; Finance &amp; Logistics</span>, then tick their tasks here.
+    </p>
+  <% } %>
+  <div class="mt-4 space-y-4">
+    <% flAccounts.forEach((a) => { %>
+      <div class="rounded-lg border border-slate-200 p-4" data-fl-account="<%= a.id %>">
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+          <p class="text-sm"><a href="/admin/users/<%= a.id %>/edit" class="font-semibold text-indigo-600 hover:underline"><%= a.name %></a> <span class="text-slate-500"><%= a.email %></span></p>
+          <p class="text-xs text-slate-500"><%= a.grants.length ? '' : 'No tasks yet: they can sign in but see nothing.' %></p>
+        </div>
+        <div class="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <% (locals.flGrantList || []).forEach((g) => { %>
+            <label class="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 p-3 hover:bg-slate-50 has-[:checked]:border-indigo-300 has-[:checked]:bg-indigo-50/50">
+              <input type="checkbox" class="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600" value="<%= g.key %>" <%= a.grants.includes(g.key) ? 'checked' : '' %>>
+              <span><span class="block text-sm font-medium text-slate-900"><%= g.label %></span><span class="block text-xs text-slate-500"><%= g.hint %></span></span>
+            </label>
+          <% }) %>
+        </div>
+        <div class="mt-3 text-right"><button type="button" class="btn-primary px-4 py-1.5 text-sm" data-fl-save>Save</button></div>
+      </div>
+    <% }) %>
+  </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  document.querySelectorAll('[data-fl-account]').forEach((card) => {
+    const save = card.querySelector('[data-fl-save]');
+    save.addEventListener('click', async () => {
+      save.disabled = true;
+      try {
+        const grants = Array.from(card.querySelectorAll('input[type="checkbox"]')).filter((b) => b.checked).map((b) => b.value);
+        const res = await apiFetch(`/api/admin/settings/finance-logistics/${card.dataset.flAccount}`, { method: 'PUT', body: JSON.stringify({ grants }) });
+        showToast(res.message);
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        save.disabled = false;
+      }
+    });
+  });
+}());
+</script>
+
+<%#
   The four site images, together, because they are one decision: what the
   organisation looks like everywhere it appears. Each says where it shows up,
   since the difference between them is not obvious from a filename.
@@ -231,6 +291,66 @@
     </span>
   </label>
 </div>
+
+<%# Flood guard (src/middleware/floodGuard.middleware.js): an IP that sends too
+    many requests too fast is refused for a while. Listed here so a block that
+    caught a real network (a campus, a venue) can be lifted at once. %>
+<% const fg = locals.floodGuard; %>
+<% if (fg) { %>
+<div id="blocked-ips-module" class="admin-card p-6 max-w-2xl mt-6">
+  <h2 class="font-semibold mb-1">Blocked IP addresses</h2>
+  <p class="mb-4 text-xs text-slate-500">
+    <% if (fg.enabled) { %>
+      An address that sends more than <strong><%= fg.max %></strong> requests in <strong><%= fg.windowSeconds %> seconds</strong> is blocked for
+      <strong><%= fg.blockMinutes %> minutes</strong>. Pictures, styles and scripts do not count. A whole campus or venue can share one
+      address, so lift a block here if real people were caught. Large attacks from many addresses are stopped at Cloudflare.
+    <% } else { %>
+      The flood guard is <strong>off</strong> on this server (it is on by default in production; FLOOD_GUARD in the environment).
+    <% } %>
+  </p>
+  <% if (!fg.blocked.length) { %>
+    <p class="text-sm text-emerald-700" data-no-blocked>No address is blocked right now.</p>
+  <% } else { %>
+    <div class="relative overflow-x-auto">
+      <table class="admin-table">
+        <thead class="admin-table-head"><tr><th class="admin-th">Address</th><th class="admin-th">Blocked</th><th class="admin-th">Until</th><th class="admin-th text-right">Refused since</th><th class="admin-th"></th></tr></thead>
+        <tbody class="admin-tbody">
+          <% fg.blocked.forEach((b) => { %>
+            <tr class="admin-tr" data-blocked-ip="<%= b.ip %>">
+              <td class="admin-td font-mono text-xs"><%= b.ip %></td>
+              <td class="admin-td text-xs"><%= b.since.toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) %></td>
+              <td class="admin-td text-xs"><%= b.until.toLocaleString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' }) %></td>
+              <td class="admin-td text-right tabular-nums"><%= b.refused %></td>
+              <td class="admin-td text-right"><button type="button" class="btn-secondary px-3 py-1 text-sm" data-unblock>Unblock</button></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+  <% if (fg.allowlist.length) { %><p class="mt-3 text-xs text-slate-500">Never blocked: <span class="font-mono"><%= fg.allowlist.join(', ') %></span></p><% } %>
+</div>
+<script nonce="<%= cspNonce %>">
+(function () {
+  const box = document.getElementById('blocked-ips-module');
+  if (!box) return;
+  box.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-unblock]');
+    if (!btn) return;
+    const row = btn.closest('[data-blocked-ip]');
+    btn.disabled = true;
+    try {
+      const res = await apiFetch('/api/admin/settings/blocked-ips/unblock', { method: 'POST', body: JSON.stringify({ ip: row.getAttribute('data-blocked-ip') }) });
+      showToast(res.message);
+      row.remove();
+    } catch (err) {
+      showToast(err.message, 'error');
+      btn.disabled = false;
+    }
+  });
+}());
+</script>
+<% } %>
 
 <div id="data-export-module" class="admin-card p-6 max-w-2xl mt-6">
   <h2 class="font-semibold mb-1">Data export</h2>

@@ -1,0 +1,37 @@
+<%#
+  "Report a problem" (phase 5). Shown on the Store pages only while the Store
+  is not open to everyone (the soft launch, or a staff preview). Sends to
+  POST /api/store/feedback with the page it was sent from; staff see it in
+  Admin -> Merchandise -> Reported problems. Pass orderNumber on an order page.
+%>
+<% const sa = locals.storeAccess; %>
+<% if (locals.currentUser && sa && sa.visible && !sa.open) { %>
+  <details class="mt-10 rounded-xl border border-[#263b70] bg-[#0b1430] p-4 text-sm text-slate-200" id="store-feedback" data-order="<%= locals.orderNumber || '' %>">
+    <summary class="cursor-pointer font-semibold text-amber-300">Report a problem</summary>
+    <p class="mt-2 text-slate-400">Something wrong, confusing or broken on this page? Tell the store team before the Store opens to everyone.</p>
+    <label for="store-feedback-message" class="sr-only">What went wrong</label>
+    <textarea id="store-feedback-message" rows="3" maxlength="1000" class="mt-3 w-full rounded-lg border border-[#263b70] bg-[#071126] px-3 py-2 text-slate-100" placeholder="What happened, and what did you expect?"></textarea>
+    <button type="button" class="mt-2 rounded-lg bg-amber-400 px-4 py-2 font-semibold text-[#071126] hover:bg-amber-300" data-send-feedback>Send</button>
+  </details>
+  <script nonce="<%= cspNonce %>">
+  (function () {
+    const box = document.getElementById('store-feedback');
+    if (!box) return;
+    const btn = box.querySelector('[data-send-feedback]');
+    const msg = box.querySelector('textarea');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const res = await apiFetch('/api/store/feedback', { method: 'POST', body: JSON.stringify({ message: msg.value, page: window.location.pathname, orderNumber: box.getAttribute('data-order') || undefined }) });
+        showToast(res.message);
+        msg.value = '';
+        box.open = false;
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }());
+  </script>
+<% } %>

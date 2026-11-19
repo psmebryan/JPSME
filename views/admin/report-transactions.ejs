@@ -1,16 +1,20 @@
 <%#
-  Transaction Report (Reports). Two tabs: Event Registration (every event
-  registration, with its online payment if there was one) and Membership
-  Registration (every membership payment). Filters live in the URL; Export
+  Transaction Report (Reports). Three tabs: Event Registration (every event
+  registration, with its online payment if there was one), Membership
+  Registration (every membership payment) and Merchandise (every store order
+  that reached checkout). Filters live in the URL; Export
   downloads every matching row with the same filters. See reports.service.
 %>
 <%
   const f = filters;
   const isEvent = f.kind === 'EVENT';
+  const isMerch = f.kind === 'MERCH';
+  const kindParam = { MEMBERSHIP: 'membership', MERCH: 'merch' }[f.kind] || null;
+  const tabHref = (k) => '/admin/reports/transactions' + (k ? `?kind=${k}` : '');
   const money = (c) => '₱' + Number((Number(c) || 0) / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const when = (d) => (d ? new Date(d).toLocaleString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—');
   const qs = (over) => {
-    const p = { kind: f.kind === 'MEMBERSHIP' ? 'membership' : null, from: f.from, to: f.to, payment: f.payment, status: f.status, org: f.org, event: f.event, q: f.q, page: 1, ...over };
+    const p = { kind: kindParam, from: f.from, to: f.to, payment: f.payment, status: f.status, org: f.org, event: f.event, q: f.q, page: 1, ...over };
     return Object.keys(p).filter((k) => p[k] !== null && p[k] !== undefined && p[k] !== '' && !(k === 'page' && Number(p[k]) === 1))
       .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(p[k])}`).join('&');
   };
@@ -26,7 +30,7 @@
     <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-6 pt-5">
       <div class="pb-2">
         <h1 class="admin-h1">Transaction Report</h1>
-        <p class="admin-subtitle">Event and membership registrations and their payments</p>
+        <p class="admin-subtitle">Event and membership registrations, store orders, and their payments</p>
       </div>
       <a href="/admin/reports/transactions/export.xlsx<%= exportQs ? '?' + exportQs : '' %>" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-export>
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg>
@@ -34,7 +38,8 @@
       </a>
       <nav class="-mb-px flex w-full gap-2" aria-label="Transaction type">
         <a href="/admin/reports/transactions" class="<%= tab(isEvent) %>" <%- isEvent ? 'aria-current="page"' : '' %>><%= kinds.EVENT %></a>
-        <a href="/admin/reports/transactions?kind=membership" class="<%= tab(!isEvent) %>" <%- !isEvent ? 'aria-current="page"' : '' %>><%= kinds.MEMBERSHIP %></a>
+        <a href="/admin/reports/transactions?kind=membership" class="<%= tab(f.kind === 'MEMBERSHIP') %>" <%- f.kind === 'MEMBERSHIP' ? 'aria-current="page"' : '' %>><%= kinds.MEMBERSHIP %></a>
+        <a href="/admin/reports/transactions?kind=merch" class="<%= tab(isMerch) %>" <%- isMerch ? 'aria-current="page"' : '' %>><%= kinds.MERCH %></a>
       </nav>
     </div>
 
@@ -64,7 +69,7 @@
       </div>
 
       <form method="get" action="/admin/reports/transactions" id="report-filters" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 xl:items-end">
-        <% if (!isEvent) { %><input type="hidden" name="kind" value="membership"><% } %>
+        <% if (kindParam) { %><input type="hidden" name="kind" value="<%= kindParam %>"><% } %>
         <div>
           <label for="rf-from" class="form-label">Date from</label>
           <input id="rf-from" name="from" type="date" value="<%= f.from || '' %>" class="form-input" data-autosubmit>
@@ -86,7 +91,7 @@
           <label for="rf-status" class="form-label">Payment status</label>
           <select id="rf-status" name="status" class="form-input" data-autosubmit>
             <option value="">All statuses</option>
-            <% Object.keys(statuses).forEach((k) => { if (!isEvent && ['TO_COLLECT', 'FREE', 'CANCELLED'].includes(k)) return; %>
+            <% Object.keys(statuses).forEach((k) => { if ((!isEvent && ['TO_COLLECT', 'FREE'].includes(k)) || (f.kind === 'MEMBERSHIP' && k === 'CANCELLED')) return; %>
               <option value="<%= k %>" <%= f.status === k ? 'selected' : '' %>><%= statuses[k] %></option>
             <% }) %>
           </select>
@@ -116,12 +121,12 @@
           <label for="rf-q" class="form-label">Search</label>
           <div class="relative">
             <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke-width="2" stroke-linecap="round"/></svg>
-            <input id="rf-q" name="q" type="search" value="<%= f.q %>" maxlength="100" placeholder="Name, email, reference<%= isEvent ? ', event' : '' %>" class="form-input pl-9">
+            <input id="rf-q" name="q" type="search" value="<%= f.q %>" maxlength="100" placeholder="Name, email, reference<%= isEvent ? ', event' : (isMerch ? ', item' : '') %>" class="form-input pl-9">
           </div>
         </div>
         <span class="flex gap-2 sm:col-span-2 lg:col-span-1 xl:col-span-2">
           <button type="submit" class="btn-primary px-4 py-2">Search</button>
-          <a href="<%= isEvent ? '/admin/reports/transactions' : '/admin/reports/transactions?kind=membership' %>" class="btn-secondary px-3 py-2">Clear</a>
+          <a href="<%= tabHref(kindParam) %>" class="btn-secondary px-3 py-2">Clear</a>
         </span>
       </form>
 
@@ -133,7 +138,7 @@
               <th class="admin-th">Reference</th>
               <th class="admin-th">Name</th>
               <th class="admin-th">Student organization</th>
-              <% if (isEvent) { %><th class="admin-th">Event</th><th class="admin-th">Fee option</th><% } else { %><th class="admin-th">Member type</th><% } %>
+              <% if (isEvent) { %><th class="admin-th">Event</th><th class="admin-th">Fee option</th><% } else if (isMerch) { %><th class="admin-th">Items</th><th class="admin-th">Delivery / pickup</th><% } else { %><th class="admin-th">Member type</th><% } %>
               <th class="admin-th text-right">Amount</th>
               <th class="admin-th">Payment</th>
               <th class="admin-th">Payment status</th>
@@ -147,7 +152,7 @@
                 <td class="admin-td whitespace-nowrap font-mono text-xs"><%= r.reference %></td>
                 <td class="admin-td"><span class="font-medium text-slate-900"><%= r.name %></span><span class="block text-xs text-slate-500"><%= r.email %></span></td>
                 <td class="admin-td max-w-[220px] truncate" title="<%= r.organization || '' %>"><%= r.organization || '—' %></td>
-                <% if (isEvent) { %>
+                <% if (isEvent || isMerch) { %>
                   <td class="admin-td max-w-[220px] truncate" title="<%= r.event %>"><%= r.event %></td>
                   <td class="admin-td whitespace-nowrap"><%= r.option || '—' %></td>
                 <% } else { %>
@@ -182,6 +187,9 @@
           The date is when they registered. <strong>Online</strong> amounts are what PayMongo charged, channel fee included.
           <strong>To collect</strong> is a paid event's fee recorded while online payment was off, to be paid to the organizers.
           The student organization is the one recorded when they registered.
+        <% } else if (isMerch) { %>
+          The date is when the order was placed. Amounts are what PayMongo charged: items, delivery fee and channel fee.
+          The student organization is the buyer's when they ordered. A partly refunded order stays Paid; refunds and profit are in Merchandise Reports.
         <% } else { %>
           The date is when the membership payment was started. Amounts are what PayMongo charged, channel fee included.
           Member type and student organization are the member's current ones.

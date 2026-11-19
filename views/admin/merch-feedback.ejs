@@ -1,0 +1,66 @@
+<%#
+  Merchandise -> Reported problems (phase 5). What the soft-launch testers
+  sent through "Report a problem" on the Store, open ones first. Any store
+  team can mark one fixed (with a note) or open it again. See merchLaunch.service.
+%>
+<%
+  const when = (d) => new Date(d).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const tab = (active) => `inline-flex items-center border-b-2 px-4 py-3 text-sm font-semibold ${active ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`;
+%>
+<div class="w-full" id="merch-feedback">
+  <div class="admin-card overflow-hidden">
+    <div class="border-b border-slate-200 px-6 pt-5">
+      <h1 class="admin-h1">Reported problems</h1>
+      <p class="admin-subtitle pb-2">From the soft-launch testers. Fix what they find before opening the Store.</p>
+      <nav class="-mb-px flex gap-2" aria-label="Status">
+        <a href="/admin/merch/feedback?status=open" class="<%= tab(status === 'OPEN') %>">Open (<%= counts.OPEN || 0 %>)</a>
+        <a href="/admin/merch/feedback?status=done" class="<%= tab(status === 'DONE') %>">Fixed (<%= counts.DONE || 0 %>)</a>
+        <a href="/admin/merch/feedback" class="<%= tab(!status) %>">All</a>
+      </nav>
+    </div>
+    <ul class="divide-y divide-slate-100">
+      <% items.forEach((f) => { %>
+        <li class="px-6 py-4" data-feedback="<%= f.id %>" data-status="<%= f.status %>">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <p class="whitespace-pre-line text-sm text-slate-900"><%= f.message %></p>
+              <p class="mt-1 text-xs text-slate-500">
+                <%= f.from %><%= f.email ? ` · ${f.email}` : '' %> · <%= when(f.createdAt) %>
+                <% if (f.page) { %> · on <span class="font-mono"><%= f.page %></span><% } %>
+                <% if (f.orderNumber) { %> · order <a href="/admin/merch/orders/<%= f.orderNumber %>" class="font-mono text-indigo-600 hover:underline"><%= f.orderNumber %></a><% } %>
+              </p>
+              <% if (f.status === 'DONE') { %><p class="mt-1 text-xs text-emerald-700">Fixed<%= f.resolvedBy ? ` by ${f.resolvedBy}` : '' %>, <%= when(f.resolvedAt) %><%= f.note ? `: ${f.note}` : '' %></p><% } %>
+            </div>
+            <% if (f.status === 'OPEN') { %>
+              <div class="flex w-full gap-2 sm:w-auto">
+                <input maxlength="300" placeholder="What was done (optional)" class="form-input text-sm" data-note>
+                <button type="button" class="btn-primary shrink-0 px-3 py-1.5 text-sm" data-done>Mark fixed</button>
+              </div>
+            <% } else { %>
+              <button type="button" class="btn-secondary px-3 py-1.5 text-sm" data-reopen>Open again</button>
+            <% } %>
+          </div>
+        </li>
+      <% }) %>
+    </ul>
+    <% if (!items.length) { %><p class="py-10 text-center text-sm text-slate-500">Nothing reported<%= status === 'OPEN' ? ' that is still open' : '' %>.</p><% } %>
+  </div>
+</div>
+
+<script nonce="<%= cspNonce %>">
+(function () {
+  document.getElementById('merch-feedback').addEventListener('click', async (e) => {
+    const li = e.target.closest('[data-feedback]');
+    if (!li) return;
+    const done = e.target.closest('[data-done]');
+    const reopen = e.target.closest('[data-reopen]');
+    if (!done && !reopen) return;
+    const body = done ? { done: true, note: li.querySelector('[data-note]').value } : { done: false };
+    try {
+      const res = await apiFetch(`/api/admin/merch/feedback/${li.getAttribute('data-feedback')}`, { method: 'PUT', body: JSON.stringify(body) });
+      showToast(res.message);
+      setTimeout(() => window.location.reload(), 400);
+    } catch (err) { showToast(err.message, 'error'); }
+  });
+}());
+</script>
