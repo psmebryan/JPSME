@@ -48,8 +48,8 @@ const timelineYears = locals.timelineYears || [
           <span aria-hidden="true">🎯</span> Our Mission
         </h2>
         <p class="mt-3 text-sm leading-relaxed text-gray-600">
-          <%= locals.missionText || `To nurture future mechanical engineers through programs that develop
-          <em>leadership, technical mastery, and community involvement</em>.` %>
+          <% if (locals.missionText) { %><%= missionText %><% } else { %>To nurture future mechanical engineers through programs that develop
+          <em>leadership, technical mastery, and community involvement</em>.<% } %>
         </p>
       </div>
 

@@ -174,7 +174,8 @@ app.use(
         connectSrc: ["'self'", 'https://challenges.cloudflare.com'],
         styleSrc: ["'self'", (req, res) => `'nonce-${res.locals.cspNonce}'`],
         imgSrc: ["'self'", 'data:'],
-        frameSrc: ["'self'", 'https://online.anyflip.com', 'https://challenges.cloudflare.com'],
+        // www.google.com is the Contact page's map (maps?output=embed).
+        frameSrc: ["'self'", 'https://online.anyflip.com', 'https://challenges.cloudflare.com', 'https://www.google.com'],
       },
     },
   })
