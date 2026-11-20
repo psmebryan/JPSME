@@ -10,7 +10,7 @@ const TYPE_LABEL = {
 
 <div class="mb-6">
   <% if (isMainAdmin) { %>
-    <a href="/admin/organization-admins" class="text-sm text-indigo-600 hover:underline">&larr; Back to Organization Admins</a>
+    <a href="/jpsme_admin/organization-admins" class="text-sm text-indigo-600 hover:underline">&larr; Back to Organization Admins</a>
   <% } %>
   <h1 class="admin-h1 mt-2"><%= organization ? organization.name : 'Organization Members' %></h1>
   <% if (organizationPath) { %>
@@ -37,7 +37,7 @@ const TYPE_LABEL = {
         <p class="text-[11px] font-semibold tracking-wide uppercase text-amber-600 mb-1">Organization Admin</p>
         <p class="font-semibold text-slate-900"><%= leader.firstName %> <%= leader.lastName %></p>
         <p class="text-sm text-slate-500"><%= leader.email %></p>
-        <a href="/admin/organization-members/<%= leader.id %>/edit" class="mt-3 text-xs text-indigo-600 hover:underline">Edit profile</a>
+        <a href="/jpsme_admin/organization-members/<%= leader.id %>/edit" class="mt-3 text-xs text-indigo-600 hover:underline">Edit profile</a>
       <% } else { %>
         <img src="/img/default-avatar.svg" alt="" class="h-20 w-20 rounded-full object-cover ring-4 ring-slate-100 mb-3 opacity-60">
         <p class="text-[11px] font-semibold tracking-wide uppercase text-slate-400 mb-1">Organization Admin</p>
@@ -64,8 +64,8 @@ const TYPE_LABEL = {
             <p class="mt-1 text-[11px] text-slate-400 truncate w-full"><%= member.organization.name %></p>
           <% } %>
           <div class="flex items-center gap-3 mt-3">
-            <a href="/admin/organization-members/<%= member.id %>/edit" class="text-xs text-indigo-600 hover:underline">Edit</a>
-            <form action="/admin/organization-members/<%= member.id %>/delete" method="POST" data-confirm="Delete this member?">
+            <a href="/jpsme_admin/organization-members/<%= member.id %>/edit" class="text-xs text-indigo-600 hover:underline">Edit</a>
+            <form action="/jpsme_admin/organization-members/<%= member.id %>/delete" method="POST" data-confirm="Delete this member?">
               <input type="hidden" name="_csrf" value="<%= locals.csrfToken || '' %>">
               <button type="submit" class="text-xs text-red-600 hover:underline">Delete</button>
             </form>

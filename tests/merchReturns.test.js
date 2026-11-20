@@ -63,7 +63,7 @@ let ipSeq = 0;
 async function signIn(email, context = 'user') {
   ipSeq += 1;
   const ip = `198.51.100.${90 + ipSeq}`;
-  const page = await fetch(`${base}${context === 'admin' ? '/admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
+  const page = await fetch(`${base}${context === 'admin' ? '/jpsme_admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
   let cookie = (page.headers.get('set-cookie') || '').split(';')[0];
   const token = ((await page.text()).match(/name="csrf-token" content="([^"]*)"/) || [])[1];
   const res = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie, 'X-CSRF-Token': token, 'X-Forwarded-For': ip }, body: JSON.stringify({ email, password: PASSWORD, context }) });
@@ -232,7 +232,7 @@ async function main() {
       const second = await act(Pr, rn, 'approve', {});
       assert.strictEqual(second.json.data.request.status, 'REFUND_SENT');
       assert.strictEqual(refunds.at(-1), 15000);
-      const page = await Ad('GET', `/admin/merch/returns/${rn}`);
+      const page = await Ad('GET', `/jpsme_admin/merch/returns/${rn}`);
       assert(page.text.includes('Second approval') && page.text.includes(`Pres ${TAG.toUpperCase()}`));
       await settingsService.setSetting('merchRefundApprovalLimit', '');
     });
@@ -292,19 +292,19 @@ async function main() {
       assert.strictEqual((await B('POST', `/api/store/returns/${rn2}/withdraw`)).status, 409, 'too late once sent');
       await refundResult(rn2, 'refund.failed');
       assert.strictEqual((await prisma.merchReturn.findUnique({ where: { returnNumber: rn2 } })).status, 'REFUND_FAILED');
-      assert((await Ad('GET', `/admin/merch/returns/${rn2}`)).text.includes('PayMongo could not complete'));
+      assert((await Ad('GET', `/jpsme_admin/merch/returns/${rn2}`)).text.includes('PayMongo could not complete'));
     });
 
     await test('pages render; members cannot act on requests', async () => {
-      const list = await Ad('GET', '/admin/merch/returns');
+      const list = await Ad('GET', '/jpsme_admin/merch/returns');
       assert.strictEqual(list.status, 200);
-      assert((await Ad('GET', '/admin/merch/returns?group=closed')).text.includes('RET-'));
+      assert((await Ad('GET', '/jpsme_admin/merch/returns?group=closed')).text.includes('RET-'));
       assert((await A('GET', `/store/orders/${annOrder}`)).text.includes('Returns &amp; refunds'));
       assert.strictEqual((await B('POST', '/api/admin/merch/returns/RET-2026-000001/approve', {})).status, 403);
       assert.strictEqual((await B('PUT', '/api/admin/merch/return-settings', { approvalLimit: '1' })).status, 403);
       const s = await Ad('PUT', '/api/admin/merch/return-settings', { approvalLimit: 'abc' });
       assert.strictEqual(s.status, 422);
-      assert((await Ad('GET', '/admin/merch/fulfilment')).text.includes('Approval limit'));
+      assert((await Ad('GET', '/jpsme_admin/merch/fulfilment')).text.includes('Approval limit'));
     });
   } finally {
     server.close();

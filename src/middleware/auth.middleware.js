@@ -45,32 +45,32 @@ function ensureAuth(req, res, next) {
 function ensureGuest(req, res, next) {
   if (!req.session.user) return next();
   if (req.session.user.role === 'FINANCE_LOGISTICS') return limitedHome(req, res);
-  return res.redirect(ADMIN_ROLES.includes(req.session.user.role) ? '/admin/dashboard' : '/profile');
+  return res.redirect(ADMIN_ROLES.includes(req.session.user.role) ? '/jpsme_admin/dashboard' : '/profile');
 }
 
 function ensureAdmin(req, res, next) {
   const role = req.session.user?.role;
   if (role === 'ADMIN' || role === 'CHAPTER_ADMIN') return next();
   if (isLimited(req)) return limitedGate(req, next, () => limitedHome(req, res));
-  return res.redirect('/admin/login');
+  return res.redirect('/jpsme_admin/login');
 }
 
 function ensureMainAdminOnly(req, res, next) {
   if (req.session.user && req.session.user.role === 'ADMIN') return next();
   if (isLimited(req)) return limitedGate(req, next, () => limitedHome(req, res));
-  if (req.session.user) return res.redirect('/admin/dashboard');
-  return res.redirect('/admin/login');
+  if (req.session.user) return res.redirect('/jpsme_admin/dashboard');
+  return res.redirect('/jpsme_admin/login');
 }
 
 function ensureAdminOrChapterAdmin(req, res, next) {
-  if (!req.session.user) return res.redirect('/admin/login');
+  if (!req.session.user) return res.redirect('/jpsme_admin/login');
   if (req.session.user.role === 'ADMIN') return next();
   if (isLimited(req)) return limitedGate(req, next, () => limitedHome(req, res));
   if (req.session.user.role === 'CHAPTER_ADMIN') {
     const organizationId = sessionOrganizationId(req);
     if (organizationId) return next();
   }
-  return res.redirect('/admin/login');
+  return res.redirect('/jpsme_admin/login');
 }
  
 // --- API routes (JSON-based protection) ---

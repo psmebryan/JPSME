@@ -11,7 +11,7 @@ const cases = [
   ['/api/webhooks/brevo?token=s3cret', '/api/webhooks/brevo?token=[redacted]'],
   ['/x?TOKEN=a&code=123456&page=2', '/x?TOKEN=[redacted]&code=[redacted]&page=2'],
   ['/x?%74oken=a', '/x?%74oken=[redacted]'],
-  ['/admin/users/all?search=ann&page=3', '/admin/users/all?search=ann&page=3'],
+  ['/jpsme_admin/users/all?search=ann&page=3', '/jpsme_admin/users/all?search=ann&page=3'],
   ['/store', '/store'],
   ['/x?token', '/x?token'],
 ];

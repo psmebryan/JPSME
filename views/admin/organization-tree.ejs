@@ -19,7 +19,7 @@ const CREATABLE = ['REGION', 'PROVINCE', 'STUDENT_UNIT'];
       cluster may have nothing beneath it at all.
     </p>
   </div>
-  <a href="/admin/organizations" data-admin-link class="btn-secondary shrink-0">Table view</a>
+  <a href="/jpsme_admin/organizations" data-admin-link class="btn-secondary shrink-0">Table view</a>
 </div>
 
 <% if (reviewCount > 0) { %>
@@ -27,7 +27,7 @@ const CREATABLE = ['REGION', 'PROVINCE', 'STUDENT_UNIT'];
     <p class="text-sm text-amber-900">
       <strong><%= reviewCount %></strong> organization<%= reviewCount === 1 ? '' : 's' %>
       still need a real parent confirmed. They sit at their best-known level until then.
-      <a href="/admin/organizations?needsReview=1" data-admin-link class="ml-1 font-semibold underline">Review them</a>
+      <a href="/jpsme_admin/organizations?needsReview=1" data-admin-link class="ml-1 font-semibold underline">Review them</a>
     </p>
   </div>
 <% } %>
@@ -77,7 +77,7 @@ const CREATABLE = ['REGION', 'PROVINCE', 'STUDENT_UNIT'];
             <span class="shrink-0 relative">
               <%- include('../partials/row-menu', { items: [
                 `<button type="button" class="${MENU_ITEM}" data-add-child="${c.id}" data-parent-name="${esc(c.name)}">+ Add child</button>`,
-                `<a href="/admin/organizations/${c.id}/edit" data-admin-link class="${MENU_ITEM}">Edit</a>`,
+                `<a href="/jpsme_admin/organizations/${c.id}/edit" data-admin-link class="${MENU_ITEM}">Edit</a>`,
                 `<button type="button" class="${MENU_ITEM} text-amber-700" data-toggle-active="${c.id}" data-active="${c.isActive ? '1' : '0'}" data-org-name="${esc(c.name)}">${c.isActive ? 'Deactivate' : 'Reactivate'}</button>`,
                 `<button type="button" class="${MENU_ITEM} text-red-600" data-delete-org="${c.id}" data-org-name="${esc(c.name)}">Delete</button>`,
               ] }) %>

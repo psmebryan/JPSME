@@ -29,13 +29,13 @@ const TYPE_BADGE = {
       <strong><%= reviewCount %></strong> organization<%= reviewCount === 1 ? '' : 's' %>
       need review. The official workbook did not record a cluster/chapter parent for these,
       so they were attached at their region rather than guessed. Open one to set its real parent.
-      <a href="/admin/organizations?needsReview=1" class="ml-2 font-semibold underline">Show them</a>
+      <a href="/jpsme_admin/organizations?needsReview=1" class="ml-2 font-semibold underline">Show them</a>
     </p>
   </div>
 <% } %>
 
 <section class="admin-card overflow-hidden mb-8">
-  <form method="GET" action="/admin/organizations" class="flex flex-wrap items-end gap-3 border-b border-slate-200 p-4">
+  <form method="GET" action="/jpsme_admin/organizations" class="flex flex-wrap items-end gap-3 border-b border-slate-200 p-4">
     <div>
       <label class="form-label">Search</label>
       <input type="search" name="q" value="<%= q %>" placeholder="Name or institution" class="form-input">
@@ -56,7 +56,7 @@ const TYPE_BADGE = {
     <button type="submit" class="btn-primary">Apply</button>
   </form>
 
-  <form id="bulk-reassign-form" action="/admin/organizations/bulk-reassign" method="POST">
+  <form id="bulk-reassign-form" action="/jpsme_admin/organizations/bulk-reassign" method="POST">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
     <input type="hidden" name="q" value="<%= q %>">
     <input type="hidden" name="type" value="<%= type %>">
@@ -94,7 +94,7 @@ const TYPE_BADGE = {
                 <% } else { %><span class="badge-green">OK</span><% } %>
               </td>
               <td class="admin-td text-right">
-                <a href="/admin/organizations/<%= o.id %>/edit" class="text-indigo-600 hover:underline text-sm font-medium">Edit</a>
+                <a href="/jpsme_admin/organizations/<%= o.id %>/edit" class="text-indigo-600 hover:underline text-sm font-medium">Edit</a>
               </td>
             </tr>
           <% }) %>
@@ -185,7 +185,7 @@ const TYPE_BADGE = {
   <p class="admin-subtitle mb-4">
     Any type may sit under any parent — pick whichever level is actually correct.
   </p>
-  <form action="/admin/organizations" method="POST" class="grid gap-3 sm:grid-cols-2">
+  <form action="/jpsme_admin/organizations" method="POST" class="grid gap-3 sm:grid-cols-2">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
     <div>
       <label class="form-label">Name</label>

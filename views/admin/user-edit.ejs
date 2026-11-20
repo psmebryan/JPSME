@@ -1,4 +1,4 @@
-<% const _backHref = typeof restricted !== 'undefined' && restricted ? '/admin/organization-members' : '/admin/users/all'; %>
+<% const _backHref = typeof restricted !== 'undefined' && restricted ? '/jpsme_admin/organization-members' : '/jpsme_admin/users/all'; %>
 <div class="w-full mb-3">
   <a href="<%= _backHref %>" class="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-indigo-700">
     <span aria-hidden="true">&larr;</span> <%= typeof restricted !== 'undefined' && restricted ? 'Back to members' : 'Back to users' %>
@@ -59,7 +59,7 @@
             <% }) %>
           </select>
           <% if (!(locals.memberTypes || []).length) { %>
-            <p class="mt-1 text-xs text-slate-500">Add member types on the <a href="/admin/master/member-types" class="text-indigo-600 hover:underline">Master List</a>.</p>
+            <p class="mt-1 text-xs text-slate-500">Add member types on the <a href="/jpsme_admin/master/member-types" class="text-indigo-600 hover:underline">Master List</a>.</p>
           <% } %>
         </div>
         <div>
@@ -254,7 +254,7 @@
     try {
       await apiFetch(form.action, { method: 'PUT', body: JSON.stringify(data) });
       showToast('<%= typeof restricted !== "undefined" && restricted ? "Member updated" : "User updated" %>');
-      window.location.href = '<%= typeof restricted !== "undefined" && restricted ? "/admin/organization-members" : "/admin/users/all" %>';
+      window.location.href = '<%= typeof restricted !== "undefined" && restricted ? "/jpsme_admin/organization-members" : "/jpsme_admin/users/all" %>';
     } catch (err) {
       showToast(err.message, 'error');
     }

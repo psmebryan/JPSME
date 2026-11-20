@@ -12,12 +12,12 @@ function statusBadge(r) {
 }
 %>
 <div id="event-certificate-module" class="w-full" data-event-id="<%= event.id %>">
-  <a href="/admin/events" class="text-sm text-indigo-600 hover:underline">&larr; Back to events</a>
+  <a href="/jpsme_admin/events" class="text-sm text-indigo-600 hover:underline">&larr; Back to events</a>
   <div class="mb-6 mt-2 flex flex-wrap items-center justify-between gap-3">
     <h1 class="admin-h1">Certificate — <%= event.title %></h1>
     <div class="flex gap-3 text-sm">
-      <a href="/admin/events/<%= event.id %>/edit" class="text-indigo-600 hover:underline">Edit Event</a>
-      <a href="/admin/events/<%= event.id %>/registrations" class="text-indigo-600 hover:underline">View Registrations</a>
+      <a href="/jpsme_admin/events/<%= event.id %>/edit" class="text-indigo-600 hover:underline">Edit Event</a>
+      <a href="/jpsme_admin/events/<%= event.id %>/registrations" class="text-indigo-600 hover:underline">View Registrations</a>
     </div>
   </div>
 

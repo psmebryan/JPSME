@@ -40,7 +40,7 @@ let ipSeq = 0;
 async function signIn(email, context = 'user') {
   ipSeq += 1;
   const ip = `198.51.100.${230 + ipSeq}`;
-  const page = await fetch(`${base}${context === 'admin' ? '/admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
+  const page = await fetch(`${base}${context === 'admin' ? '/jpsme_admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
   let cookie = (page.headers.get('set-cookie') || '').split(';')[0];
   const token = ((await page.text()).match(/name="csrf-token" content="([^"]*)"/) || [])[1];
   const res = await fetch(`${base}/api/auth/login`, {
@@ -126,7 +126,7 @@ async function main() {
     const q = encodeURIComponent(TAG);
 
     await test('transactions, Event Registration: online, offline, free, cancelled', async () => {
-      const r = await get(`/admin/reports/transactions?q=${q}`);
+      const r = await get(`/jpsme_admin/reports/transactions?q=${q}`);
       assert.strictEqual(r.status, 200);
       const rows = rowsOf(text(r));
       assert.strictEqual(rows.length, 4);
@@ -142,7 +142,7 @@ async function main() {
     });
 
     await test('transaction filters: payment, status, organization, event, date range', async () => {
-      const count = async (extra) => rowsOf(text(await get(`/admin/reports/transactions?q=${q}&${extra}`))).length;
+      const count = async (extra) => rowsOf(text(await get(`/jpsme_admin/reports/transactions?q=${q}&${extra}`))).length;
       assert.strictEqual(await count('payment=OFFLINE'), 2, 'offline = to collect + cancelled');
       assert.strictEqual(await count('status=PAID'), 1);
       assert.strictEqual(await count(`org=${unitB.id}`), 1);
@@ -150,64 +150,64 @@ async function main() {
       const today = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
       assert.strictEqual(await count(`from=${today}&to=${today}`), 4);
       assert.strictEqual(await count('from=2000-01-01&to=2000-01-02'), 0);
-      assert.strictEqual((await get('/admin/reports/transactions?from=bogus&status=x&org=;&page=-4')).status, 200, 'junk ignored');
+      assert.strictEqual((await get('/jpsme_admin/reports/transactions?from=bogus&status=x&org=;&page=-4')).status, 200, 'junk ignored');
     });
 
     await test('transactions, Membership Registration: paid and pending', async () => {
-      const r = await get(`/admin/reports/transactions?kind=membership&q=${q}`);
+      const r = await get(`/jpsme_admin/reports/transactions?kind=membership&q=${q}`);
       const rows = rowsOf(text(r));
       assert.strictEqual(rows.length, 2);
       assert(rows.some((t) => t.startsWith('') && /Ann .* Paid/.test(t)));
       assert(rows.some((t) => /Cy .* Pending/.test(t)));
-      assert.strictEqual(rowsOf(text(await get(`/admin/reports/transactions?kind=membership&q=${q}&status=PENDING`))).length, 1);
+      assert.strictEqual(rowsOf(text(await get(`/jpsme_admin/reports/transactions?kind=membership&q=${q}&status=PENDING`))).length, 1);
     });
 
     await test('transaction export matches the filters', async () => {
-      const r = await get(`/admin/reports/transactions/export.xlsx?q=${q}&event=${ev1.id}`);
+      const r = await get(`/jpsme_admin/reports/transactions/export.xlsx?q=${q}&event=${ev1.id}`);
       assert.strictEqual(r.status, 200);
       assert(/spreadsheetml/.test(r.headers.get('content-type')));
       const rows = await sheetRows(r);
       assert.deepStrictEqual(rows[0].slice(0, 6), ['Date', 'Reference', 'Name', 'Email', 'Student organization', 'Event']);
       assert.strictEqual(rows.filter((x) => String(x[1] || '').startsWith(TAG)).length, 3);
-      const m = await sheetRows(await get(`/admin/reports/transactions/export.xlsx?kind=membership&q=${q}`));
+      const m = await sheetRows(await get(`/jpsme_admin/reports/transactions/export.xlsx?kind=membership&q=${q}`));
       assert.strictEqual(m[0][5], 'Member type');
       assert.strictEqual(m.filter((x) => String(x[3] || '').includes(TAG)).length, 2);
     });
 
     await test('member summary: totals, top 5 and region / organization filters', async () => {
-      const html = text(await get(`/admin/reports/organization-members?region=${region.id}`));
+      const html = text(await get(`/jpsme_admin/reports/organization-members?region=${region.id}`));
       assert.deepStrictEqual(['members', 'regions', 'provinces', 'studentOrgs'].map((k) => totalOf(html, k)), [3, 1, 1, 2]);
       const rows = rowsOf(html);
       assert(rows[0].includes(`${TAG} Unit A`) && / 2 1$/.test(rows[0]), rows[0]);
       assert(rows[1].includes(`${TAG} Unit B`) && / 1 0$/.test(rows[1]), rows[1]);
       assert(/data-top[\s\S]*Unit A[\s\S]*Unit B/.test(html), 'top list in order');
-      const one = text(await get(`/admin/reports/organization-members?org=${unitB.id}`));
+      const one = text(await get(`/jpsme_admin/reports/organization-members?org=${unitB.id}`));
       assert.deepStrictEqual(['members', 'regions', 'provinces', 'studentOrgs'].map((k) => totalOf(one, k)), [1, 1, 1, 1]);
-      const x = await sheetRows(await get(`/admin/reports/organization-members/export.xlsx?region=${region.id}`));
+      const x = await sheetRows(await get(`/jpsme_admin/reports/organization-members/export.xlsx?region=${region.id}`));
       assert.deepStrictEqual(x[0], ['Rank', 'Region', 'Province', 'Student organization', 'Members', 'Active memberships']);
       assert.deepStrictEqual(x.slice(1).map((r) => [r[3], r[4], r[5]]), [[`${TAG} Unit A`, 2, 1], [`${TAG} Unit B`, 1, 0]]);
     });
 
     await test('event registration per organization: registrants vs individuals', async () => {
-      const html = text(await get(`/admin/reports/organization-events?region=${region.id}`));
+      const html = text(await get(`/jpsme_admin/reports/organization-events?region=${region.id}`));
       assert.deepStrictEqual(['registrants', 'individuals', 'studentOrgs'].map((k) => totalOf(html, k)), [3, 2, 1]);
       const rows = rowsOf(html);
       assert.strictEqual(rows.length, 1, 'Unit B only has a cancelled registration');
       assert(/Unit A 3 2 2$/.test(rows[0]), rows[0]);
-      const one = text(await get(`/admin/reports/organization-events?region=${region.id}&event=${ev1.id}`));
+      const one = text(await get(`/jpsme_admin/reports/organization-events?region=${region.id}&event=${ev1.id}`));
       assert.deepStrictEqual(['registrants', 'individuals'].map((k) => totalOf(one, k)), [2, 2]);
-      const x = await sheetRows(await get(`/admin/reports/organization-events/export.xlsx?region=${region.id}`));
+      const x = await sheetRows(await get(`/jpsme_admin/reports/organization-events/export.xlsx?region=${region.id}`));
       assert.deepStrictEqual(x[0], ['Region', 'Province', 'Student organization', 'Total registrants', 'Total individuals', 'Events']);
       assert.deepStrictEqual(x[1].slice(2, 5), [`${TAG} Unit A`, 3, 2]);
     });
 
     await test('members cannot open reports or exports', async () => {
       const m = await signIn(ben.email);
-      for (const p of ['/admin/reports/transactions', '/admin/reports/transactions/export.xlsx',
-        '/admin/reports/organization-members/export.xlsx', '/admin/reports/organization-events/export.xlsx']) {
+      for (const p of ['/jpsme_admin/reports/transactions', '/jpsme_admin/reports/transactions/export.xlsx',
+        '/jpsme_admin/reports/organization-members/export.xlsx', '/jpsme_admin/reports/organization-events/export.xlsx']) {
         assert.notStrictEqual((await m(p)).status, 200, p);
       }
-      assert.notStrictEqual((await fetch(`${base}/admin/reports/transactions/export.xlsx`, { redirect: 'manual' })).status, 200);
+      assert.notStrictEqual((await fetch(`${base}/jpsme_admin/reports/transactions/export.xlsx`, { redirect: 'manual' })).status, 200);
     });
   } finally {
     server.close();

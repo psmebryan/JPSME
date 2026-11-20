@@ -29,13 +29,13 @@ const SCOPES = [
       </p>
     </div>
     <% if (currentUser && ['ADMIN', 'PRESIDENT'].includes(currentUser.role)) { %>
-      <a href="/admin/check-in/staff" class="btn-secondary">Manage check-in staff</a>
+      <a href="/jpsme_admin/check-in/staff" class="btn-secondary">Manage check-in staff</a>
     <% } %>
   </div>
 
   <div class="mt-4 flex gap-2">
     <% SCOPES.forEach(function (s) { %>
-      <a href="/admin/check-in?scope=<%= s.key %>"
+      <a href="/jpsme_admin/check-in?scope=<%= s.key %>"
          class="<%= scope === s.key ? 'btn-primary' : 'btn-secondary' %> text-sm"><%= s.label %></a>
     <% }) %>
   </div>
@@ -47,7 +47,7 @@ const SCOPES = [
         hint: (currentUser && currentUser.role === 'ADMIN')
           ? 'Check-in opens automatically for every published event. Create one and it will appear here.'
           : 'A main admin has to grant you check-in access for an event before it shows up here.',
-        action: (currentUser && currentUser.role === 'ADMIN') ? { href: '/admin/events/new', label: 'Create an event' } : null,
+        action: (currentUser && currentUser.role === 'ADMIN') ? { href: '/jpsme_admin/events/new', label: 'Create an event' } : null,
       }) %>
     </div>
   <% } else { %>
@@ -93,8 +93,8 @@ const SCOPES = [
                   lists the stations with a sentence each saying what they are
                   for — which is the thing that was missing when this row
                   offered three unexplained buttons. %>
-              <a href="/admin/events/<%= row.event.id %>/attendance" class="btn-primary">Open event day</a>
-              <a href="/admin/events/<%= row.event.id %>/check-in/report" class="btn-secondary">Report</a>
+              <a href="/jpsme_admin/events/<%= row.event.id %>/attendance" class="btn-primary">Open event day</a>
+              <a href="/jpsme_admin/events/<%= row.event.id %>/check-in/report" class="btn-secondary">Report</a>
             </div>
           </div>
         </div>

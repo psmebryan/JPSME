@@ -33,7 +33,7 @@ async function test(name, fn) {
 
 let base;
 async function signInAdmin(email) {
-  const page = await fetch(`${base}/admin/login`, { headers: { 'X-Forwarded-For': IP } });
+  const page = await fetch(`${base}/jpsme_admin/login`, { headers: { 'X-Forwarded-For': IP } });
   let cookie = (page.headers.get('set-cookie') || '').split(';')[0];
   const token = ((await page.text()).match(/name="csrf-token" content="([^"]*)"/) || [])[1];
   const res = await fetch(`${base}/api/auth/login`, {
@@ -102,7 +102,7 @@ async function main() {
       assert(r.status >= 400 && r.status < 500, `got ${r.status}`);
     });
     await test('the Manage Users page lists every student organization', async () => {
-      const page = await A('/admin/users/all');
+      const page = await A('/jpsme_admin/users/all');
       assert.strictEqual(page.status, 200);
       assert(page.text.includes('name="studentOrg"'));
       assert(page.text.includes(`value="${unit.id}">${TAG} Mechanical Engineering Society (${TAG} State University)`));

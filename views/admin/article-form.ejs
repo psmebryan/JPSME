@@ -19,7 +19,7 @@
 <div class="w-full">
   <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
     <div>
-      <a href="/admin/articles" class="text-sm text-indigo-600 hover:underline">&larr; Back to articles</a>
+      <a href="/jpsme_admin/articles" class="text-sm text-indigo-600 hover:underline">&larr; Back to articles</a>
       <h1 class="admin-h1 mt-2"><%= editing ? 'Edit Article' : 'Create Article' %></h1>
     </div>
     <% if (editing && a.isPublished) { %>
@@ -133,7 +133,7 @@
         </div>
         <div class="flex gap-2 pt-1">
           <button type="submit" class="btn-primary flex-1 py-2.5" data-save><%= editing ? 'Save changes' : 'Save article' %></button>
-          <a href="/admin/articles" class="btn-secondary px-4 py-2.5">Cancel</a>
+          <a href="/jpsme_admin/articles" class="btn-secondary px-4 py-2.5">Cancel</a>
         </div>
       </div>
 
@@ -351,7 +351,7 @@ document.addEventListener('DOMContentLoaded', () => {
       await apiFetch(articleId ? `/api/articles/${articleId}` : '/api/articles', { method: articleId ? 'PUT' : 'POST', body: data });
       dirty = false;
       showToast(articleId ? 'Article updated' : 'Article created');
-      window.location.href = '/admin/articles';
+      window.location.href = '/jpsme_admin/articles';
     } catch (err) {
       button.disabled = false;
       showToast((err.errors && err.errors[0] && err.errors[0].msg) || err.message, 'error');

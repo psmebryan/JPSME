@@ -34,7 +34,7 @@ const navHtml = (seatingFeature) => ejs.renderFile(NAV, {
 
     let r = await get('/events/1/seat');
     assert.strictEqual(r.status, 404, 'member seat picker page is a 404');
-    r = await get('/admin/events/1/seating');
+    r = await get('/jpsme_admin/events/1/seating');
     assert.strictEqual(r.status, 404, 'admin seating page is a 404');
     for (const p of ['/api/events/1/seating/my-map', '/api/events/1/seating/available', '/api/events/1/seating/map']) {
       r = await get(p);
@@ -63,7 +63,7 @@ const navHtml = (seatingFeature) => ejs.renderFile(NAV, {
     assert.strictEqual(r.status, 401, 'member seating API reachable again (asks for sign-in)');
 
     html = await navHtml(true);
-    assert(html.includes('/admin/events/7/seating'), 'Seating tab back for a main admin');
+    assert(html.includes('/jpsme_admin/events/7/seating'), 'Seating tab back for a main admin');
 
     console.log('Seating switch tests passed');
   } catch (err) {

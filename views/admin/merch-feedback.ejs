@@ -13,9 +13,9 @@
       <h1 class="admin-h1">Reported problems</h1>
       <p class="admin-subtitle pb-2">From the soft-launch testers. Fix what they find before opening the Store.</p>
       <nav class="-mb-px flex gap-2" aria-label="Status">
-        <a href="/admin/merch/feedback?status=open" class="<%= tab(status === 'OPEN') %>">Open (<%= counts.OPEN || 0 %>)</a>
-        <a href="/admin/merch/feedback?status=done" class="<%= tab(status === 'DONE') %>">Fixed (<%= counts.DONE || 0 %>)</a>
-        <a href="/admin/merch/feedback" class="<%= tab(!status) %>">All</a>
+        <a href="/jpsme_admin/merch/feedback?status=open" class="<%= tab(status === 'OPEN') %>">Open (<%= counts.OPEN || 0 %>)</a>
+        <a href="/jpsme_admin/merch/feedback?status=done" class="<%= tab(status === 'DONE') %>">Fixed (<%= counts.DONE || 0 %>)</a>
+        <a href="/jpsme_admin/merch/feedback" class="<%= tab(!status) %>">All</a>
       </nav>
     </div>
     <ul class="divide-y divide-slate-100">
@@ -27,7 +27,7 @@
               <p class="mt-1 text-xs text-slate-500">
                 <%= f.from %><%= f.email ? ` · ${f.email}` : '' %> · <%= when(f.createdAt) %>
                 <% if (f.page) { %> · on <span class="font-mono"><%= f.page %></span><% } %>
-                <% if (f.orderNumber) { %> · order <a href="/admin/merch/orders/<%= f.orderNumber %>" class="font-mono text-indigo-600 hover:underline"><%= f.orderNumber %></a><% } %>
+                <% if (f.orderNumber) { %> · order <a href="/jpsme_admin/merch/orders/<%= f.orderNumber %>" class="font-mono text-indigo-600 hover:underline"><%= f.orderNumber %></a><% } %>
               </p>
               <% if (f.status === 'DONE') { %><p class="mt-1 text-xs text-emerald-700">Fixed<%= f.resolvedBy ? ` by ${f.resolvedBy}` : '' %>, <%= when(f.resolvedAt) %><%= f.note ? `: ${f.note}` : '' %></p><% } %>
             </div>

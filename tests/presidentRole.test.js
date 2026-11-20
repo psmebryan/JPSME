@@ -44,7 +44,7 @@ let ipSeq = 0;
 async function signIn(email, context = 'admin') {
   ipSeq += 1;
   const ip = `198.51.100.${70 + ipSeq}`;
-  const page = await fetch(`${base}${context === 'admin' ? '/admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
+  const page = await fetch(`${base}${context === 'admin' ? '/jpsme_admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
   let cookie = (page.headers.get('set-cookie') || '').split(';')[0];
   const token = ((await page.text()).match(/name="csrf-token" content="([^"]*)"/) || [])[1];
   const res = await fetch(`${base}/api/auth/login`, {
@@ -85,7 +85,7 @@ async function makeUser(label, extra = {}) {
 }
 
 const opens = (r) => r.status === 200;
-const refusedPage = (r) => r.status === 302 && !/\/admin\/login/.test(r.location || '');
+const refusedPage = (r) => r.status === 302 && !/\/jpsme_admin\/login/.test(r.location || '');
 
 async function main() {
   const server = app.listen(0);
@@ -100,14 +100,14 @@ async function main() {
 
   try {
     await test('every admin page and API path is placed in a module, and settings / data export in none', () => {
-      assert.deepStrictEqual(modulesForPath('/admin/settings'), null);
+      assert.deepStrictEqual(modulesForPath('/jpsme_admin/settings'), null);
       assert.deepStrictEqual(modulesForPath('/api/admin/settings/president-access'), null);
       assert.deepStrictEqual(modulesForPath('/api/admin/data/export'), null);
-      assert.deepStrictEqual(modulesForPath('/admin/events/5/desk'), ['checkin']);
-      assert.deepStrictEqual(modulesForPath('/admin/events/5/certificate'), ['certificates']);
-      assert.deepStrictEqual(modulesForPath('/admin/events/5/edit'), ['events']);
-      assert.deepStrictEqual(modulesForPath('/admin/master/event-fees'), ['masterEvents']);
-      assert.deepStrictEqual(modulesForPath('/admin/master/member-types'), ['masterMembers']);
+      assert.deepStrictEqual(modulesForPath('/jpsme_admin/events/5/desk'), ['checkin']);
+      assert.deepStrictEqual(modulesForPath('/jpsme_admin/events/5/certificate'), ['certificates']);
+      assert.deepStrictEqual(modulesForPath('/jpsme_admin/events/5/edit'), ['events']);
+      assert.deepStrictEqual(modulesForPath('/jpsme_admin/master/event-fees'), ['masterEvents']);
+      assert.deepStrictEqual(modulesForPath('/jpsme_admin/master/member-types'), ['masterMembers']);
     });
 
     const A = await signIn(admin.email);
@@ -118,16 +118,16 @@ async function main() {
       });
       assert.strictEqual(r.status, 200, r.text.slice(0, 200));
       assert(!r.json.data.modules.includes('bogus'));
-      const page = await A.get('/admin/settings');
+      const page = await A.get('/jpsme_admin/settings');
       assert(page.text.includes('National President access') && page.text.includes(`${president.firstName} ${president.lastName}`));
     });
 
     const P = await signIn(president.email);
 
     await test('the President signs in to the admin and opens each ticked module', async () => {
-      for (const p of ['/admin/dashboard', '/admin/events', `/admin/events/${event.id}/edit`, '/admin/event-certificates',
-        '/admin/event-emails', '/admin/broadcasts', '/admin/organizations', '/admin/organization-admins',
-        '/admin/master/event-fees', '/admin/sponsors', '/admin/articles', '/admin/articles/new']) {
+      for (const p of ['/jpsme_admin/dashboard', '/jpsme_admin/events', `/jpsme_admin/events/${event.id}/edit`, '/jpsme_admin/event-certificates',
+        '/jpsme_admin/event-emails', '/jpsme_admin/broadcasts', '/jpsme_admin/organizations', '/jpsme_admin/organization-admins',
+        '/jpsme_admin/master/event-fees', '/jpsme_admin/sponsors', '/jpsme_admin/articles', '/jpsme_admin/articles/new']) {
         assert(opens(await P.get(p)), `page ${p}`);
       }
       for (const p of ['/api/events/admin/all', `/api/admin/event-fees/${event.id}/options`, '/api/articles/admin/all',
@@ -137,8 +137,8 @@ async function main() {
     });
 
     await test('everything not ticked is refused, pages and API', async () => {
-      for (const p of ['/admin/settings', '/admin/users/all', '/admin/payments', '/admin/reports/transactions',
-        '/admin/master/member-types', '/admin/master/memberships', '/admin/audit-log', '/admin/check-in', `/admin/events/${event.id}/desk`]) {
+      for (const p of ['/jpsme_admin/settings', '/jpsme_admin/users/all', '/jpsme_admin/payments', '/jpsme_admin/reports/transactions',
+        '/jpsme_admin/master/member-types', '/jpsme_admin/master/memberships', '/jpsme_admin/audit-log', '/jpsme_admin/check-in', `/jpsme_admin/events/${event.id}/desk`]) {
         assert(refusedPage(await P.get(p)), `page ${p} should redirect`);
       }
       for (const [m, p] of [['GET', '/api/admin/payments'], ['GET', '/api/admin/member-types'], ['GET', '/api/admin/users'],
@@ -150,21 +150,21 @@ async function main() {
     });
 
     await test('the sidebar shows only the ticked modules', async () => {
-      const html = (await P.get('/admin/dashboard')).text;
+      const html = (await P.get('/jpsme_admin/dashboard')).text;
       const nav = html.slice(html.indexOf('id="admin-nav"'), html.indexOf('</nav>', html.indexOf('id="admin-nav"')));
-      ['/admin/events"', '/admin/articles"', '/admin/sponsors"', '/admin/master/event-fees"', '/admin/event-certificates"', '/admin/broadcasts"']
+      ['/jpsme_admin/events"', '/jpsme_admin/articles"', '/jpsme_admin/sponsors"', '/jpsme_admin/master/event-fees"', '/jpsme_admin/event-certificates"', '/jpsme_admin/broadcasts"']
         .forEach((h) => assert(nav.includes(h), `shows ${h}`));
-      ['/admin/settings"', '/admin/payments"', '/admin/users/all"', '/admin/master/member-types"', '/admin/reports/transactions"', '/admin/check-in"']
+      ['/jpsme_admin/settings"', '/jpsme_admin/payments"', '/jpsme_admin/users/all"', '/jpsme_admin/master/member-types"', '/jpsme_admin/reports/transactions"', '/jpsme_admin/check-in"']
         .forEach((h) => assert(!nav.includes(h), `hides ${h}`));
       assert(html.includes('National President'));
     });
 
     await test('changing the ticks takes effect on the next request', async () => {
       await A.put('/api/admin/settings/president-access', { modules: ['dashboard', 'events', 'users', 'checkin'] });
-      assert(refusedPage(await P.get('/admin/articles')), 'articles now refused');
+      assert(refusedPage(await P.get('/jpsme_admin/articles')), 'articles now refused');
       assert.strictEqual((await P.get('/api/articles/admin/all')).status, 403);
-      assert(opens(await P.get('/admin/users/all')), 'users now open');
-      assert(opens(await P.get(`/admin/events/${event.id}/desk`)), 'check-in now open');
+      assert(opens(await P.get('/jpsme_admin/users/all')), 'users now open');
+      assert(opens(await P.get(`/jpsme_admin/events/${event.id}/desk`)), 'check-in now open');
       assert.strictEqual((await P.get(`/api/events/${event.id}/checkin/stats`)).status, 200, 'check-in API follows the tick');
     });
 
@@ -188,9 +188,9 @@ async function main() {
       assert.strictEqual(r.status, 200, r.text.slice(0, 200));
       assert.strictEqual((await prisma.user.findUnique({ where: { id: other.id } })).role, 'PRESIDENT');
       assert.notStrictEqual((await O.get('/api/auth/me')).status, 200, 'old session ended');
-      const edit = await A.get(`/admin/users/${other.id}/edit`);
+      const edit = await A.get(`/jpsme_admin/users/${other.id}/edit`);
       assert(edit.text.includes('value="PRESIDENT"'), 'main admin sees the choice');
-      const asPresident = await P.get(`/admin/users/${member.id}/edit`);
+      const asPresident = await P.get(`/jpsme_admin/users/${member.id}/edit`);
       assert(!asPresident.text.includes('value="PRESIDENT"') && !asPresident.text.includes('value="ADMIN"'), 'President does not');
       await A.put(`/api/admin/users/${other.id}`, { role: 'USER' });
     });
@@ -205,14 +205,14 @@ async function main() {
 
     await test('with nothing ticked, the President is sent to the public site', async () => {
       await A.put('/api/admin/settings/president-access', { modules: [] });
-      const r = await P.get('/admin/dashboard');
+      const r = await P.get('/jpsme_admin/dashboard');
       assert.strictEqual(r.status, 302);
       assert.strictEqual(r.location, '/');
     });
 
     await test('members still cannot open the admin', async () => {
       const M = await signIn(member.email, 'user');
-      assert.notStrictEqual((await M.get('/admin/dashboard')).status, 200);
+      assert.notStrictEqual((await M.get('/jpsme_admin/dashboard')).status, 200);
       assert.strictEqual((await M.get('/api/articles/admin/all')).status, 403);
     });
   } finally {

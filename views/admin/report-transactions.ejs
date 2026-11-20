@@ -10,7 +10,7 @@
   const isEvent = f.kind === 'EVENT';
   const isMerch = f.kind === 'MERCH';
   const kindParam = { MEMBERSHIP: 'membership', MERCH: 'merch' }[f.kind] || null;
-  const tabHref = (k) => '/admin/reports/transactions' + (k ? `?kind=${k}` : '');
+  const tabHref = (k) => '/jpsme_admin/reports/transactions' + (k ? `?kind=${k}` : '');
   const money = (c) => '₱' + Number((Number(c) || 0) / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const when = (d) => (d ? new Date(d).toLocaleString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—');
   const qs = (over) => {
@@ -18,7 +18,7 @@
     return Object.keys(p).filter((k) => p[k] !== null && p[k] !== undefined && p[k] !== '' && !(k === 'page' && Number(p[k]) === 1))
       .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(p[k])}`).join('&');
   };
-  const link = (over) => { const s = qs(over); return '/admin/reports/transactions' + (s ? `?${s}` : ''); };
+  const link = (over) => { const s = qs(over); return '/jpsme_admin/reports/transactions' + (s ? `?${s}` : ''); };
   const exportQs = qs({ page: 1 });
   const statusBadge = { PAID: 'badge-green', PENDING: 'badge-amber', TO_COLLECT: 'badge-blue', FREE: 'badge-slate', FAILED: 'badge-red', REFUNDED: 'badge-purple', CANCELLED: 'badge-slate' };
   const from = total ? (page - 1) * pageSize + 1 : 0;
@@ -32,14 +32,14 @@
         <h1 class="admin-h1">Transaction Report</h1>
         <p class="admin-subtitle">Event and membership registrations, store orders, and their payments</p>
       </div>
-      <a href="/admin/reports/transactions/export.xlsx<%= exportQs ? '?' + exportQs : '' %>" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-export>
+      <a href="/jpsme_admin/reports/transactions/export.xlsx<%= exportQs ? '?' + exportQs : '' %>" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-export>
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg>
         Export XLS
       </a>
       <nav class="-mb-px flex w-full gap-2" aria-label="Transaction type">
-        <a href="/admin/reports/transactions" class="<%= tab(isEvent) %>" <%- isEvent ? 'aria-current="page"' : '' %>><%= kinds.EVENT %></a>
-        <a href="/admin/reports/transactions?kind=membership" class="<%= tab(f.kind === 'MEMBERSHIP') %>" <%- f.kind === 'MEMBERSHIP' ? 'aria-current="page"' : '' %>><%= kinds.MEMBERSHIP %></a>
-        <a href="/admin/reports/transactions?kind=merch" class="<%= tab(isMerch) %>" <%- isMerch ? 'aria-current="page"' : '' %>><%= kinds.MERCH %></a>
+        <a href="/jpsme_admin/reports/transactions" class="<%= tab(isEvent) %>" <%- isEvent ? 'aria-current="page"' : '' %>><%= kinds.EVENT %></a>
+        <a href="/jpsme_admin/reports/transactions?kind=membership" class="<%= tab(f.kind === 'MEMBERSHIP') %>" <%- f.kind === 'MEMBERSHIP' ? 'aria-current="page"' : '' %>><%= kinds.MEMBERSHIP %></a>
+        <a href="/jpsme_admin/reports/transactions?kind=merch" class="<%= tab(isMerch) %>" <%- isMerch ? 'aria-current="page"' : '' %>><%= kinds.MERCH %></a>
       </nav>
     </div>
 
@@ -68,7 +68,7 @@
         <% } %>
       </div>
 
-      <form method="get" action="/admin/reports/transactions" id="report-filters" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 xl:items-end">
+      <form method="get" action="/jpsme_admin/reports/transactions" id="report-filters" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 xl:items-end">
         <% if (kindParam) { %><input type="hidden" name="kind" value="<%= kindParam %>"><% } %>
         <div>
           <label for="rf-from" class="form-label">Date from</label>

@@ -15,6 +15,7 @@ const apiRoutes = require('./routes/api');
 const { issueCsrfToken } = require('./middleware/csrf.middleware');
 const { createFloodGuard, realClientIp } = require('./middleware/floodGuard.middleware');
 const { redactUrl } = require('./utils/redactUrl');
+const { maintenanceGate } = require('./middleware/maintenance.middleware');
 const AppError = require('./utils/AppError');
 const settingsService = require('./services/settings.service');
 const adminAccessService = require('./services/adminAccess.service');
@@ -338,7 +339,7 @@ app.use((req, res, next) => {
 // for the main admin, the ticked ones for a National President (see
 // config/adminModules). Only for admin pages, and only a President costs a
 // lookup. The routes enforce it; the sidebar only hides what would be refused.
-app.use('/admin', async (req, res, next) => {
+app.use('/jpsme_admin', async (req, res, next) => {
   try {
     res.locals.adminModules = await adminAccessService.modulesFor(req.session.user);
     // What this person may do inside the store, for the sidebar and pages.
@@ -379,6 +380,11 @@ app.use(async (req, res, next) => {
   }
   next();
 });
+
+// Maintenance mode (Admin -> Site Settings). While it is on, everyone but the
+// main admin sees the maintenance page; see middleware/maintenance.middleware.
+// After the lookup above so the page can show the seal, before every route.
+app.use(maintenanceGate);
 
 // A USER account that's PENDING (email verified, not yet admin-approved) can
 // log in — auth.service.js allows that specifically so they can complete their

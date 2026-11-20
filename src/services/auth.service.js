@@ -109,7 +109,7 @@ async function registerUser({
 //   'admin' — only ADMIN accounts may log in; anyone else is rejected.
 //   'user'  — ADMIN accounts must use the admin login page instead, so they're
 //             rejected here too. This keeps the two login forms mutually exclusive:
-//             a regular account can't get in through /admin/login, and an admin
+//             a regular account can't get in through /jpsme_admin/login, and an admin
 //             account can't get in through /login.
 async function login(email, password, { context = "user" } = {}) {
   const user = await findUserByEmail(prisma, email, { include: userInclude });

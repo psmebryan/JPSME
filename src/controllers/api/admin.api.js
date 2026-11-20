@@ -19,6 +19,7 @@ function checkValidation(req, res) {
 const userService = require('../../services/user.service');
 const passwordResetService = require('../../services/passwordReset.service');
 const settingsService = require('../../services/settings.service');
+const maintenanceService = require('../../services/maintenance.service');
 const sponsorService = require('../../services/sponsor.service');
 const paymentService = require('../../services/payment.service');
 const storageService = require('../../services/storage.service');
@@ -289,6 +290,21 @@ const updateFinanceLogisticsAccess = asyncHandler(async (req, res) => {
   return success(res, { grants }, 'Finance & Logistics access saved. It applies on their next page.');
 });
 
+// Maintenance mode (Site Settings). on, durationMinutes (empty for no
+// countdown) and an optional message for the maintenance page.
+const updateMaintenance = asyncHandler(async (req, res) => {
+  if (!checkValidation(req, res)) return undefined;
+  const state = await maintenanceService.setState({
+    on: req.body.on,
+    durationMinutes: req.body.durationMinutes,
+    message: req.body.message,
+  });
+  (req.log || console).info('maintenance mode changed', { on: state.on, until: state.until, adminId: req.session.user.id });
+  return success(res, { maintenance: state }, state.on
+    ? (state.until ? 'Maintenance is on. The countdown is showing.' : 'Maintenance is on. The site is closed to everyone but you.')
+    : 'Maintenance is off. The site is open again.');
+});
+
 // Lifts a flood-guard block (Site Settings -> Blocked IP addresses). The
 // guard's list is in memory, so this is logged, not audited in the database.
 const unblockIp = (req, res) => {
@@ -535,6 +551,7 @@ module.exports = {
   updatePresidentAccess,
   updateFinanceLogisticsAccess,
   unblockIp,
+  updateMaintenance,
   activationStatus,
   sendActivations,
   resendActivation,

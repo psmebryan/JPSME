@@ -45,7 +45,7 @@ let ipSeq = 0;
 async function signIn(email, context = 'user') {
   ipSeq += 1;
   const ip = `198.51.100.${160 + ipSeq}`;
-  const page = await fetch(`${base}${context === 'admin' ? '/admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
+  const page = await fetch(`${base}${context === 'admin' ? '/jpsme_admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
   let cookie = (page.headers.get('set-cookie') || '').split(';')[0];
   const token = ((await page.text()).match(/name="csrf-token" content="([^"]*)"/) || [])[1];
   const res = await fetch(`${base}/api/auth/login`, {
@@ -170,7 +170,7 @@ async function main() {
     });
 
     await test('the Event Fee master lists events with their option counts; members are kept out', async () => {
-      const master = await A.get('/admin/master/event-fees');
+      const master = await A.get('/jpsme_admin/master/event-fees');
       assert.strictEqual(master.status, 200);
       const at = master.text.indexOf(`${TAG} Convention`);
       assert(at > 0, 'event listed');
@@ -178,9 +178,9 @@ async function main() {
       assert(master.text.includes('Event Fee Master'));
       const newer = master.text.indexOf(`${TAG} Seminar`);
       assert(newer > 0 && newer < at, 'newest created first (the Seminar was created after the Convention)');
-      const edit = await A.get(`/admin/events/${event.id}/edit`);
-      assert(edit.text.includes('Registration fee options') && edit.text.includes(`/admin/master/event-fees?event=${event.id}`), 'edit page links to them');
-      const regs = await A.get(`/admin/events/${event.id}/registrations`);
+      const edit = await A.get(`/jpsme_admin/events/${event.id}/edit`);
+      assert(edit.text.includes('Registration fee options') && edit.text.includes(`/jpsme_admin/master/event-fees?event=${event.id}`), 'edit page links to them');
+      const regs = await A.get(`/jpsme_admin/events/${event.id}/registrations`);
       assert(regs.text.includes('Professional'), 'registrations list shows the option');
       assert.strictEqual((await Bob.get(opts)).status, 403);
       assert.strictEqual((await Bob.post(opts, { name: 'Hack', fee: '0' })).status, 403);

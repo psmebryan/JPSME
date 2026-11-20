@@ -16,13 +16,13 @@
 */
 const stations = [
   {
-    href: `/admin/events/${event.id}/desk`,
+    href: `/jpsme_admin/events/${event.id}/desk`,
     name: 'Registration desk',
     blurb: 'Look somebody up, give them a seat, then check them in. Scanning here admits nobody by itself.',
     cta: 'Open desk',
   },
   {
-    href: `/admin/events/${event.id}/rooms`,
+    href: `/jpsme_admin/events/${event.id}/rooms`,
     name: 'Room doors',
     blurb: 'In and out of a hall, as often as somebody comes and goes. One scan, and the server decides which way.',
     cta: 'Open room doors',
@@ -93,7 +93,7 @@ const stations = [
               Set up before the day rather than during it.
             </p>
           </div>
-          <a href="/admin/events/<%= event.id %>/seating" class="btn-secondary shrink-0 px-5 py-2.5">Open seating</a>
+          <a href="/jpsme_admin/events/<%= event.id %>/seating" class="btn-secondary shrink-0 px-5 py-2.5">Open seating</a>
         </div>
       <% } %>
 
@@ -104,7 +104,7 @@ const stations = [
             Every scan that happened at every door, including the ones that were turned away.
           </p>
         </div>
-        <a href="/admin/events/<%= event.id %>/check-in/report" class="btn-secondary shrink-0 px-5 py-2.5">Open report</a>
+        <a href="/jpsme_admin/events/<%= event.id %>/check-in/report" class="btn-secondary shrink-0 px-5 py-2.5">Open report</a>
       </div>
     </div>
 
@@ -112,7 +112,7 @@ const stations = [
     <div class="admin-card p-5">
       <div class="flex items-baseline justify-between gap-2">
         <h2 class="font-semibold text-slate-900">Halls</h2>
-        <a href="/admin/events/<%= event.id %>/rooms" class="text-sm text-indigo-600 hover:underline">Manage</a>
+        <a href="/jpsme_admin/events/<%= event.id %>/rooms" class="text-sm text-indigo-600 hover:underline">Manage</a>
       </div>
 
       <% if (!rooms.length) { %>
@@ -120,7 +120,7 @@ const stations = [
           No rooms yet. Without one there is nowhere to scan people in and out of,
           and the seat map can never show anybody as sitting down.
         </p>
-        <a href="/admin/events/<%= event.id %>/rooms" class="mt-3 inline-block text-sm text-indigo-600 hover:underline">Add a room &rarr;</a>
+        <a href="/jpsme_admin/events/<%= event.id %>/rooms" class="mt-3 inline-block text-sm text-indigo-600 hover:underline">Add a room &rarr;</a>
       <% } else { %>
         <ul class="mt-3 divide-y divide-slate-100 border-t border-slate-100">
           <% rooms.forEach((room) => { %>
@@ -133,7 +133,7 @@ const stations = [
               </div>
               <div class="shrink-0 text-right">
                 <p class="text-lg font-semibold tabular-nums text-slate-900"><%= room.occupancy %></p>
-                <a href="/admin/events/<%= event.id %>/rooms/<%= room.id %>/scan"
+                <a href="/jpsme_admin/events/<%= event.id %>/rooms/<%= room.id %>/scan"
                    class="text-xs text-indigo-600 hover:underline">Open door</a>
               </div>
             </li>

@@ -19,13 +19,13 @@ const activeIds = active.map(function (g) { return g.userId; });
 const available = grantable.filter(function (u) { return activeIds.indexOf(u.id) === -1; });
 %>
 <div class="w-full" data-checkin-staff <% if (event) { %>data-event-id="<%= event.id %>"<% } %>>
-  <a href="/admin/check-in" class="text-sm text-indigo-600 hover:underline">&larr; Back to check-in</a>
+  <a href="/jpsme_admin/check-in" class="text-sm text-indigo-600 hover:underline">&larr; Back to check-in</a>
   <h1 class="admin-h1 mt-1">Check-in staff</h1>
   <p class="admin-subtitle">
     Main admins can check in at every event. Use this to let a chapter admin run the door at one.
   </p>
 
-  <form method="GET" action="/admin/check-in/staff" class="mt-4 admin-card p-4">
+  <form method="GET" action="/jpsme_admin/check-in/staff" class="mt-4 admin-card p-4">
     <label for="eventId" class="form-label">Event</label>
     <div class="flex flex-wrap gap-2">
       <select id="eventId" name="eventId" class="form-input flex-1 min-w-[240px]">
@@ -54,7 +54,7 @@ const available = grantable.filter(function (u) { return activeIds.indexOf(u.id)
       <% if (!grantable.length) { %>
         <p class="text-sm text-slate-500 mt-2">
           There are no chapter admins yet. Only a chapter admin can be given check-in access —
-          <a href="/admin/organization-admins" class="text-indigo-600 hover:underline">assign one first</a>.
+          <a href="/jpsme_admin/organization-admins" class="text-indigo-600 hover:underline">assign one first</a>.
         </p>
       <% } else if (!available.length) { %>
         <p class="text-sm text-slate-500 mt-2">Every chapter admin already has access to this event.</p>

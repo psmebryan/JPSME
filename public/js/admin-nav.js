@@ -29,38 +29,38 @@ const openReportSubmenu = makeSubmenuToggle('report-management-toggle', 'report-
 const openMerchSubmenu = makeSubmenuToggle('merch-management-toggle', 'merch-submenu', 'merch-management-chevron');
 
 function openSubmenuForPath(path) {
-  if (path.startsWith('/admin/organizations') || path.startsWith('/admin/organization-members') || path.startsWith('/admin/organization-admins')) {
+  if (path.startsWith('/jpsme_admin/organizations') || path.startsWith('/jpsme_admin/organization-members') || path.startsWith('/jpsme_admin/organization-admins')) {
     openChapterSubmenu(true);
   }
-  // /admin/activations belongs to this group but does not share its prefix, so
+  // /jpsme_admin/activations belongs to this group but does not share its prefix, so
   // it has to be named. Without it, opening the Activations page left the group
   // collapsed and the link unhighlighted — the page was reachable but looked
   // like it did not exist in the sidebar at all.
-  if (path.startsWith('/admin/users') || path.startsWith('/admin/activations')) {
+  if (path.startsWith('/jpsme_admin/users') || path.startsWith('/jpsme_admin/activations')) {
     openUserSubmenu(true);
   }
-  if (path.startsWith('/admin/certificates') || path.startsWith('/admin/event-certificates') || /^\/admin\/events\/\d+\/certificate$/.test(path)) {
+  if (path.startsWith('/jpsme_admin/certificates') || path.startsWith('/jpsme_admin/event-certificates') || /^\/jpsme_admin\/events\/\d+\/certificate$/.test(path)) {
     openCertificateSubmenu(true);
   }
-  if (path.startsWith('/admin/emails') || path.startsWith('/admin/event-emails') || path.startsWith('/admin/broadcasts') || /^\/admin\/events\/\d+\/email$/.test(path)) {
+  if (path.startsWith('/jpsme_admin/emails') || path.startsWith('/jpsme_admin/event-emails') || path.startsWith('/jpsme_admin/broadcasts') || /^\/jpsme_admin\/events\/\d+\/email$/.test(path)) {
     openEmailSubmenu(true);
   }
-  if (path.startsWith('/admin/invitations')) {
+  if (path.startsWith('/jpsme_admin/invitations')) {
     openInvitationSubmenu(true);
   }
-  if (path.startsWith('/admin/master')) {
+  if (path.startsWith('/jpsme_admin/master')) {
     openMasterSubmenu(true);
   }
-  if (path.startsWith('/admin/reports')) {
+  if (path.startsWith('/jpsme_admin/reports')) {
     openReportSubmenu(true);
   }
-  if (path.startsWith('/admin/merch')) {
+  if (path.startsWith('/jpsme_admin/merch')) {
     openMerchSubmenu(true);
   }
   // Also opens on the per-event scanner and report pages, which live under
-  // /admin/events/:id/ but belong to this module as far as a reader is
+  // /jpsme_admin/events/:id/ but belong to this module as far as a reader is
   // concerned — the sidebar should show where they actually are.
-  if (path.startsWith('/admin/check-in') || /^\/admin\/events\/\d+\/check-in/.test(path)) {
+  if (path.startsWith('/jpsme_admin/check-in') || /^\/jpsme_admin\/events\/\d+\/check-in/.test(path)) {
     openCheckinSubmenu(true);
   }
 }
@@ -149,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Compare against pathname+search, not pathname alone — two different
     // sidebar links can share a pathname and differ only by query string
     // (e.g. "Manage Invitations" vs "Invitation Requests" both live at
-    // /admin/invitations), and pathname-only comparison treated those as the
+    // /jpsme_admin/invitations), and pathname-only comparison treated those as the
     // same page, silently no-op'ing the click.
     const currentUrl = window.location.pathname + window.location.search;
     if (link.getAttribute('href') !== currentUrl) {
@@ -159,7 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.addEventListener('popstate', () => {
     // pathname alone would drop a query-string-differentiated page (e.g.
-    // "Invitation Requests" at /admin/invitations?source=SELF_REQUESTED) when
+    // "Invitation Requests" at /jpsme_admin/invitations?source=SELF_REQUESTED) when
     // navigating back/forward to it — same bug as the click handler above.
     loadAdminPage(window.location.pathname + window.location.search, false);
   });

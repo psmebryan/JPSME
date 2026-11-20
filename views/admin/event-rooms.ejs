@@ -83,7 +83,7 @@ function pct(occupancy, capacity) {
         <% } %>
 
         <div class="mt-4 flex flex-wrap items-center gap-3">
-          <a href="/admin/events/<%= event.id %>/rooms/<%= room.id %>/scan" class="btn-primary px-4 py-2 text-sm">Open door</a>
+          <a href="/jpsme_admin/events/<%= event.id %>/rooms/<%= room.id %>/scan" class="btn-primary px-4 py-2 text-sm">Open door</a>
           <button type="button" class="text-sm text-indigo-600 hover:underline" data-show-inside="<%= room.id %>">Who's inside</button>
           <% if (canConfigure) { %>
             <button type="button" class="text-sm text-slate-500 hover:underline" data-toggle-room="<%= room.id %>" data-open="<%= room.isOpen %>">

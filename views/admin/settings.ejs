@@ -1,6 +1,91 @@
 <h1 class="admin-h1 mb-6">Site Settings</h1>
 
 <%#
+  Maintenance mode. While it is on, everyone but the main admin sees the
+  maintenance page, with a countdown when a duration is set. Saved through
+  PUT /api/admin/settings/maintenance; see middleware/maintenance.middleware.
+%>
+<% const mt = locals.maintenance || { on: false }; %>
+<div id="maintenance-module" class="admin-card mb-6 p-6 <%= mt.on ? 'border-amber-300 bg-amber-50' : '' %>" data-on="<%= mt.on ? '1' : '0' %>">
+  <div class="flex flex-wrap items-start justify-between gap-4">
+    <div class="max-w-2xl">
+      <h2 class="font-semibold">Maintenance mode</h2>
+      <% if (mt.on) { %>
+        <p class="mt-1 text-sm font-semibold text-amber-800" data-maint-status>
+          On. The site is closed to everyone but you<%= mt.until ? `, until about ${new Date(mt.until).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : '' %>.
+        </p>
+      <% } else { %>
+        <p class="mt-1 text-sm text-slate-500" data-maint-status>Off. The site is open.</p>
+      <% } %>
+      <p class="mt-2 text-xs text-slate-500">
+        While it is on, visitors see a "We're doing some maintenance" page instead of the site, with a countdown if you set how long.
+        You can still use the whole site and admin. Payments already started still confirm. The page opens the site by itself when you turn this off.
+      </p>
+    </div>
+    <a href="/" target="_blank" rel="noopener" class="text-sm text-indigo-600 hover:underline">Open the site</a>
+  </div>
+
+  <% if (mt.fromEnv) { %>
+    <p class="mt-4 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-amber-900">Switched on by the server setting MAINTENANCE_MODE, so it can only be turned off there.</p>
+  <% } else { %>
+    <div class="mt-5 grid gap-4 sm:grid-cols-[auto_auto_1fr] sm:items-end">
+      <div>
+        <label class="form-label" for="maint-amount">How long (optional)</label>
+        <div class="flex gap-2">
+          <input id="maint-amount" type="number" min="1" step="1" inputmode="numeric" class="form-input w-28" placeholder="e.g. 30">
+          <select id="maint-unit" class="form-input w-32" aria-label="Unit">
+            <option value="1">minutes</option>
+            <option value="60">hours</option>
+          </select>
+        </div>
+      </div>
+      <div class="sm:col-span-2">
+        <label class="form-label" for="maint-message">Message on the page (optional)</label>
+        <input id="maint-message" type="text" maxlength="300" class="form-input" value="<%= mt.message || '' %>" placeholder="e.g. We're upgrading the membership system.">
+      </div>
+    </div>
+    <p class="mt-2 text-xs text-slate-500">Leave "How long" empty for no countdown. The site does not reopen by itself when the countdown ends: turn maintenance off when you are done.</p>
+    <div class="mt-4 flex flex-wrap gap-2">
+      <% if (mt.on) { %>
+        <button type="button" class="btn-primary" data-maint="end">End maintenance and open the site</button>
+        <button type="button" class="btn-secondary" data-maint="update">Update countdown and message</button>
+      <% } else { %>
+        <button type="button" class="btn-danger" data-maint="start">Start maintenance</button>
+      <% } %>
+    </div>
+  <% } %>
+</div>
+<script nonce="<%= cspNonce %>">
+(function () {
+  const box = document.getElementById('maintenance-module');
+  if (!box) return;
+  box.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-maint]');
+    if (!btn) return;
+    const action = btn.getAttribute('data-maint');
+    const amount = document.getElementById('maint-amount').value.trim();
+    const unit = Number(document.getElementById('maint-unit').value);
+    const minutes = amount ? Math.round(Number(amount) * unit) : null;
+    if (amount && (!Number.isFinite(minutes) || minutes < 1)) { showToast('Enter how long as a whole number, or leave it empty.', 'error'); return; }
+    if (action === 'start' && !confirm(`Close the site to everyone but you${minutes ? ` for about ${amount} ${unit === 60 ? 'hour(s)' : 'minute(s)'}` : ''}?`)) return;
+    if (action === 'end' && !confirm('Open the site to everyone again?')) return;
+    btn.disabled = true;
+    try {
+      const body = action === 'end'
+        ? { on: false }
+        : { on: true, durationMinutes: minutes, message: document.getElementById('maint-message').value };
+      const res = await apiFetch('/api/admin/settings/maintenance', { method: 'PUT', body: JSON.stringify(body) });
+      showToast(res.message);
+      setTimeout(() => window.location.reload(), 500);
+    } catch (err) {
+      showToast(err.message, 'error');
+      btn.disabled = false;
+    }
+  });
+}());
+</script>
+
+<%#
   National President access. Ticks decide which admin modules an account with
   the National President role can open; config/adminModules says which pages
   belong to each. Site Settings itself is never offered. Saved through
@@ -39,7 +124,7 @@
       <% const presidents = locals.presidents || []; %>
       <% if (presidents.length) { %>
         <span class="font-medium text-slate-800">National President:</span>
-        <% presidents.forEach((p, i) => { %><a href="/admin/users/<%= p.id %>/edit" class="text-indigo-600 hover:underline"><%= p.firstName %> <%= p.lastName %></a><%= i < presidents.length - 1 ? ', ' : '' %><% }) %>
+        <% presidents.forEach((p, i) => { %><a href="/jpsme_admin/users/<%= p.id %>/edit" class="text-indigo-600 hover:underline"><%= p.firstName %> <%= p.lastName %></a><%= i < presidents.length - 1 ? ', ' : '' %><% }) %>
       <% } else { %>
         Nobody has the role yet. Give it on a member's account: <span class="font-medium">Users &rarr; Edit &rarr; Role &rarr; National President</span>.
       <% } %>
@@ -96,7 +181,7 @@
     <% flAccounts.forEach((a) => { %>
       <div class="rounded-lg border border-slate-200 p-4" data-fl-account="<%= a.id %>">
         <div class="flex flex-wrap items-baseline justify-between gap-2">
-          <p class="text-sm"><a href="/admin/users/<%= a.id %>/edit" class="font-semibold text-indigo-600 hover:underline"><%= a.name %></a> <span class="text-slate-500"><%= a.email %></span></p>
+          <p class="text-sm"><a href="/jpsme_admin/users/<%= a.id %>/edit" class="font-semibold text-indigo-600 hover:underline"><%= a.name %></a> <span class="text-slate-500"><%= a.email %></span></p>
           <p class="text-xs text-slate-500"><%= a.grants.length ? '' : 'No tasks yet: they can sign in but see nothing.' %></p>
         </div>
         <div class="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -392,6 +477,6 @@
     <%# No data-admin-link: admin-nav.js only intercepts that inside the sidebar
         nav, so on a link in the page body it would be a dead attribute implying
         behaviour it does not have. An ordinary navigation is correct here. %>
-    <a href="/admin/activations" class="btn-primary mt-3 inline-flex">Go to Activations</a>
+    <a href="/jpsme_admin/activations" class="btn-primary mt-3 inline-flex">Go to Activations</a>
   </div>
 </div>

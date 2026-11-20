@@ -61,7 +61,7 @@ const TYPE_LABEL = {
             <td class="admin-td"><span class="badge-slate"><%= TYPE_LABEL[a.organization.type] || a.organization.type %></span></td>
             <td class="admin-td"><%= new Date(a.assignedAt).toLocaleDateString() %></td>
             <td class="admin-td text-right">
-              <a href="/admin/organization-members?organizationId=<%= a.organization.id %>" class="text-indigo-600 hover:underline text-sm font-medium">Members</a>
+              <a href="/jpsme_admin/organization-members?organizationId=<%= a.organization.id %>" class="text-indigo-600 hover:underline text-sm font-medium">Members</a>
               <button type="button" data-remove-org-admin="<%= a.user.id %>" class="ml-3 text-red-600 hover:underline text-sm font-medium">Remove</button>
             </td>
           </tr>

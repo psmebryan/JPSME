@@ -10,7 +10,7 @@ const TYPE_LABEL = {
 const pathLabel = [...ancestors, organization].map(o => o.name).join(' › ');
 %>
 
-<a href="/admin/organizations" class="text-sm text-indigo-600 hover:underline">&larr; Back to organizations</a>
+<a href="/jpsme_admin/organizations" class="text-sm text-indigo-600 hover:underline">&larr; Back to organizations</a>
 <h1 class="admin-h1 mt-3 mb-1">Edit Organization</h1>
 <p class="admin-subtitle mb-6"><%= pathLabel %></p>
 
@@ -24,7 +24,7 @@ const pathLabel = [...ancestors, organization].map(o => o.name).join(' › ');
   </div>
 <% } %>
 
-<form action="/admin/organizations/<%= organization.id %>" method="POST" class="admin-card p-5 grid gap-4 sm:grid-cols-2">
+<form action="/jpsme_admin/organizations/<%= organization.id %>" method="POST" class="admin-card p-5 grid gap-4 sm:grid-cols-2">
   <input type="hidden" name="_csrf" value="<%= csrfToken %>">
   <input type="hidden" name="currentParentId" value="<%= organization.parentId || '' %>">
 
@@ -86,7 +86,7 @@ const pathLabel = [...ancestors, organization].map(o => o.name).join(' › ');
 
   <div class="sm:col-span-2 flex items-center gap-3 pt-2">
     <button type="submit" class="btn-primary">Save changes</button>
-    <a href="/admin/organizations" class="text-sm text-slate-500 hover:underline">Cancel</a>
+    <a href="/jpsme_admin/organizations" class="text-sm text-slate-500 hover:underline">Cancel</a>
   </div>
 </form>
 
@@ -103,7 +103,7 @@ const pathLabel = [...ancestors, organization].map(o => o.name).join(' › ');
       <% children.forEach(c => { %>
         <li class="py-2 flex items-center justify-between">
           <span><%= c.name %> <span class="text-xs text-slate-400">(<%= TYPE_LABEL[c.type] %>)</span></span>
-          <a href="/admin/organizations/<%= c.id %>/edit" class="text-sm text-indigo-600 hover:underline">Edit</a>
+          <a href="/jpsme_admin/organizations/<%= c.id %>/edit" class="text-sm text-indigo-600 hover:underline">Edit</a>
         </li>
       <% }) %>
     </ul>
@@ -111,7 +111,7 @@ const pathLabel = [...ancestors, organization].map(o => o.name).join(' › ');
 </section>
 
 <% if (!children.length && organization.parentId) { %>
-  <form action="/admin/organizations/<%= organization.id %>/delete" method="POST" class="mt-6"
+  <form action="/jpsme_admin/organizations/<%= organization.id %>/delete" method="POST" class="mt-6"
         data-confirm="Delete this organization? This cannot be undone.">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
     <button type="submit" class="text-sm text-red-600 hover:underline">Delete this organization</button>

@@ -1,5 +1,5 @@
 <div class="w-full">
-  <a href="/admin/events" class="text-sm text-indigo-600 hover:underline">&larr; Back to events</a>
+  <a href="/jpsme_admin/events" class="text-sm text-indigo-600 hover:underline">&larr; Back to events</a>
   <h1 class="admin-h1 mt-3 mb-4">Edit Event</h1>
 
   <div class="admin-card p-6">
@@ -70,7 +70,7 @@
           <% } else { %>
             <p class="text-xs text-slate-500">None. Everyone pays the registration fee above.</p>
           <% } %>
-          <a href="/admin/master/event-fees?event=<%= event.id %>" class="mt-2 inline-block text-indigo-600 hover:underline">Manage this event's fee options &rarr;</a>
+          <a href="/jpsme_admin/master/event-fees?event=<%= event.id %>" class="mt-2 inline-block text-indigo-600 hover:underline">Manage this event's fee options &rarr;</a>
         </div>
 
         <div class="flex items-center gap-3">
@@ -94,7 +94,7 @@
 
       <div class="flex items-center gap-3">
         <button type="submit" class="btn-primary">Save Changes</button>
-        <a href="/admin/events" class="text-sm text-slate-500 hover:underline">Cancel</a>
+        <a href="/jpsme_admin/events" class="text-sm text-slate-500 hover:underline">Cancel</a>
       </div>
     </form>
   </div>
@@ -124,7 +124,7 @@
     try {
       await apiFetch(`/api/events/${eventId}`, { method: 'PUT', body: formData });
       showToast('Event updated');
-      window.location.href = '/admin/events';
+      window.location.href = '/jpsme_admin/events';
     } catch (err) {
       showToast(err.errors?.[0]?.msg || err.message, 'error');
     }

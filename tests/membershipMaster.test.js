@@ -39,7 +39,7 @@ let ipSeq = 0;
 async function signIn(email, context = 'user') {
   ipSeq += 1;
   const ip = `198.51.100.${200 + ipSeq}`;
-  const page = await fetch(`${base}${context === 'admin' ? '/admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
+  const page = await fetch(`${base}${context === 'admin' ? '/jpsme_admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
   let cookie = (page.headers.get('set-cookie') || '').split(';')[0];
   const token = ((await page.text()).match(/name="csrf-token" content="([^"]*)"/) || [])[1];
   const res = await fetch(`${base}/api/auth/login`, {
@@ -95,7 +95,7 @@ async function main() {
     const get = await signIn(admin.email, 'admin');
 
     await test('lists the tagged members with every column', async () => {
-      const r = await get(`/admin/master/memberships?q=${q}`);
+      const r = await get(`/jpsme_admin/master/memberships?q=${q}`);
       assert.strictEqual(r.status, 200);
       const html = r.buffer.toString();
       assert(html.includes('Membership Master'));
@@ -109,32 +109,32 @@ async function main() {
 
     await test('membership status: active, pending, expired, none', async () => {
       for (const [status, who] of [['ACTIVE', 'Active'], ['PENDING', 'Pending'], ['EXPIRED', 'Expired'], ['NONE', 'None']]) {
-        const rows = rowsOf((await get(`/admin/master/memberships?q=${q}&status=${status}`)).buffer.toString());
+        const rows = rowsOf((await get(`/jpsme_admin/master/memberships?q=${q}&status=${status}`)).buffer.toString());
         assert.deepStrictEqual(rows.map((t) => t.split(' ')[0]), [who], status);
       }
     });
 
     await test('counts active, pending and expired for the current filters', async () => {
-      const html = (await get(`/admin/master/memberships?q=${q}`)).buffer.toString();
+      const html = (await get(`/jpsme_admin/master/memberships?q=${q}`)).buffer.toString();
       assert.deepStrictEqual(['ALL', 'ACTIVE', 'PENDING', 'EXPIRED', 'NONE'].map((k) => countOf(html, k)), [4, 1, 1, 1, 1]);
     });
 
     await test('filters by member type (and no type), organization and search words', async () => {
-      let rows = rowsOf((await get(`/admin/master/memberships?q=${q}&type=${type.id}`)).buffer.toString());
+      let rows = rowsOf((await get(`/jpsme_admin/master/memberships?q=${q}&type=${type.id}`)).buffer.toString());
       assert.deepStrictEqual(rows.map((t) => t.split(' ')[0]).sort(), ['Active', 'Expired']);
-      rows = rowsOf((await get(`/admin/master/memberships?q=${q}&type=NONE`)).buffer.toString());
+      rows = rowsOf((await get(`/jpsme_admin/master/memberships?q=${q}&type=NONE`)).buffer.toString());
       assert.deepStrictEqual(rows.map((t) => t.split(' ')[0]).sort(), ['None', 'Pending']);
       if (org) {
-        rows = rowsOf((await get(`/admin/master/memberships?q=${q}&org=${org.id}`)).buffer.toString());
+        rows = rowsOf((await get(`/jpsme_admin/master/memberships?q=${q}&org=${org.id}`)).buffer.toString());
         assert.deepStrictEqual(rows.map((t) => t.split(' ')[0]), ['Active']);
       }
-      rows = rowsOf((await get(`/admin/master/memberships?q=${encodeURIComponent(`expired ${TAG}`)}`)).buffer.toString());
+      rows = rowsOf((await get(`/jpsme_admin/master/memberships?q=${encodeURIComponent(`expired ${TAG}`)}`)).buffer.toString());
       assert.deepStrictEqual(rows.map((t) => t.split(' ')[0]), ['Expired'], 'every word must match');
-      assert.strictEqual((await get('/admin/master/memberships?status=BOGUS&type=x&org=;drop')).status, 200, 'junk filters ignored');
+      assert.strictEqual((await get('/jpsme_admin/master/memberships?status=BOGUS&type=x&org=;drop')).status, 200, 'junk filters ignored');
     });
 
     await test('Export XLS downloads the filtered rows as a workbook', async () => {
-      const r = await get(`/admin/master/memberships/export.xlsx?q=${q}&type=${type.id}`);
+      const r = await get(`/jpsme_admin/master/memberships/export.xlsx?q=${q}&type=${type.id}`);
       assert.strictEqual(r.status, 200);
       assert(/spreadsheetml/.test(r.headers.get('content-type')));
       assert(/attachment; filename="jpsme-membership-/.test(r.headers.get('content-disposition')));
@@ -150,9 +150,9 @@ async function main() {
 
     await test('members cannot see it or export it', async () => {
       const m = await signIn(none.email);
-      assert.notStrictEqual((await m('/admin/master/memberships')).status, 200);
-      assert.notStrictEqual((await m('/admin/master/memberships/export.xlsx')).status, 200);
-      const anon = await fetch(`${base}/admin/master/memberships/export.xlsx`, { redirect: 'manual' });
+      assert.notStrictEqual((await m('/jpsme_admin/master/memberships')).status, 200);
+      assert.notStrictEqual((await m('/jpsme_admin/master/memberships/export.xlsx')).status, 200);
+      const anon = await fetch(`${base}/jpsme_admin/master/memberships/export.xlsx`, { redirect: 'manual' });
       assert.notStrictEqual(anon.status, 200);
     });
   } finally {

@@ -29,10 +29,10 @@
 <div class="w-full space-y-6" id="merch-order" data-order="<%= o.orderNumber %>">
   <div class="flex flex-wrap items-center justify-between gap-3">
     <div>
-      <a href="/admin/merch/orders" class="text-sm text-indigo-600 hover:underline">&larr; All orders</a>
+      <a href="/jpsme_admin/merch/orders" class="text-sm text-indigo-600 hover:underline">&larr; All orders</a>
       <h1 class="admin-h1 mt-1">Order <span class="font-mono"><%= o.orderNumber %></span> <span class="<%= tone[o.status] || 'badge-slate' %> align-middle text-sm"><%= o.statusLabel %></span></h1>
     </div>
-    <% if (fulfil) { %><a href="/admin/merch/orders/print?orders=<%= o.orderNumber %>" target="_blank" rel="noopener" class="btn-secondary px-4 py-2">Print packing slip</a><% } %>
+    <% if (fulfil) { %><a href="/jpsme_admin/merch/orders/print?orders=<%= o.orderNumber %>" target="_blank" rel="noopener" class="btn-secondary px-4 py-2">Print packing slip</a><% } %>
   </div>
 
   <% if (o.status === 'ADDRESS_HOLD') { %>
@@ -109,7 +109,7 @@
       <div class="admin-card space-y-2 p-5 text-sm" data-order-returns>
         <h2 class="font-semibold text-slate-900">Refunds &amp; exchanges</h2>
         <% (locals.returns || []).forEach((r) => { %>
-          <a href="/admin/merch/returns/<%= r.returnNumber %>" class="block rounded border border-slate-200 px-3 py-2 hover:bg-slate-50"><span class="font-mono"><%= r.returnNumber %></span> · <%= r.kindLabel %> · <%= r.reasonLabel %><br><span class="text-xs text-slate-500"><%= r.statusLabel %></span></a>
+          <a href="/jpsme_admin/merch/returns/<%= r.returnNumber %>" class="block rounded border border-slate-200 px-3 py-2 hover:bg-slate-50"><span class="font-mono"><%= r.returnNumber %></span> · <%= r.kindLabel %> · <%= r.reasonLabel %><br><span class="text-xs text-slate-500"><%= r.statusLabel %></span></a>
         <% }) %>
         <% if (!(locals.returns || []).length) { %><p class="text-slate-500">None.</p><% } %>
         <% if (raiseOk && o.paidAt && !['CANCELLED', 'REFUNDED', 'AWAITING_PAYMENT'].includes(o.status)) { %>
@@ -154,7 +154,7 @@
           allItems: true,
         }),
       });
-      window.location.href = `/admin/merch/returns/${res.data.request.returnNumber}`;
+      window.location.href = `/jpsme_admin/merch/returns/${res.data.request.returnNumber}`;
     } catch (err) { showToast(err.message, 'error'); }
   });
   root.querySelector('[data-actions]').addEventListener('click', async (e) => {

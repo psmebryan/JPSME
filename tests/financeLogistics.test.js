@@ -46,7 +46,7 @@ let ipSeq = 0;
 async function signIn(email, context = 'admin') {
   ipSeq += 1;
   const ip = `192.0.2.${150 + ipSeq}`;
-  const page = await fetch(`${base}${context === 'admin' ? '/admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
+  const page = await fetch(`${base}${context === 'admin' ? '/jpsme_admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
   let cookie = (page.headers.get('set-cookie') || '').split(';')[0];
   const token = ((await page.text()).match(/name="csrf-token" content="([^"]*)"/) || [])[1];
   const res = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie, 'X-CSRF-Token': token, 'X-Forwarded-For': ip }, body: JSON.stringify({ email, password: PASSWORD, context }) });
@@ -127,9 +127,9 @@ async function main() {
       assert.deepStrictEqual(r.json.data.grants, ['merchFinance', 'payments', 'reports'], 'unknown ticks are dropped');
       await Ad('PUT', `/api/admin/settings/finance-logistics/${log.id}`, { grants: ['merchLogistics'] });
       assert.strictEqual((await Ad('PUT', `/api/admin/settings/finance-logistics/${buyer.id}`, { grants: ['merchFinance'] })).status, 404, 'only for that role');
-      const page = await Ad('GET', '/admin/settings');
+      const page = await Ad('GET', '/jpsme_admin/settings');
       assert(page.text.includes('Finance &amp; Logistics access') && page.text.includes(`data-fl-account="${fin.id}"`));
-      assert((await Ad('GET', `/admin/users/${buyer.id}/edit`)).text.includes('value="FINANCE_LOGISTICS"'));
+      assert((await Ad('GET', `/jpsme_admin/users/${buyer.id}/edit`)).text.includes('value="FINANCE_LOGISTICS"'));
     });
 
     const Fi = await signIn(fin.email);
@@ -138,35 +138,35 @@ async function main() {
 
     await test('each account opens only what it was given', async () => {
       // No ticks: signed in, but every admin page sends them away.
-      const n = await No('GET', '/admin/merch/dashboard');
+      const n = await No('GET', '/jpsme_admin/merch/dashboard');
       assert.strictEqual(n.status, 302);
       assert.strictEqual((await No('GET', '/api/admin/merch/products')).status, 403);
       // Landing: the store dashboard, not the national one.
-      const d = await Fi('GET', '/admin/dashboard');
+      const d = await Fi('GET', '/jpsme_admin/dashboard');
       assert.strictEqual(d.status, 302);
-      assert.strictEqual(d.location, '/admin/merch/dashboard');
-      for (const p of ['/admin/settings', '/admin/users/all', '/admin/events', '/admin/audit-log']) {
+      assert.strictEqual(d.location, '/jpsme_admin/merch/dashboard');
+      for (const p of ['/jpsme_admin/settings', '/jpsme_admin/users/all', '/jpsme_admin/events', '/jpsme_admin/audit-log']) {
         assert.strictEqual((await Fi('GET', p)).status, 302, `${p} refused`); // eslint-disable-line no-await-in-loop
       }
-      assert.strictEqual((await Fi('GET', '/admin/merch/dashboard')).status, 200);
-      assert.strictEqual((await Fi('GET', '/admin/merch/reconciliation')).status, 200);
-      assert.strictEqual((await Lo('GET', '/admin/merch/reconciliation')).status, 302, 'Logistics does not reconcile');
-      assert.strictEqual((await Lo('GET', '/admin/merch/pickup')).status, 200);
-      assert.strictEqual((await Fi('GET', '/admin/merch/pickup')).status, 302, 'Finance does not hand over');
+      assert.strictEqual((await Fi('GET', '/jpsme_admin/merch/dashboard')).status, 200);
+      assert.strictEqual((await Fi('GET', '/jpsme_admin/merch/reconciliation')).status, 200);
+      assert.strictEqual((await Lo('GET', '/jpsme_admin/merch/reconciliation')).status, 302, 'Logistics does not reconcile');
+      assert.strictEqual((await Lo('GET', '/jpsme_admin/merch/pickup')).status, 200);
+      assert.strictEqual((await Fi('GET', '/jpsme_admin/merch/pickup')).status, 302, 'Finance does not hand over');
       // Payments: view only, and only with the tick.
       assert.strictEqual((await Fi('GET', '/api/admin/payments')).status, 200);
       assert.strictEqual((await Lo('GET', '/api/admin/payments')).status, 403);
       const pay = await prisma.payment.create({ data: { userId: buyer.id, purpose: 'MERCHANDISE', amount: 100, status: 'PAID', paidAt: new Date(), gatewayPaymentId: `pay_${TAG}_x`, gatewayCheckoutId: `cs_${TAG}_x` } });
       assert.strictEqual((await Fi('GET', `/api/admin/payments/${pay.id}`)).status, 200, 'can see one payment');
       assert.strictEqual((await Fi('POST', `/api/admin/payments/${pay.id}/refund`, { reason: 'others' })).status, 403, 'cannot refund there');
-      const pp = await Fi('GET', '/admin/payments');
+      const pp = await Fi('GET', '/jpsme_admin/payments');
       assert(pp.text.includes('data-can-act="0"') && !pp.text.includes('data-refund='), 'no refund buttons');
       // Reports: with the tick.
-      assert.strictEqual((await Fi('GET', '/admin/reports/transactions')).status, 200);
-      assert.strictEqual((await Lo('GET', '/admin/reports/transactions')).status, 302);
+      assert.strictEqual((await Fi('GET', '/jpsme_admin/reports/transactions')).status, 200);
+      assert.strictEqual((await Lo('GET', '/jpsme_admin/reports/transactions')).status, 302);
       // Sidebar: only their own links.
-      const side = (await Lo('GET', '/admin/merch/inventory')).text;
-      assert(side.includes('href="/admin/merch/pickup"') && !side.includes('href="/admin/merch/reconciliation"') && !side.includes('href="/admin/settings"'));
+      const side = (await Lo('GET', '/jpsme_admin/merch/inventory')).text;
+      assert(side.includes('href="/jpsme_admin/merch/pickup"') && !side.includes('href="/jpsme_admin/merch/reconciliation"') && !side.includes('href="/jpsme_admin/settings"'));
       assert(side.includes('Finance &amp; Logistics') || side.includes('Finance & Logistics'), 'role label');
     });
 
@@ -184,9 +184,9 @@ async function main() {
       assert.strictEqual((await Lo('PUT', '/api/admin/merch/return-settings', { approvalLimit: '1' })).status, 403, 'the limit is the main admin\'s');
       assert.strictEqual((await Pr('PUT', '/api/admin/merch/return-settings', { approvalLimit: '1' })).status, 403);
       assert.strictEqual((await Lo('POST', `/api/admin/merch/reconciliation/${DAY}/check`, {})).status, 403);
-      const ful = await Lo('GET', '/admin/merch/fulfilment');
+      const ful = await Lo('GET', '/jpsme_admin/merch/fulfilment');
       assert(/<fieldset class="min-w-0 space-y-6"\s*>/.test(ful.text), 'settings editable');
-      assert((await Fi('GET', '/admin/merch/fulfilment')).text.includes('<fieldset class="min-w-0 space-y-6" disabled>'), 'read only for Finance');
+      assert((await Fi('GET', '/jpsme_admin/merch/fulfilment')).text.includes('<fieldset class="min-w-0 space-y-6" disabled>'), 'read only for Finance');
     });
 
     await test('costs: only Finance, the main admin, or a President given costs', async () => {
@@ -195,17 +195,17 @@ async function main() {
       assert(!/cost/i.test(JSON.stringify(lo.json.data)), 'no cost in the JSON');
       const fi = await Fi('GET', `/api/admin/merch/products/${product.id}`);
       assert.strictEqual(fi.json.data.product.variants[0].costCentavos, 12000);
-      const lp = (await Lo('GET', `/admin/merch/products/${product.id}`)).text;
+      const lp = (await Lo('GET', `/jpsme_admin/merch/products/${product.id}`)).text;
       assert(!lp.includes('Unit cost (PHP)') && !lp.includes('"costCentavos"'), 'not on the page either');
       const pr = await Pr('GET', `/api/admin/merch/products/${product.id}`);
       assert(!('costCentavos' in pr.json.data.product.variants[0]), 'President without the costs tick');
       await settingsService.setSetting('presidentModules', JSON.stringify(['dashboard', 'merchandise', 'merchCosts']));
       assert.strictEqual((await Pr('GET', `/api/admin/merch/products/${product.id}`)).json.data.product.variants[0].costCentavos, 12000);
       await settingsService.setSetting('presidentModules', JSON.stringify(['dashboard', 'merchandise']));
-      const inv = await Lo('GET', '/admin/merch/inventory/export.xlsx');
+      const inv = await Lo('GET', '/jpsme_admin/merch/inventory/export.xlsx');
       const wb = await sheetNames(inv.buf);
       assert(!headers(wb.getWorksheet('On hand')).some((h) => /cost/i.test(h)), 'inventory export without cost columns');
-      const invF = await sheetNames((await Fi('GET', '/admin/merch/inventory/export.xlsx')).buf);
+      const invF = await sheetNames((await Fi('GET', '/jpsme_admin/merch/inventory/export.xlsx')).buf);
       assert(headers(invF.getWorksheet('On hand')).includes('Unit cost'));
       const hist = await Lo('GET', `/api/admin/merch/variants/${cap.id}/price-history`);
       assert(!hist.json.data.history.some((h) => h.field === 'costCentavos'), 'cost changes left out of the history');
@@ -213,7 +213,7 @@ async function main() {
 
     await test('addresses: Logistics while the order travels, never Finance, the export never', async () => {
       const { order } = await paidOrder({ day: '2025-02-11' });
-      const url = `/admin/merch/orders/${order.orderNumber}`;
+      const url = `/jpsme_admin/merch/orders/${order.orderNumber}`;
       assert((await Lo('GET', url)).text.includes('12 Hidden St.'), 'Logistics sees it');
       const f = (await Fi('GET', url)).text;
       assert(!f.includes('12 Hidden St.') && !f.includes('09171234567') && f.includes('data-address-hidden'));
@@ -221,7 +221,7 @@ async function main() {
       await prisma.merchOrder.update({ where: { id: order.id }, data: { status: 'DELIVERED', deliveredAt: new Date() } });
       assert(!(await Lo('GET', url)).text.includes('12 Hidden St.'), 'not after delivery');
       assert((await Ad('GET', url)).text.includes('12 Hidden St.'), 'the main admin still does');
-      const xl = await Ad('GET', `/admin/merch/orders/export.xlsx?from=2025-02-11&to=2025-02-11`);
+      const xl = await Ad('GET', `/jpsme_admin/merch/orders/export.xlsx?from=2025-02-11&to=2025-02-11`);
       assert(!xl.buf.toString('latin1').includes('Hidden'), 'not in the orders export');
     });
 
@@ -250,10 +250,10 @@ async function main() {
       const ex = await Fi('PUT', `/api/admin/merch/reconciliation/${DAY}/note`, { note: 'Checked with PayMongo support' });
       assert.strictEqual(ex.json.data.day.status, 'EXPLAINED');
       assert.strictEqual((await Fi('POST', '/api/admin/merch/reconciliation/2999-01-01/check', {})).status, 422, 'not a future day');
-      const page = await Fi('GET', '/admin/merch/reconciliation?month=2025-03');
+      const page = await Fi('GET', '/jpsme_admin/merch/reconciliation?month=2025-03');
       assert(page.text.includes('Gaps explained') && page.text.includes('Checked with PayMongo support'));
       assert(page.text.includes(`data-check="${DAY}"`));
-      assert(!(await Pr('GET', '/admin/merch/reconciliation?month=2025-03')).text.includes('data-check='), 'the President views only');
+      assert(!(await Pr('GET', '/jpsme_admin/merch/reconciliation?month=2025-03')).text.includes('data-check='), 'the President views only');
     });
 
     await test('sales report, profit for those who see costs, month-end pack', async () => {
@@ -266,32 +266,32 @@ async function main() {
       assert.strictEqual(rep.summary.paymongoFeeCentavos, 1000);
       assert.strictEqual(rep.summary.netCentavos, rep.summary.chargedCentavos - 1000);
       if (org) assert.strictEqual(rep.organizations[0].organization, org.name);
-      const fp = (await Fi('GET', `/admin/merch/reports?from=${DAY}&to=${DAY}`)).text;
+      const fp = (await Fi('GET', `/jpsme_admin/merch/reports?from=${DAY}&to=${DAY}`)).text;
       assert(fp.includes('Profit on items') && fp.includes('₱320.00'));
-      const lp = (await Lo('GET', `/admin/merch/reports?from=${DAY}&to=${DAY}`)).text;
+      const lp = (await Lo('GET', `/jpsme_admin/merch/reports?from=${DAY}&to=${DAY}`)).text;
       assert(!lp.includes('Profit on items') && !lp.includes('₱320.00'), 'no profit for Logistics');
-      const fx = await sheetNames((await Fi('GET', `/admin/merch/reports/export.xlsx?from=${DAY}&to=${DAY}`)).buf);
+      const fx = await sheetNames((await Fi('GET', `/jpsme_admin/merch/reports/export.xlsx?from=${DAY}&to=${DAY}`)).buf);
       assert(headers(fx.getWorksheet('By product')).includes('Profit'));
-      const lx = await sheetNames((await Lo('GET', `/admin/merch/reports/export.xlsx?from=${DAY}&to=${DAY}`)).buf);
+      const lx = await sheetNames((await Lo('GET', `/jpsme_admin/merch/reports/export.xlsx?from=${DAY}&to=${DAY}`)).buf);
       assert(!headers(lx.getWorksheet('By product')).includes('Profit'));
-      const me = await Fi('GET', '/admin/merch/month-end.xlsx?month=2025-03');
+      const me = await Fi('GET', '/jpsme_admin/merch/month-end.xlsx?month=2025-03');
       assert.strictEqual(me.status, 200);
       const wb = await sheetNames(me.buf);
       ['Summary', 'By product', 'By organization', 'Orders', 'Refunds paid', 'Reconciliation', 'Stock movements', 'Stock at month end'].forEach((n) => assert(wb.getWorksheet(n), `sheet ${n}`));
       assert.strictEqual(wb.getWorksheet('Orders').rowCount >= 3, true);
       assert(!me.buf.toString('latin1').includes('Hidden'), 'no addresses in the pack');
-      assert.strictEqual((await Lo('GET', '/admin/merch/month-end.xlsx?month=2025-03')).status, 302, 'not Logistics');
+      assert.strictEqual((await Lo('GET', '/jpsme_admin/merch/month-end.xlsx?month=2025-03')).status, 302, 'not Logistics');
     });
 
     await test('dashboard and the Transaction Report Merchandise tab', async () => {
-      const f = (await Fi('GET', '/admin/merch/dashboard')).text;
+      const f = (await Fi('GET', '/jpsme_admin/merch/dashboard')).text;
       assert(f.includes('Store Dashboard') && f.includes('data-recon') && f.includes('data-tile="profit"'));
-      const l = (await Lo('GET', '/admin/merch/dashboard')).text;
+      const l = (await Lo('GET', '/jpsme_admin/merch/dashboard')).text;
       assert(!l.includes('data-recon') && !l.includes('data-tile="profit"') && l.includes('Paid, to pack'));
-      const t = await Fi('GET', `/admin/reports/transactions?kind=merch&from=${DAY}&to=${DAY}`);
+      const t = await Fi('GET', `/jpsme_admin/reports/transactions?kind=merch&from=${DAY}&to=${DAY}`);
       assert.strictEqual(t.status, 200);
       assert(t.text.includes('aria-current="page">Merchandise') && t.text.includes(`Buyer ${TAG}`));
-      const x = await sheetNames((await Fi('GET', `/admin/reports/transactions/export.xlsx?kind=merch&from=${DAY}&to=${DAY}`)).buf);
+      const x = await sheetNames((await Fi('GET', `/jpsme_admin/reports/transactions/export.xlsx?kind=merch&from=${DAY}&to=${DAY}`)).buf);
       assert(headers(x.getWorksheet('Merchandise')).includes('Items'));
     });
 
