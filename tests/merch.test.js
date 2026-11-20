@@ -41,7 +41,7 @@ let ipSeq = 0;
 async function signIn(email, context = 'admin') {
   ipSeq += 1;
   const ip = `198.51.100.${30 + ipSeq}`;
-  const page = await fetch(`${base}${context === 'admin' ? '/admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
+  const page = await fetch(`${base}${context === 'admin' ? '/jpsme_admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
   let cookie = (page.headers.get('set-cookie') || '').split(';')[0];
   const token = ((await page.text()).match(/name="csrf-token" content="([^"]*)"/) || [])[1];
   const res = await fetch(`${base}/api/auth/login`, {
@@ -144,7 +144,7 @@ async function main() {
       const white = r = await A('POST', `/api/admin/merch/products/${polo.id}/variants`, { label: 'White / S', color: 'White' });
       r = await A('PUT', `/api/admin/merch/products/${polo.id}/variants/${white.json.data.variant.id}`, { memberPrice: '350' });
       assert.deepStrictEqual([r.json.data.variant.memberPriceCentavos, r.json.data.variant.priceCentavos], [35000, null]);
-      assert((await A('GET', `/admin/merch/products/${polo.id}`)).text.includes('Set prices'));
+      assert((await A('GET', `/jpsme_admin/merch/products/${polo.id}`)).text.includes('Set prices'));
     });
 
     await test('every price and cost change is kept, with who changed it', async () => {
@@ -200,15 +200,15 @@ async function main() {
     });
 
     await test('inventory: on hand, low and sold-out states, value at cost, export', async () => {
-      const page = await A('GET', `/admin/merch/inventory?q=${encodeURIComponent(TAG)}`);
+      const page = await A('GET', `/jpsme_admin/merch/inventory?q=${encodeURIComponent(TAG)}`);
       assert.strictEqual(page.status, 200);
       assert(page.text.includes('Navy / L') && page.text.includes('Standard'));
       assert(/data-row="\d+"[^>]*data-on-hand="4"/.test(page.text), 'polo L shows 4');
-      const low = await A('GET', `/admin/merch/inventory?q=${encodeURIComponent(TAG)}&state=LOW`);
+      const low = await A('GET', `/jpsme_admin/merch/inventory?q=${encodeURIComponent(TAG)}&state=LOW`);
       assert(low.text.includes('Navy / L') && !low.text.includes('>Standard<'), '4 <= 5 is low');
-      const out = await A('GET', `/admin/merch/inventory?q=${encodeURIComponent(TAG)}&state=SOLD_OUT`);
+      const out = await A('GET', `/jpsme_admin/merch/inventory?q=${encodeURIComponent(TAG)}&state=SOLD_OUT`);
       assert(out.text.includes('Standard'), 'pin never received');
-      const x = await A('GET', `/admin/merch/inventory/export.xlsx?q=${encodeURIComponent(TAG)}`);
+      const x = await A('GET', `/jpsme_admin/merch/inventory/export.xlsx?q=${encodeURIComponent(TAG)}`);
       assert.strictEqual(x.status, 200);
       const wb = new ExcelJS.Workbook();
       await wb.xlsx.load(x.buf);
@@ -224,15 +224,15 @@ async function main() {
       assert.strictEqual((await A('DELETE', `/api/admin/merch/products/${polo.id}`)).status, 409);
       const r = await A('PUT', `/api/admin/merch/products/${polo.id}/variants/${large.id}`, { isActive: false });
       assert.strictEqual(r.json.data.variant.isActive, false);
-      const page = await A('GET', `/admin/merch/inventory?q=${encodeURIComponent(TAG)}`);
+      const page = await A('GET', `/jpsme_admin/merch/inventory?q=${encodeURIComponent(TAG)}`);
       assert(!page.text.includes('Navy / L'), 'switched-off variants hidden by default');
-      assert((await A('GET', `/admin/merch/inventory?q=${encodeURIComponent(TAG)}&showOff=1`)).text.includes('Navy / L'));
+      assert((await A('GET', `/jpsme_admin/merch/inventory?q=${encodeURIComponent(TAG)}&showOff=1`)).text.includes('Navy / L'));
     });
 
     await test('admin pages render; the Merchandise sidebar group shows', async () => {
-      const list = await A('GET', '/admin/merch/products');
+      const list = await A('GET', '/jpsme_admin/merch/products');
       assert(list.text.includes(`${TAG} Polo shirt`) && list.text.includes('merch-submenu'));
-      const one = await A('GET', `/admin/merch/products/${polo.id}`);
+      const one = await A('GET', `/jpsme_admin/merch/products/${polo.id}`);
       assert(one.text.includes('Variants and prices') && one.text.includes('Navy / L') && one.text.includes('₱380.00'));
     });
 
@@ -240,12 +240,12 @@ async function main() {
       await A('PUT', '/api/admin/settings/president-access', { modules: ['dashboard', 'events'] });
       const P = await signIn(president.email);
       assert.strictEqual((await P('GET', '/api/admin/merch/products')).status, 403);
-      assert.strictEqual((await P('GET', '/admin/merch/inventory')).status, 302);
+      assert.strictEqual((await P('GET', '/jpsme_admin/merch/inventory')).status, 302);
       await A('PUT', '/api/admin/settings/president-access', { modules: ['dashboard', 'merchandise'] });
       assert.strictEqual((await P('GET', '/api/admin/merch/products')).status, 200);
-      assert.strictEqual((await P('GET', '/admin/merch/inventory')).status, 200);
+      assert.strictEqual((await P('GET', '/jpsme_admin/merch/inventory')).status, 200);
       const M = await signIn(member.email, 'user');
-      assert.notStrictEqual((await M('GET', '/admin/merch/products')).status, 200);
+      assert.notStrictEqual((await M('GET', '/jpsme_admin/merch/products')).status, 200);
       assert.strictEqual((await M('POST', `/api/admin/merch/variants/${large.id}/stock`, { action: 'receive', quantity: '1' })).status, 403);
     });
   } finally {

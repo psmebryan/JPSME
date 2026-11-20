@@ -30,7 +30,7 @@
             <td class="admin-td"><%= event.modality === 'ONLINE' ? 'Online' : 'Face to Face' %></td>
             <td class="admin-td"><%= event._count ? event._count.registrations : 0 %></td>
             <td class="admin-td text-right">
-              <a href="/admin/events/<%= event.id %>/email" class="text-indigo-600 hover:underline text-sm font-medium">Manage &rarr;</a>
+              <a href="/jpsme_admin/events/<%= event.id %>/email" class="text-indigo-600 hover:underline text-sm font-medium">Manage &rarr;</a>
             </td>
           </tr>
         <% }) %>

@@ -49,7 +49,7 @@ async function burst(n, p, ip, headers) {
 }
 
 async function signIn(email, context, ip) {
-  const page = await fetch(`${base}${context === 'admin' ? '/admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
+  const page = await fetch(`${base}${context === 'admin' ? '/jpsme_admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
   let cookie = (page.headers.get('set-cookie') || '').split(';')[0];
   const token = ((await page.text()).match(/name="csrf-token" content="([^"]*)"/) || [])[1];
   const res = await fetch(`${base}/api/auth/login`, {
@@ -119,7 +119,7 @@ async function main() {
 
     await test('a main admin sees the block in Settings and lifts it; a member cannot', async () => {
       const Ad = await signIn(admin.email, 'admin', '192.0.2.240');
-      const settings = await Ad('GET', '/admin/settings');
+      const settings = await Ad('GET', '/jpsme_admin/settings');
       assert.strictEqual(settings.status, 200);
       assert(settings.text.includes('data-blocked-ip="192.0.2.241"'));
       assert(settings.text.includes('<strong>20</strong> requests in <strong>30 seconds</strong>'));

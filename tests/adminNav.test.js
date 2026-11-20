@@ -17,7 +17,7 @@ function run(html) {
   const content = { innerHTML: 'old', scrollIntoView() {} };
   const nav = { querySelectorAll: () => [] };
   const events = [];
-  const location = { href: '/admin/dashboard', pathname: '/admin/dashboard', search: '' };
+  const location = { href: '/jpsme_admin/dashboard', pathname: '/jpsme_admin/dashboard', search: '' };
   const context = {
     console,
     URL,
@@ -43,8 +43,8 @@ async function main() {
   // A page with its own script: full page load, nothing swapped in.
   {
     const t = run('<div id="page">Invite Members</div><script nonce="abc">doThings()</script>');
-    await t.context.loadAdminPage('/admin/activations', true);
-    assert.strictEqual(t.location.href, '/admin/activations', 'navigates for real');
+    await t.context.loadAdminPage('/jpsme_admin/activations', true);
+    assert.strictEqual(t.location.href, '/jpsme_admin/activations', 'navigates for real');
     assert.strictEqual(t.content.innerHTML, 'old', 'does not swap in a page whose script would not run');
     assert.deepStrictEqual(t.events, [], 'and does not announce a swap that did not happen');
   }
@@ -52,9 +52,9 @@ async function main() {
   // A page without one (Users, driven by admin.js): still swapped in.
   {
     const t = run('<div id="users-module">Users</div>');
-    await t.context.loadAdminPage('/admin/users/all', true);
+    await t.context.loadAdminPage('/jpsme_admin/users/all', true);
     assert.strictEqual(t.content.innerHTML, '<div id="users-module">Users</div>', 'swapped in place');
-    assert.strictEqual(t.location.href, '/admin/dashboard', 'no reload');
+    assert.strictEqual(t.location.href, '/jpsme_admin/dashboard', 'no reload');
     assert.deepStrictEqual(t.events, ['admin:content-loaded'], 'admin.js is told to bind the new page');
   }
 

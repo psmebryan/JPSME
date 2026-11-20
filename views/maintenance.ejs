@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>Under maintenance | JPSME</title>
+  <link rel="icon" href="<%= locals.faviconUrl || '/img/favicon.svg' %>">
+  <link rel="stylesheet" href="/css/tailwind.css">
+</head>
+<%#
+  The maintenance page (middleware/maintenance.middleware.js). Rendered
+  without the site layout: no menu, because nothing in it would open.
+
+  With an end time it counts down to it. The count uses the server's clock
+  (serverNow), not the visitor's, so a phone set to the wrong time still
+  shows the right figure. Every 20 seconds it asks /api/maintenance whether
+  the site is back, and reloads the moment it is.
+%>
+<body class="min-h-screen bg-ink-900 text-white">
+  <div class="glass-ambient" aria-hidden="true"></div>
+
+  <main class="flex min-h-screen items-center justify-center px-5 py-16">
+    <div class="w-full max-w-xl text-center">
+      <img src="<%= locals.logoUrl || '/img/default-logo.svg' %>" alt="JPSME" class="mx-auto h-20 w-20 object-contain">
+
+      <div class="glass mt-8 rounded-2xl px-6 py-10 sm:px-10">
+        <span class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gold-400/15 text-gold-300" aria-hidden="true">
+          <svg class="h-6 w-6 maint-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M10.3 4.3c.4-1.7 3-1.7 3.4 0a1.7 1.7 0 0 0 2.6 1.1c1.5-.9 3.3.8 2.4 2.4a1.7 1.7 0 0 0 1 2.5c1.8.4 1.8 3 0 3.4a1.7 1.7 0 0 0-1 2.6c.9 1.5-.9 3.3-2.4 2.4a1.7 1.7 0 0 0-2.6 1c-.4 1.8-3 1.8-3.4 0a1.7 1.7 0 0 0-2.5-1c-1.6.9-3.3-.9-2.4-2.4a1.7 1.7 0 0 0-1.1-2.6c-1.7-.4-1.7-3 0-3.4a1.7 1.7 0 0 0 1.1-2.5c-.9-1.6.8-3.3 2.4-2.4a1.7 1.7 0 0 0 2.5-1.1Z"/><circle cx="12" cy="12" r="3"/></svg>
+        </span>
+
+        <h1 class="mt-5 text-3xl font-extrabold tracking-tight sm:text-4xl">We're doing some maintenance</h1>
+        <p class="mx-auto mt-3 max-w-md text-[15px] leading-7 text-mist-200">
+          The JPSME site is closed for a short while so we can make improvements. Please wait; this page opens the site by itself when we're done.
+        </p>
+        <% if (note) { %>
+          <p class="mx-auto mt-4 max-w-md rounded-lg bg-white/5 px-4 py-3 text-sm leading-6 text-mist-200" data-note><%= note %></p>
+        <% } %>
+
+        <% if (until) { %>
+          <div class="mt-8" data-countdown data-until="<%= until %>" data-server-now="<%= serverNow %>">
+            <p class="text-sm text-mist-300">We expect to be back in</p>
+            <div class="mt-3 flex justify-center gap-3 sm:gap-4" role="timer" aria-live="off">
+              <% [['d', 'days'], ['h', 'hours'], ['m', 'minutes'], ['s', 'seconds']].forEach(([k, label]) => { %>
+                <div class="min-w-[4.25rem] rounded-xl border border-white/10 bg-white/5 px-3 py-3 <%= k === 'd' ? 'hidden' : '' %>" data-unit="<%= k %>">
+                  <p class="text-3xl font-bold tabular-nums sm:text-4xl" data-value>--</p>
+                  <p class="mt-1 text-xs text-mist-400"><%= label %></p>
+                </div>
+              <% }) %>
+            </div>
+            <p class="mt-4 text-sm text-mist-400" data-back-at></p>
+            <p class="mt-4 hidden text-sm font-semibold text-gold-300" data-overdue>Almost done. This page will open the site as soon as it's ready.</p>
+          </div>
+        <% } else { %>
+          <p class="mt-8 text-sm text-mist-400">We'll be back as soon as possible.</p>
+        <% } %>
+      </div>
+
+      <p class="mt-6 text-sm text-mist-400">Need help now? Email <a href="mailto:info@psmeinc.org.ph" class="text-gold-300 hover:underline">info@psmeinc.org.ph</a></p>
+      <%# Signed in with an account that is not the main admin: a way to sign
+          out, so the main admin can then sign in at the admin address. That
+          address is deliberately not linked here, the page being public. %>
+      <% if (locals.signedInAs) { %>
+        <p class="mt-3 text-xs text-mist-500" data-admin-way-in>
+          Signed in as <%= signedInAs %>. <a href="/logout" class="underline hover:text-white">Sign out</a>
+        </p>
+      <% } %>
+    </div>
+  </main>
+
+  <style nonce="<%= cspNonce %>">
+    @keyframes maint-spin { to { transform: rotate(360deg); } }
+    .maint-spin { animation: maint-spin 6s linear infinite; }
+    @media (prefers-reduced-motion: reduce) { .maint-spin { animation: none; } }
+  </style>
+  <script nonce="<%= cspNonce %>">
+  (function () {
+    var box = document.querySelector('[data-countdown]');
+    if (box) {
+      var until = new Date(box.getAttribute('data-until')).getTime();
+      // The difference between this device's clock and the server's.
+      var skew = new Date(box.getAttribute('data-server-now')).getTime() - Date.now();
+      var units = {};
+      ['d', 'h', 'm', 's'].forEach(function (k) {
+        var el = box.querySelector('[data-unit="' + k + '"]');
+        units[k] = { box: el, value: el.querySelector('[data-value]') };
+      });
+      var backAt = box.querySelector('[data-back-at]');
+      backAt.textContent = 'Around ' + new Date(until).toLocaleString('en-PH', {
+        timeZone: 'Asia/Manila', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+      }) + ' (Philippine time)';
+      var pad = function (n) { return String(n).padStart(2, '0'); };
+      var tick = function () {
+        var left = Math.max(0, until - (Date.now() + skew));
+        var s = Math.floor(left / 1000);
+        var d = Math.floor(s / 86400);
+        units.d.box.classList.toggle('hidden', d === 0);
+        units.d.value.textContent = d;
+        units.h.value.textContent = pad(Math.floor((s % 86400) / 3600));
+        units.m.value.textContent = pad(Math.floor((s % 3600) / 60));
+        units.s.value.textContent = pad(s % 60);
+        if (left === 0) {
+          box.querySelector('[data-overdue]').classList.remove('hidden');
+          backAt.classList.add('hidden');
+          return false;
+        }
+        return true;
+      };
+      if (tick()) {
+        var timer = setInterval(function () { if (!tick()) clearInterval(timer); }, 1000);
+      }
+    }
+
+    // Reload as soon as the site is back.
+    var check = function () {
+      fetch('/api/maintenance', { cache: 'no-store', credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { if (j && j.data && j.data.on === false) window.location.reload(); })
+        .catch(function () { /* still down or offline: try again next time */ });
+    };
+    setInterval(check, 20000);
+  }());
+  </script>
+</body>
+</html>

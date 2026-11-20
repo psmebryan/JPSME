@@ -31,6 +31,11 @@
 <%# Dark is the default for the public site. A page can ask for paper by
     passing pageTheme: 'light' — only the home page does today. %>
 <body class="min-h-screen flex flex-col overflow-x-hidden <%= locals.pageTheme === 'light' ? 'bg-paper-50 text-pen-700' : 'bg-ink-900 text-white' %>">
+  <% if (locals.maintenance && maintenance.on) { %>
+    <div class="relative z-[60] bg-amber-400 px-4 py-2 text-center text-sm font-semibold text-ink-950" role="status">
+      Maintenance mode is on: only you can see the site. <a href="/jpsme_admin/settings" class="underline">End maintenance</a>
+    </div>
+  <% } %>
   <%# The glows behind the glass panels (src/styles/tailwind.css, GLASS). %>
   <div class="glass-ambient <%= locals.pageTheme === 'light' ? 'glass-ambient-light' : '' %>" aria-hidden="true"></div>
   <%- include('partials/navbar') %>

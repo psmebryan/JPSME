@@ -43,7 +43,7 @@ let ipSeq = 0;
 async function signIn(email, context = 'user') {
   ipSeq += 1;
   const ip = `198.51.100.${120 + ipSeq}`;
-  const page = await fetch(`${base}${context === 'admin' ? '/admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
+  const page = await fetch(`${base}${context === 'admin' ? '/jpsme_admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
   let cookie = (page.headers.get('set-cookie') || '').split(';')[0];
   const token = ((await page.text()).match(/name="csrf-token" content="([^"]*)"/) || [])[1];
   const res = await fetch(`${base}/api/auth/login`, {
@@ -195,11 +195,11 @@ async function main() {
     });
 
     await test('admin list and editor pages', async () => {
-      const list = await call('GET', '/admin/articles');
+      const list = await call('GET', '/jpsme_admin/articles');
       assert(list.text.includes(`${TAG} Circular One`) && list.text.includes('article-search') && list.text.includes('3 photos'));
-      const edit = await call('GET', `/admin/articles/${circular.id}/edit`);
+      const edit = await call('GET', `/jpsme_admin/articles/${circular.id}/edit`);
       assert(edit.text.includes('Formatting guide') && edit.text.includes('value="2025-01-15"') && (edit.text.match(/data-image-id=/g) || []).length === 3);
-      assert((await call('GET', '/admin/articles/new')).text.includes('Create Article'));
+      assert((await call('GET', '/jpsme_admin/articles/new')).text.includes('Create Article'));
     });
 
     await test('deleting an article removes its cover and photos', async () => {

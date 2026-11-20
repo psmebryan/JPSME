@@ -29,7 +29,7 @@ let ipSeq = 0;
 async function signIn(email, context = 'user') {
   ipSeq += 1;
   const ip = `192.0.2.${200 + ipSeq}`;
-  const page = await fetch(`${base}${context === 'admin' ? '/admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
+  const page = await fetch(`${base}${context === 'admin' ? '/jpsme_admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
   let cookie = (page.headers.get('set-cookie') || '').split(';')[0];
   const token = ((await page.text()).match(/name="csrf-token" content="([^"]*)"/) || [])[1];
   const res = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie, 'X-CSRF-Token': token, 'X-Forwarded-For': ip }, body: JSON.stringify({ email, password: PASSWORD, context }) });
@@ -103,9 +103,9 @@ async function main() {
       assert.strictEqual((await B('GET', '/store')).status, 404, 'not a tester');
       assert.strictEqual((await B('POST', '/api/store/feedback', { message: 'Let me in please' })).status, 404);
       assert((await A('GET', `/store/orders/${order.orderNumber}`)).text.includes(`data-order="${order.orderNumber}"`));
-      const page = await Ad('GET', '/admin/merch/launch');
+      const page = await Ad('GET', '/jpsme_admin/merch/launch');
       assert(page.text.includes('data-mode="SOFT"') && page.text.includes(`data-tester="${ann.id}"`) && page.text.includes('1 paid order'));
-      assert(!(await Lo('GET', '/admin/merch/launch')).text.includes('data-add-tester'), 'Logistics reads only');
+      assert(!(await Lo('GET', '/jpsme_admin/merch/launch')).text.includes('data-add-tester'), 'Logistics reads only');
     });
 
     let reportId;
@@ -115,20 +115,20 @@ async function main() {
       assert.strictEqual(r.status, 201, r.text.slice(0, 200));
       reportId = r.json.data.id;
       assert.strictEqual((await A('POST', '/api/store/feedback', { message: 'Another thing went wrong here' })).status, 429, 'one a minute');
-      const list = await Lo('GET', '/admin/merch/feedback?status=open');
+      const list = await Lo('GET', '/jpsme_admin/merch/feedback?status=open');
       assert(list.text.includes('The size chart is missing') && list.text.includes(order.orderNumber));
-      assert((await Ad('GET', '/admin/merch/dashboard')).text.includes('reported problem'));
+      assert((await Ad('GET', '/jpsme_admin/merch/dashboard')).text.includes('reported problem'));
       const done = await Lo('PUT', `/api/admin/merch/feedback/${reportId}`, { done: true, note: 'Added the chart' });
       assert.strictEqual(done.status, 200);
       const row = await prisma.merchFeedback.findUnique({ where: { id: reportId } });
       assert.deepStrictEqual([row.status, row.note, row.resolvedById], ['DONE', 'Added the chart', log.id]);
-      assert((await Ad('GET', '/admin/merch/feedback?status=done')).text.includes('Added the chart'));
+      assert((await Ad('GET', '/jpsme_admin/merch/feedback?status=done')).text.includes('Added the chart'));
       await Ad('PUT', `/api/admin/merch/feedback/${reportId}`, { done: false });
       assert.strictEqual((await prisma.merchFeedback.findUnique({ where: { id: reportId } })).status, 'OPEN');
     });
 
     await test('the stock count takes out paid items still on the shelf', async () => {
-      const page = await Lo('GET', '/admin/merch/count');
+      const page = await Lo('GET', '/jpsme_admin/merch/count');
       assert.strictEqual(page.status, 200);
       assert(page.text.includes(`data-row="${pin.id}" data-expected="10"`), 'expected on shelf = 8 on hand + 2 paid');
       assert(page.text.includes('Opening stock count') || page.text.includes('Stock count'));
@@ -144,11 +144,11 @@ async function main() {
       assert.strictEqual(r.json.data.failed.length, 2, 'fewer than the paid items, and an unknown variant');
       assert(/At least 2/.test(r.json.data.failed[0].message));
       assert.strictEqual((await Lo('POST', '/api/admin/merch/count', { counts: [] })).status, 422);
-      const sheet = await Fi('GET', '/admin/merch/count/print');
+      const sheet = await Fi('GET', '/jpsme_admin/merch/count/print');
       assert(sheet.text.includes('data-count-sheet') && sheet.text.includes(pin.sku) && !sheet.text.includes('Ledger on hand'), 'blind sheet');
-      const fiPage = (await Fi('GET', '/admin/merch/count')).text;
+      const fiPage = (await Fi('GET', '/jpsme_admin/merch/count')).text;
       assert(!fiPage.includes('Save counts') && !fiPage.includes('aria-label="Counted,'), 'Finance views only');
-      assert((await Lo('GET', '/admin/merch/count')).text.includes('Save counts'));
+      assert((await Lo('GET', '/jpsme_admin/merch/count')).text.includes('Save counts'));
     });
 
     await test('the go-live checklist, and opening the Store', async () => {
@@ -157,7 +157,7 @@ async function main() {
       assert.strictEqual(ready.items.find((i) => i.key === 'board').ok, true, 'a tester has a paid order');
       assert.strictEqual(ready.items.find((i) => i.key === 'feedback').ok, false, 'a report is open');
       assert(['live', 'test', 'missing', 'unknown'].includes(launch.paymongoMode()));
-      const page = (await Ad('GET', '/admin/merch/launch')).text;
+      const page = (await Ad('GET', '/jpsme_admin/merch/launch')).text;
       assert(page.includes('data-check-item="count"') && page.includes('Go-live checklist'));
       assert(!/sk_(live|test)_[A-Za-z0-9]/.test(page), 'the key itself is never shown');
       assert.strictEqual((await Ad('PUT', '/api/admin/merch/store-mode', { mode: 'OPEN' })).status, 200);

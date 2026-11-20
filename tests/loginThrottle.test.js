@@ -177,7 +177,7 @@ async function main() {
       for (let i = 0; i < 3; i += 1) await login(b, `${TAG}-y${i}@example.invalid`, 'wrong');
       b = await browser('/login');
       assert(b.html.includes('data-login-human-check'), 'drawn once this network has failed 3 times');
-      b = await browser('/admin/login?check=1');
+      b = await browser('/jpsme_admin/login?check=1');
       assert(b.html.includes('data-login-human-check'), 'admin login too');
     });
 

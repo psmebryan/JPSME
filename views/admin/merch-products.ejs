@@ -14,7 +14,7 @@
         <p class="admin-subtitle">Products, their variants and prices. Not on sale to members yet.</p>
       </div>
       <div class="flex gap-2">
-        <a href="/admin/merch/inventory" class="btn-secondary px-4 py-2.5">Inventory</a>
+        <a href="/jpsme_admin/merch/inventory" class="btn-secondary px-4 py-2.5">Inventory</a>
         <% if (canEdit) { %><button type="button" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-open-add>
           <span aria-hidden="true" class="text-lg leading-none">+</span> Add Product
         </button><% } %>
@@ -26,7 +26,7 @@
     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-6 py-4" id="store-switch">
       <div>
         <p class="text-sm font-semibold text-slate-900">Store is <span data-store-state><%= storeOpen ? 'open to members' : 'closed (preview only)' %></span></p>
-        <p class="text-xs text-slate-500">Closed: only you can see <a href="/store" target="_blank" rel="noopener" class="text-indigo-600 hover:underline">the Store</a> to try it. Open: members can see it and buy. For the Board-only soft launch and the go-live checklist, see <a href="/admin/merch/launch" class="text-indigo-600 hover:underline">Soft Launch</a>.</p>
+        <p class="text-xs text-slate-500">Closed: only you can see <a href="/store" target="_blank" rel="noopener" class="text-indigo-600 hover:underline">the Store</a> to try it. Open: members can see it and buy. For the Board-only soft launch and the go-live checklist, see <a href="/jpsme_admin/merch/launch" class="text-indigo-600 hover:underline">Soft Launch</a>.</p>
       </div>
       <label class="relative inline-flex cursor-pointer items-center gap-3">
         <span class="text-sm text-slate-700">Open to members</span>
@@ -66,7 +66,7 @@
                       <% } else { %>
                         <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-slate-100 text-xs text-slate-400">No photo</div>
                       <% } %>
-                      <a href="/admin/merch/products/<%= p.id %>" class="font-medium text-slate-900 hover:text-indigo-700"><%= p.name %></a>
+                      <a href="/jpsme_admin/merch/products/<%= p.id %>" class="font-medium text-slate-900 hover:text-indigo-700"><%= p.name %></a>
                     </div>
                   </td>
                   <td class="admin-td text-right tabular-nums"><%= p.variants.length %></td>
@@ -81,7 +81,7 @@
                   </td>
                   <td class="admin-td"><span class="<%= p.isActive ? 'badge-green' : 'badge-slate' %>"><%= p.isActive ? 'On' : 'Off' %></span></td>
                   <td class="admin-td text-right">
-                    <a href="/admin/merch/products/<%= p.id %>" class="inline-flex items-center rounded-md bg-orange-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-600">Edit</a>
+                    <a href="/jpsme_admin/merch/products/<%= p.id %>" class="inline-flex items-center rounded-md bg-orange-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-600">Edit</a>
                   </td>
                 </tr>
               <% }) %>
@@ -144,7 +144,7 @@
         method: 'POST',
         body: JSON.stringify({ name: form.elements.namedItem('name').value, description: form.elements.namedItem('description').value }),
       });
-      window.location.href = `/admin/merch/products/${res.data.product.id}`;
+      window.location.href = `/jpsme_admin/merch/products/${res.data.product.id}`;
     } catch (err) { showToast(err.message, 'error'); }
   });
 }());

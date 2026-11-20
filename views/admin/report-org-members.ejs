@@ -12,7 +12,7 @@
     return Object.keys(p).filter((k) => p[k] !== null && p[k] !== undefined && p[k] !== '' && !(k === 'page' && Number(p[k]) === 1))
       .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(p[k])}`).join('&');
   };
-  const link = (over) => { const s = qs(over); return '/admin/reports/organization-members' + (s ? `?${s}` : ''); };
+  const link = (over) => { const s = qs(over); return '/jpsme_admin/reports/organization-members' + (s ? `?${s}` : ''); };
   const exportQs = qs({ page: 1 });
   const n = (v) => Number(v || 0).toLocaleString('en-PH');
   const topMax = top.length ? top[0].members : 0;
@@ -32,14 +32,14 @@
         <h1 class="admin-h1">Student Organization Member Summary</h1>
         <p class="admin-subtitle">Members per student organization, by region and province</p>
       </div>
-      <a href="/admin/reports/organization-members/export.xlsx<%= exportQs ? '?' + exportQs : '' %>" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-export>
+      <a href="/jpsme_admin/reports/organization-members/export.xlsx<%= exportQs ? '?' + exportQs : '' %>" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-export>
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg>
         Export XLS
       </a>
     </div>
 
     <div class="px-6 py-5 space-y-6">
-      <form method="get" action="/admin/reports/organization-members" id="report-filters" class="grid gap-3 sm:grid-cols-[1fr_1.5fr_auto] sm:items-end">
+      <form method="get" action="/jpsme_admin/reports/organization-members" id="report-filters" class="grid gap-3 sm:grid-cols-[1fr_1.5fr_auto] sm:items-end">
         <div>
           <label for="rm-region" class="form-label">Region</label>
           <select id="rm-region" name="region" class="form-input" data-autosubmit>
@@ -58,7 +58,7 @@
             <% }) %>
           </select>
         </div>
-        <a href="/admin/reports/organization-members" class="btn-secondary px-3 py-2 text-center">Clear</a>
+        <a href="/jpsme_admin/reports/organization-members" class="btn-secondary px-3 py-2 text-center">Clear</a>
       </form>
 
       <div class="grid grid-cols-2 gap-3 lg:grid-cols-4" data-totals>

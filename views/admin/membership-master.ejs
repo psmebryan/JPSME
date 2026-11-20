@@ -12,7 +12,7 @@
     return Object.keys(p).filter((k) => p[k] !== null && p[k] !== undefined && p[k] !== '' && !(k === 'page' && Number(p[k]) === 1))
       .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(p[k])}`).join('&');
   };
-  const link = (over) => { const s = qs(over); return '/admin/master/memberships' + (s ? `?${s}` : ''); };
+  const link = (over) => { const s = qs(over); return '/jpsme_admin/master/memberships' + (s ? `?${s}` : ''); };
   const exportQs = qs({ page: 1 });
   const membershipBadge = { ACTIVE: 'badge-green', PENDING: 'badge-amber', EXPIRED: 'badge-red', NONE: 'badge-slate' };
   const accountBadge = { APPROVED: 'badge-green', PENDING: 'badge-amber', REJECTED: 'badge-red' };
@@ -33,7 +33,7 @@
         <h1 class="admin-h1">Membership Master</h1>
         <p class="admin-subtitle">Every member's membership, by student organization and member type</p>
       </div>
-      <a href="/admin/master/memberships/export.xlsx<%= exportQs ? '?' + exportQs : '' %>" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-export>
+      <a href="/jpsme_admin/master/memberships/export.xlsx<%= exportQs ? '?' + exportQs : '' %>" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-export>
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg>
         Export XLS
       </a>
@@ -51,7 +51,7 @@
         <% }) %>
       </div>
 
-      <form method="get" action="/admin/master/memberships" id="membership-filters" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1.3fr_auto] lg:items-end">
+      <form method="get" action="/jpsme_admin/master/memberships" id="membership-filters" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1.3fr_auto] lg:items-end">
         <div>
           <label for="mf-org" class="form-label">Student organization</label>
           <select id="mf-org" name="org" class="form-input" data-autosubmit data-searchable data-search-placeholder="Search student organizations">
@@ -90,7 +90,7 @@
         </div>
         <span class="flex gap-2">
           <button type="submit" class="btn-primary px-4 py-2">Search</button>
-          <a href="/admin/master/memberships" class="btn-secondary px-3 py-2">Clear</a>
+          <a href="/jpsme_admin/master/memberships" class="btn-secondary px-3 py-2">Clear</a>
         </span>
       </form>
 
@@ -125,7 +125,7 @@
                 <td class="admin-td"><span class="<%= accountBadge[m.accountStatus] || 'badge-slate' %>"><%= accountLabels[m.accountStatus] || m.accountStatus %></span></td>
                 <td class="admin-td"><span class="<%= membershipBadge[m.membershipStatus] %>"><%= m.membershipLabel %></span></td>
                 <td class="admin-td text-right">
-                  <a href="/admin/users/<%= m.id %>/edit" class="inline-flex items-center rounded-md bg-orange-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-600">Edit</a>
+                  <a href="/jpsme_admin/users/<%= m.id %>/edit" class="inline-flex items-center rounded-md bg-orange-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-600">Edit</a>
                 </td>
               </tr>
             <% }) %>

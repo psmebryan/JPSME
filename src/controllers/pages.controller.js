@@ -10,6 +10,7 @@ const eventFeeService = require('../services/eventFee.service');
 const organizationService = require('../services/organization.service');
 const organizationAdminService = require('../services/organizationAdmin.service');
 const settingsService = require('../services/settings.service');
+const maintenanceService = require('../services/maintenance.service');
 const checkinService = require('../services/checkin.service');
 const roomService = require('../services/roomAttendance.service');
 const seatingService = require('../services/seating.service');
@@ -501,11 +502,11 @@ const adminDashboardPage = asyncHandler(async (req, res) => {
 });
 
 const adminUsersPage = asyncHandler(async (req, res) => {
-  // support multiple entry paths: '/admin/users/approvals' and '/admin/users/all'
+  // support multiple entry paths: '/jpsme_admin/users/approvals' and '/jpsme_admin/users/all'
   const path = req.path || '';
   let viewMode = 'approvals';
   let title = 'Pending User Approvals';
-  if (path === '/admin/users/all') {
+  if (path === '/jpsme_admin/users/all') {
     viewMode = 'list';
     title = 'Manage Users';
   }
@@ -852,6 +853,8 @@ const adminSettingsPage = asyncHandler(async (req, res) => {
     pendingActivations, registrationEmailsEnabled,
     adminModuleList: adminAccessService.MODULES, presidentModules, presidents,
     financeLogistics: await adminAccessService.listFinanceLogistics(),
+    // Maintenance mode (middleware/maintenance.middleware): on, until, message.
+    maintenance: await maintenanceService.getState(),
     flGrantList: adminAccessService.FINANCE_LOGISTICS_GRANTS,
     // Flood guard (floodGuard.middleware): its limits and who is blocked now.
     floodGuard: req.app.locals.floodGuard
@@ -1133,7 +1136,7 @@ const adminDeleteOrganizationMember = asyncHandler(async (req, res) => {
   }
 
   await userService.deleteUser(req.params.id);
-  res.redirect(isScopedAdmin ? '/admin/organization-members' : '/admin/users/all');
+  res.redirect(isScopedAdmin ? '/jpsme_admin/organization-members' : '/jpsme_admin/users/all');
 });
 
 // One entity replaces three: the old region / area / chapter CRUD handlers
@@ -1149,7 +1152,7 @@ const adminCreateOrganization = asyncHandler(async (req, res) => {
     yearFounded: req.body.yearFounded ? Number(req.body.yearFounded) : null,
     isActive: req.body.isActive === 'on',
   });
-  res.redirect('/admin/organizations');
+  res.redirect('/jpsme_admin/organizations');
 });
 
 const adminEditOrganizationPage = asyncHandler(async (req, res) => {
@@ -1185,12 +1188,12 @@ const adminUpdateOrganization = asyncHandler(async (req, res) => {
   if (req.body.parentId && Number(req.body.parentId) !== Number(req.body.currentParentId)) {
     await organizationService.moveOrganization(id, Number(req.body.parentId));
   }
-  res.redirect('/admin/organizations');
+  res.redirect('/jpsme_admin/organizations');
 });
 
 const adminDeleteOrganization = asyncHandler(async (req, res) => {
   await organizationService.deleteOrganization(Number(req.params.id));
-  res.redirect('/admin/organizations');
+  res.redirect('/jpsme_admin/organizations');
 });
 
 // The Excel import left ~180 rows needing a real parent assigned by hand
@@ -1223,7 +1226,7 @@ const adminBulkReassignOrganizations = asyncHandler(async (req, res) => {
   if (req.body.needsReview) qs.set('needsReview', '1');
   if (req.body.page) qs.set('page', req.body.page);
   const query = qs.toString();
-  res.redirect(`/admin/organizations${query ? `?${query}` : ''}`);
+  res.redirect(`/jpsme_admin/organizations${query ? `?${query}` : ''}`);
 });
 
 // Render the admin "Create Event" page (Add Event)

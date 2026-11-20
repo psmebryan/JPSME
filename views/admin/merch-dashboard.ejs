@@ -17,16 +17,16 @@
   const queue = (href, n, text, warn) => ({ href, n, text, warn });
   const queues = [];
   if (mc('orders.view')) {
-    queues.push(queue('/admin/merch/orders?status=PAID', work.toPack, 'Paid, to pack'));
-    queues.push(queue('/admin/merch/orders?status=PACKED', work.packed, 'Packed, to ship or set ready'));
-    queues.push(queue('/admin/merch/orders?status=ADDRESS_HOLD', work.addressHold, 'Address on hold', true));
-    queues.push(queue('/admin/merch/orders?status=READY_FOR_PICKUP', work.awaitingPickup, 'Waiting for pickup'));
-    queues.push(queue('/admin/merch/orders?status=SHIPPED', work.inTransit, 'On the way'));
+    queues.push(queue('/jpsme_admin/merch/orders?status=PAID', work.toPack, 'Paid, to pack'));
+    queues.push(queue('/jpsme_admin/merch/orders?status=PACKED', work.packed, 'Packed, to ship or set ready'));
+    queues.push(queue('/jpsme_admin/merch/orders?status=ADDRESS_HOLD', work.addressHold, 'Address on hold', true));
+    queues.push(queue('/jpsme_admin/merch/orders?status=READY_FOR_PICKUP', work.awaitingPickup, 'Waiting for pickup'));
+    queues.push(queue('/jpsme_admin/merch/orders?status=SHIPPED', work.inTransit, 'On the way'));
   }
   if (mc('returns.view')) {
-    queues.push(queue('/admin/merch/returns?group=logistics', work.returnsForLogistics, 'Returns for Logistics'));
-    queues.push(queue('/admin/merch/returns?group=approval', work.refundsToApprove, 'Refunds to approve', true));
-    queues.push(queue('/admin/merch/returns?group=second', work.refundsSecond, 'Second approval needed', true));
+    queues.push(queue('/jpsme_admin/merch/returns?group=logistics', work.returnsForLogistics, 'Returns for Logistics'));
+    queues.push(queue('/jpsme_admin/merch/returns?group=approval', work.refundsToApprove, 'Refunds to approve', true));
+    queues.push(queue('/jpsme_admin/merch/returns?group=second', work.refundsSecond, 'Second approval needed', true));
   }
 %>
 <div class="w-full space-y-6">
@@ -35,9 +35,9 @@
       <div>
         <h1 class="admin-h1">Store Dashboard</h1>
         <p class="admin-subtitle">Sales are counted on the day PayMongo took the payment (Philippine time)</p>
-        <p class="mt-2 text-sm" data-store-mode="<%= launch.mode %>">Store: <a href="/admin/merch/launch" class="font-semibold <%= launch.mode === 'OPEN' ? 'text-emerald-700' : 'text-amber-700' %> hover:underline"><%= launch.label %></a><% if (launch.feedbackOpen && mc('orders.view')) { %> · <a href="/admin/merch/feedback?status=open" class="font-semibold text-red-700 hover:underline"><%= launch.feedbackOpen %> reported problem<%= launch.feedbackOpen === 1 ? '' : 's' %> open</a><% } %></p>
+        <p class="mt-2 text-sm" data-store-mode="<%= launch.mode %>">Store: <a href="/jpsme_admin/merch/launch" class="font-semibold <%= launch.mode === 'OPEN' ? 'text-emerald-700' : 'text-amber-700' %> hover:underline"><%= launch.label %></a><% if (launch.feedbackOpen && mc('orders.view')) { %> · <a href="/jpsme_admin/merch/feedback?status=open" class="font-semibold text-red-700 hover:underline"><%= launch.feedbackOpen %> reported problem<%= launch.feedbackOpen === 1 ? '' : 's' %> open</a><% } %></p>
       </div>
-      <% if (mc('reports.view')) { %><a href="/admin/merch/reports" class="btn-secondary px-4 py-2">Sales reports</a><% } %>
+      <% if (mc('reports.view')) { %><a href="/jpsme_admin/merch/reports" class="btn-secondary px-4 py-2">Sales reports</a><% } %>
     </div>
     <div class="grid grid-cols-2 gap-3 px-6 py-5 lg:grid-cols-4" data-sales>
       <div class="<%= tile %>" data-tile="today"><p class="<%= label %>">Today</p><p class="<%= big %>"><%= peso(today.chargedCentavos) %></p><p class="text-xs text-slate-500"><%= today.orders %> order<%= today.orders === 1 ? '' : 's' %>, <%= today.units %> item<%= today.units === 1 ? '' : 's' %></p></div>
@@ -78,7 +78,7 @@
         <% } %>
         <% if (reconciliation.gapDays) { %><p class="mt-2 text-sm text-red-700"><%= reconciliation.gapDays %> day(s) with gaps not explained.</p><% } %>
         <p class="mt-2 text-xs text-slate-500">Last checked: <%= reconciliation.lastChecked ? `${day(reconciliation.lastChecked.day)} (${reconciliation.lastChecked.statusLabel})` : 'never' %></p>
-        <a href="/admin/merch/reconciliation" class="btn-secondary mt-4 inline-flex px-3 py-1.5 text-sm">Open reconciliation</a>
+        <a href="/jpsme_admin/merch/reconciliation" class="btn-secondary mt-4 inline-flex px-3 py-1.5 text-sm">Open reconciliation</a>
       </div>
     <% } %>
   </div>
@@ -87,7 +87,7 @@
     <div class="admin-card p-6" data-stock>
       <div class="flex items-baseline justify-between gap-2">
         <h2 class="font-semibold">Stock</h2>
-        <% if (mc('stock.view')) { %><a href="/admin/merch/inventory?state=LOW" class="text-sm text-indigo-600 hover:underline">Inventory</a><% } %>
+        <% if (mc('stock.view')) { %><a href="/jpsme_admin/merch/inventory?state=LOW" class="text-sm text-indigo-600 hover:underline">Inventory</a><% } %>
       </div>
       <p class="mt-2 text-sm text-slate-600"><%= stock.units %> units on hand. <span class="<%= stock.low ? 'text-amber-700' : '' %>"><%= stock.low %> low</span>, <span class="<%= stock.soldOut ? 'text-red-700' : '' %>"><%= stock.soldOut %> sold out</span>.</p>
       <% if (stock.valueCentavos !== undefined) { %><p class="text-xs text-slate-500">Value at cost: <%= peso(stock.valueCentavos) %></p><% } %>
@@ -115,7 +115,7 @@
         <% recent.forEach((o) => { %>
           <li class="py-1.5">
             <div class="flex justify-between gap-3">
-              <% if (mc('orders.view')) { %><a href="/admin/merch/orders/<%= o.orderNumber %>" class="font-mono text-xs text-indigo-700 hover:underline"><%= o.orderNumber %></a><% } else { %><span class="font-mono text-xs"><%= o.orderNumber %></span><% } %>
+              <% if (mc('orders.view')) { %><a href="/jpsme_admin/merch/orders/<%= o.orderNumber %>" class="font-mono text-xs text-indigo-700 hover:underline"><%= o.orderNumber %></a><% } else { %><span class="font-mono text-xs"><%= o.orderNumber %></span><% } %>
               <span class="tabular-nums"><%= peso(o.totalCentavos) %></span>
             </div>
             <div class="flex justify-between gap-3 text-xs text-slate-500"><span class="min-w-0 truncate"><%= o.buyerName %> · <%= o.statusLabel %></span><span><%= when(o.paidAt) %></span></div>

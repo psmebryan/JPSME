@@ -1,5 +1,5 @@
 <div class="w-full">
-  <a href="/admin/events" class="text-sm text-indigo-600 hover:underline">&larr; Back to events</a>
+  <a href="/jpsme_admin/events" class="text-sm text-indigo-600 hover:underline">&larr; Back to events</a>
   <h1 class="admin-h1 mt-3 mb-4">Create Event</h1>
 
   <div class="admin-card p-6">
@@ -57,7 +57,7 @@
           <p class="mt-1 text-xs text-slate-500">Leave blank or 0 for a free event. Used when the event has no fee options.</p>
         </div>
         <%# Fee options are set per event on Master List -> Event Fee, once the event exists. %>
-        <p class="md:col-span-2 text-xs text-slate-500">After creating the event, you can give it several registration fee options (e.g. Student, Professional) on <a href="/admin/master/event-fees" class="text-indigo-600 hover:underline">Master List &rarr; Event Fee</a>.</p>
+        <p class="md:col-span-2 text-xs text-slate-500">After creating the event, you can give it several registration fee options (e.g. Student, Professional) on <a href="/jpsme_admin/master/event-fees" class="text-indigo-600 hover:underline">Master List &rarr; Event Fee</a>.</p>
 
         <div class="flex items-center gap-3">
           <input id="featured" name="featured" type="checkbox" />
@@ -77,7 +77,7 @@
 
       <div class="flex items-center gap-3">
         <button type="submit" class="btn-primary">Create Event</button>
-        <a href="/admin/events" class="text-sm text-slate-500 hover:underline">Cancel</a>
+        <a href="/jpsme_admin/events" class="text-sm text-slate-500 hover:underline">Cancel</a>
       </div>
     </form>
   </div>
@@ -116,7 +116,7 @@
         try {
           const res = await apiFetch('/api/events', { method: 'POST', body: formData });
           showToast(res.message || 'Event created');
-          window.location.href = '/admin/events';
+          window.location.href = '/jpsme_admin/events';
         } catch (err) {
           showToast(err.errors?.[0]?.msg || err.message, 'error');
         }

@@ -45,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // them on /profile every time just adds a click.
         let destination = '/';
         if (loginContext === 'admin' && ['ADMIN', 'CHAPTER_ADMIN', 'PRESIDENT', 'FINANCE_LOGISTICS'].includes(user.role)) {
-          destination = '/admin/dashboard';
+          destination = '/jpsme_admin/dashboard';
         } else if (loginContext !== 'admin') {
           // Only a same-site relative path is ever honored — a bare "/next"
           // (never "//next", which browsers treat as protocol-relative to an

@@ -71,131 +71,131 @@ router.get('/logout', (req, res) => {
 });
 
 // Admin — shared between main admin and chapter admin
-router.get('/admin/login', ensureGuest, withCsrfToken, pages.adminLoginPage);
-router.get('/admin', ensureAdmin, (req, res) => res.redirect('/admin/dashboard'));
-router.get('/admin/dashboard', ensureAdmin, pages.adminDashboardPage);
-router.get('/admin/events/new', ensureAdmin, pages.adminCreateEventPage);
-router.get('/admin/events', ensureAdmin, pages.adminEventsPage);
-router.get('/admin/events/:id/edit', ensureAdmin, pages.adminEditEventPage);
-router.get('/admin/events/:id/registrations', ensureAdmin, pages.adminEventRegistrationsPage);
+router.get('/jpsme_admin/login', ensureGuest, withCsrfToken, pages.adminLoginPage);
+router.get('/jpsme_admin', ensureAdmin, (req, res) => res.redirect('/jpsme_admin/dashboard'));
+router.get('/jpsme_admin/dashboard', ensureAdmin, pages.adminDashboardPage);
+router.get('/jpsme_admin/events/new', ensureAdmin, pages.adminCreateEventPage);
+router.get('/jpsme_admin/events', ensureAdmin, pages.adminEventsPage);
+router.get('/jpsme_admin/events/:id/edit', ensureAdmin, pages.adminEditEventPage);
+router.get('/jpsme_admin/events/:id/registrations', ensureAdmin, pages.adminEventRegistrationsPage);
 // The check-in module's own pages, listed before the per-event ones they lead
 // to so the module reads as a unit rather than as an appendix to events.
-router.get('/admin/check-in', ensureAdmin, pages.adminCheckInHubPage);
-router.get('/admin/check-in/staff', ensureMainAdminOnly, pages.adminCheckInStaffPage);
-router.get('/admin/events/:id/check-in/report', ensureAdmin, pages.adminEventCheckInReportPage);
+router.get('/jpsme_admin/check-in', ensureAdmin, pages.adminCheckInHubPage);
+router.get('/jpsme_admin/check-in/staff', ensureMainAdminOnly, pages.adminCheckInStaffPage);
+router.get('/jpsme_admin/events/:id/check-in/report', ensureAdmin, pages.adminEventCheckInReportPage);
 // Rooms sit under the event rather than under check-in: they are part of how
 // the event is set up, and the door screen for one is reached from the list.
 // One home for the day, then the stations. They are deliberately separate
 // screens — the desk hands out seats and admits, the entrance only admits, the
 // room door tracks in and out — and this is where an admin starts.
-router.get('/admin/events/:id/attendance', ensureAdmin, pages.adminEventAttendancePage);
-router.get('/admin/events/:id/desk', ensureAdmin, pages.adminEventDeskPage);
-router.get('/admin/events/:id/rooms', ensureAdmin, pages.adminEventRoomsPage);
-router.get('/admin/events/:id/rooms/:roomId/scan', ensureAdmin, pages.adminRoomScanPage);
+router.get('/jpsme_admin/events/:id/attendance', ensureAdmin, pages.adminEventAttendancePage);
+router.get('/jpsme_admin/events/:id/desk', ensureAdmin, pages.adminEventDeskPage);
+router.get('/jpsme_admin/events/:id/rooms', ensureAdmin, pages.adminEventRoomsPage);
+router.get('/jpsme_admin/events/:id/rooms/:roomId/scan', ensureAdmin, pages.adminRoomScanPage);
 // Main admin only: this page shows every attendee's name against a seat and
 // can reassign them, which is more than running a door.
-router.get('/admin/events/:id/seating', requireSeatingFeature, ensureMainAdminOnly, pages.adminEventSeatingPage);
+router.get('/jpsme_admin/events/:id/seating', requireSeatingFeature, ensureMainAdminOnly, pages.adminEventSeatingPage);
 
 // Payments — MAIN_ADMIN only. Chapter admins have no access to payment data.
-router.get('/admin/payments', ensureMainAdminOnly, pages.adminPaymentsPage);
+router.get('/jpsme_admin/payments', ensureMainAdminOnly, pages.adminPaymentsPage);
 
 // admin chapter start — shared: chapter admin is scoped to their own chapter
 // inside the controller (adminChapterMembersPage), main admin sees everything.
-router.get('/admin/organization-members', ensureAdminOrChapterAdmin, pages.adminOrganizationMembersPage);
-router.get('/admin/organization-members/:id/edit', ensureAdminOrChapterAdmin, pages.adminEditUserPage);
-router.post('/admin/organization-members/:id/delete', ensureAdminOrChapterAdmin, verifyCsrfToken, presidentTargetGuard, pages.adminDeleteOrganizationMember);
+router.get('/jpsme_admin/organization-members', ensureAdminOrChapterAdmin, pages.adminOrganizationMembersPage);
+router.get('/jpsme_admin/organization-members/:id/edit', ensureAdminOrChapterAdmin, pages.adminEditUserPage);
+router.post('/jpsme_admin/organization-members/:id/delete', ensureAdminOrChapterAdmin, verifyCsrfToken, presidentTargetGuard, pages.adminDeleteOrganizationMember);
 // Main admin only — full user management
-router.get('/admin/users', ensureMainAdminOnly, (req, res) => res.redirect('/admin/users/approvals'));
-router.get('/admin/users/all', ensureMainAdminOnly, pages.adminUsersPage);
-router.get('/admin/users/approvals', ensureMainAdminOnly, pages.adminUsersPage);
-router.get('/admin/users/:id/edit', ensureMainAdminOnly, pages.adminEditUserPage);
-// Beside the user pages rather than under /admin/invitations, which already
+router.get('/jpsme_admin/users', ensureMainAdminOnly, (req, res) => res.redirect('/jpsme_admin/users/approvals'));
+router.get('/jpsme_admin/users/all', ensureMainAdminOnly, pages.adminUsersPage);
+router.get('/jpsme_admin/users/approvals', ensureMainAdminOnly, pages.adminUsersPage);
+router.get('/jpsme_admin/users/:id/edit', ensureMainAdminOnly, pages.adminEditUserPage);
+// Beside the user pages rather than under /jpsme_admin/invitations, which already
 // belongs to event invitations and would read as the same feature.
-router.get('/admin/activations', ensureMainAdminOnly, pages.adminActivationsPage);
+router.get('/jpsme_admin/activations', ensureMainAdminOnly, pages.adminActivationsPage);
 
 // Main admin only — chapter/region/area CRUD (not to be confused with
-// /admin/chapter-members above, which chapter admins can also reach)
-router.get('/admin/organizations/tree', ensureMainAdminOnly, pages.adminOrganizationTreePage);
-router.get('/admin/organizations', ensureMainAdminOnly, pages.adminOrganizationsPage);
-router.post('/admin/organizations', ensureMainAdminOnly, verifyCsrfToken, pages.adminCreateOrganization);
+// /jpsme_admin/chapter-members above, which chapter admins can also reach)
+router.get('/jpsme_admin/organizations/tree', ensureMainAdminOnly, pages.adminOrganizationTreePage);
+router.get('/jpsme_admin/organizations', ensureMainAdminOnly, pages.adminOrganizationsPage);
+router.post('/jpsme_admin/organizations', ensureMainAdminOnly, verifyCsrfToken, pages.adminCreateOrganization);
 // Must precede the /:id routes below — otherwise "bulk-reassign" is parsed as an :id.
-router.post('/admin/organizations/bulk-reassign', ensureMainAdminOnly, verifyCsrfToken, pages.adminBulkReassignOrganizations);
-router.get('/admin/organizations/:id/edit', ensureMainAdminOnly, pages.adminEditOrganizationPage);
-router.post('/admin/organizations/:id', ensureMainAdminOnly, verifyCsrfToken, pages.adminUpdateOrganization);
-router.post('/admin/organizations/:id/delete', ensureMainAdminOnly, verifyCsrfToken, pages.adminDeleteOrganization);
+router.post('/jpsme_admin/organizations/bulk-reassign', ensureMainAdminOnly, verifyCsrfToken, pages.adminBulkReassignOrganizations);
+router.get('/jpsme_admin/organizations/:id/edit', ensureMainAdminOnly, pages.adminEditOrganizationPage);
+router.post('/jpsme_admin/organizations/:id', ensureMainAdminOnly, verifyCsrfToken, pages.adminUpdateOrganization);
+router.post('/jpsme_admin/organizations/:id/delete', ensureMainAdminOnly, verifyCsrfToken, pages.adminDeleteOrganization);
 
 // Main admin only — assign/remove chapter admins
-router.get('/admin/organization-admins', ensureMainAdminOnly, pages.adminOrganizationAdminsPage);
+router.get('/jpsme_admin/organization-admins', ensureMainAdminOnly, pages.adminOrganizationAdminsPage);
 
 // Main admin only — site settings
-router.get('/admin/settings', ensureMainAdminOnly, pages.adminSettingsPage);
+router.get('/jpsme_admin/settings', ensureMainAdminOnly, pages.adminSettingsPage);
 // Master List: one page per list. Member types first; the old single-page
 // address still works.
-router.get('/admin/master/member-types', ensureMainAdminOnly, pages.adminMasterListPage);
-router.get('/admin/master/student-organizations', ensureMainAdminOnly, pages.adminStudentOrgMasterPage);
-router.get('/admin/master/event-fees', ensureMainAdminOnly, pages.adminEventFeeMasterPage);
-router.get('/admin/master/memberships', ensureMainAdminOnly, pages.adminMembershipMasterPage);
-router.get('/admin/master/memberships/export.xlsx', ensureMainAdminOnly, pages.adminMembershipMasterExport);
+router.get('/jpsme_admin/master/member-types', ensureMainAdminOnly, pages.adminMasterListPage);
+router.get('/jpsme_admin/master/student-organizations', ensureMainAdminOnly, pages.adminStudentOrgMasterPage);
+router.get('/jpsme_admin/master/event-fees', ensureMainAdminOnly, pages.adminEventFeeMasterPage);
+router.get('/jpsme_admin/master/memberships', ensureMainAdminOnly, pages.adminMembershipMasterPage);
+router.get('/jpsme_admin/master/memberships/export.xlsx', ensureMainAdminOnly, pages.adminMembershipMasterExport);
 // Merchandise. ensureMainAdminOnly lets in the main admin, a President given
 // Merchandise and a Finance & Logistics account with a task group; merchCan
 // then asks for the one capability each page needs (adminAccess.merchCapsFor).
 const M = (...caps) => [ensureMainAdminOnly, merchCan(...caps)];
-router.get('/admin/merch', ...M('dashboard.view'), (req, res) => res.redirect('/admin/merch/dashboard'));
-router.get('/admin/merch/dashboard', ...M('dashboard.view'), pages.adminMerchDashboardPage);
-router.get('/admin/merch/products', ...M('catalog.view'), pages.adminMerchProductsPage);
-router.get('/admin/merch/products/:id', ...M('catalog.view'), pages.adminMerchProductPage);
-router.get('/admin/merch/inventory', ...M('stock.view'), pages.adminMerchInventoryPage);
-router.get('/admin/merch/inventory/export.xlsx', ...M('stock.view'), pages.adminMerchInventoryExport);
-router.get('/admin/merch/orders', ...M('orders.view'), pages.adminMerchOrdersPage);
-router.get('/admin/merch/orders/export.xlsx', ...M('orders.view'), pages.adminMerchOrdersExport);
-router.get('/admin/merch/orders/print', ...M('orders.fulfil'), pages.adminMerchOrdersPrint);
-router.get('/admin/merch/orders/:orderNumber', ...M('orders.view'), pages.adminMerchOrderPage);
-router.get('/admin/merch/pickup', ...M('orders.fulfil'), pages.adminMerchPickupPage);
-router.get('/admin/merch/fulfilment', ...M('catalog.view'), pages.adminMerchFulfilmentPage);
-router.get('/admin/merch/returns', ...M('returns.view'), pages.adminMerchReturnsPage);
-router.get('/admin/merch/returns/:returnNumber', ...M('returns.view'), pages.adminMerchReturnPage);
-router.get('/admin/merch/reconciliation', ...M('reconcile.view'), pages.adminMerchReconciliationPage);
-router.get('/admin/merch/month-end.xlsx', ...M('reconcile.view'), pages.adminMerchMonthEndExport);
-router.get('/admin/merch/reports', ...M('reports.view'), pages.adminMerchReportsPage);
-router.get('/admin/merch/reports/export.xlsx', ...M('reports.view'), pages.adminMerchReportsExport);
-router.get('/admin/merch/launch', ...M('catalog.view'), pages.adminMerchLaunchPage);
-router.get('/admin/merch/count', ...M('stock.view'), pages.adminMerchCountPage);
-router.get('/admin/merch/count/print', ...M('stock.view'), pages.adminMerchCountPrint);
-router.get('/admin/merch/feedback', ...M('orders.view'), pages.adminMerchFeedbackPage);
+router.get('/jpsme_admin/merch', ...M('dashboard.view'), (req, res) => res.redirect('/jpsme_admin/merch/dashboard'));
+router.get('/jpsme_admin/merch/dashboard', ...M('dashboard.view'), pages.adminMerchDashboardPage);
+router.get('/jpsme_admin/merch/products', ...M('catalog.view'), pages.adminMerchProductsPage);
+router.get('/jpsme_admin/merch/products/:id', ...M('catalog.view'), pages.adminMerchProductPage);
+router.get('/jpsme_admin/merch/inventory', ...M('stock.view'), pages.adminMerchInventoryPage);
+router.get('/jpsme_admin/merch/inventory/export.xlsx', ...M('stock.view'), pages.adminMerchInventoryExport);
+router.get('/jpsme_admin/merch/orders', ...M('orders.view'), pages.adminMerchOrdersPage);
+router.get('/jpsme_admin/merch/orders/export.xlsx', ...M('orders.view'), pages.adminMerchOrdersExport);
+router.get('/jpsme_admin/merch/orders/print', ...M('orders.fulfil'), pages.adminMerchOrdersPrint);
+router.get('/jpsme_admin/merch/orders/:orderNumber', ...M('orders.view'), pages.adminMerchOrderPage);
+router.get('/jpsme_admin/merch/pickup', ...M('orders.fulfil'), pages.adminMerchPickupPage);
+router.get('/jpsme_admin/merch/fulfilment', ...M('catalog.view'), pages.adminMerchFulfilmentPage);
+router.get('/jpsme_admin/merch/returns', ...M('returns.view'), pages.adminMerchReturnsPage);
+router.get('/jpsme_admin/merch/returns/:returnNumber', ...M('returns.view'), pages.adminMerchReturnPage);
+router.get('/jpsme_admin/merch/reconciliation', ...M('reconcile.view'), pages.adminMerchReconciliationPage);
+router.get('/jpsme_admin/merch/month-end.xlsx', ...M('reconcile.view'), pages.adminMerchMonthEndExport);
+router.get('/jpsme_admin/merch/reports', ...M('reports.view'), pages.adminMerchReportsPage);
+router.get('/jpsme_admin/merch/reports/export.xlsx', ...M('reports.view'), pages.adminMerchReportsExport);
+router.get('/jpsme_admin/merch/launch', ...M('catalog.view'), pages.adminMerchLaunchPage);
+router.get('/jpsme_admin/merch/count', ...M('stock.view'), pages.adminMerchCountPage);
+router.get('/jpsme_admin/merch/count/print', ...M('stock.view'), pages.adminMerchCountPrint);
+router.get('/jpsme_admin/merch/feedback', ...M('orders.view'), pages.adminMerchFeedbackPage);
 
 // Reports: read-only, main admin only.
-router.get('/admin/reports', ensureMainAdminOnly, (req, res) => res.redirect('/admin/reports/transactions'));
-router.get('/admin/reports/transactions', ensureMainAdminOnly, pages.adminTransactionReportPage);
-router.get('/admin/reports/transactions/export.xlsx', ensureMainAdminOnly, pages.adminTransactionReportExport);
-router.get('/admin/reports/organization-members', ensureMainAdminOnly, pages.adminOrgMemberReportPage);
-router.get('/admin/reports/organization-members/export.xlsx', ensureMainAdminOnly, pages.adminOrgMemberReportExport);
-router.get('/admin/reports/organization-events', ensureMainAdminOnly, pages.adminOrgEventReportPage);
-router.get('/admin/reports/organization-events/export.xlsx', ensureMainAdminOnly, pages.adminOrgEventReportExport);
-router.get('/admin/master-list', ensureMainAdminOnly, (req, res) => res.redirect('/admin/master/member-types'));
-router.get('/admin/sponsors', ensureMainAdminOnly, pages.adminSponsorsPage);
+router.get('/jpsme_admin/reports', ensureMainAdminOnly, (req, res) => res.redirect('/jpsme_admin/reports/transactions'));
+router.get('/jpsme_admin/reports/transactions', ensureMainAdminOnly, pages.adminTransactionReportPage);
+router.get('/jpsme_admin/reports/transactions/export.xlsx', ensureMainAdminOnly, pages.adminTransactionReportExport);
+router.get('/jpsme_admin/reports/organization-members', ensureMainAdminOnly, pages.adminOrgMemberReportPage);
+router.get('/jpsme_admin/reports/organization-members/export.xlsx', ensureMainAdminOnly, pages.adminOrgMemberReportExport);
+router.get('/jpsme_admin/reports/organization-events', ensureMainAdminOnly, pages.adminOrgEventReportPage);
+router.get('/jpsme_admin/reports/organization-events/export.xlsx', ensureMainAdminOnly, pages.adminOrgEventReportExport);
+router.get('/jpsme_admin/master-list', ensureMainAdminOnly, (req, res) => res.redirect('/jpsme_admin/master/member-types'));
+router.get('/jpsme_admin/sponsors', ensureMainAdminOnly, pages.adminSponsorsPage);
 
 // Main admin only — certificates
-router.get('/admin/certificates', ensureMainAdminOnly, pages.adminCertificatesPage);
-router.get('/admin/event-certificates', ensureMainAdminOnly, pages.adminEventCertificatesListPage);
-router.get('/admin/events/:id/certificate', ensureMainAdminOnly, pages.adminEventCertificatePage);
+router.get('/jpsme_admin/certificates', ensureMainAdminOnly, pages.adminCertificatesPage);
+router.get('/jpsme_admin/event-certificates', ensureMainAdminOnly, pages.adminEventCertificatesListPage);
+router.get('/jpsme_admin/events/:id/certificate', ensureMainAdminOnly, pages.adminEventCertificatePage);
 
 // Main admin only — emails
-router.get('/admin/emails', ensureMainAdminOnly, pages.adminEmailsPage);
-router.get('/admin/event-emails', ensureMainAdminOnly, pages.adminEventEmailsListPage);
-router.get('/admin/events/:id/email', ensureMainAdminOnly, pages.adminEventEmailPage);
-router.get('/admin/broadcasts', ensureMainAdminOnly, pages.adminBroadcastsPage);
+router.get('/jpsme_admin/emails', ensureMainAdminOnly, pages.adminEmailsPage);
+router.get('/jpsme_admin/event-emails', ensureMainAdminOnly, pages.adminEventEmailsListPage);
+router.get('/jpsme_admin/events/:id/email', ensureMainAdminOnly, pages.adminEventEmailPage);
+router.get('/jpsme_admin/broadcasts', ensureMainAdminOnly, pages.adminBroadcastsPage);
 
 // Main admin only — system-wide audit trail (payments/webhooks/refunds/
 // reconciliation/user-status changes). No API route needed — this is a
 // plain server-rendered, filterable/paginated read, same pattern as
-// /admin/events, not the client-JS-driven pattern used by /admin/payments.
-router.get('/admin/audit-log', ensureMainAdminOnly, pages.adminAuditLogPage);
-router.get('/admin/invitations', ensureMainAdminOnly, pages.adminInvitationsPage);
+// /jpsme_admin/events, not the client-JS-driven pattern used by /jpsme_admin/payments.
+router.get('/jpsme_admin/audit-log', ensureMainAdminOnly, pages.adminAuditLogPage);
+router.get('/jpsme_admin/invitations', ensureMainAdminOnly, pages.adminInvitationsPage);
 
 // Main admin only — public Articles content management
-router.get('/admin/articles', ensureMainAdminOnly, pages.adminArticlesPage);
-router.get('/admin/articles/new', ensureMainAdminOnly, pages.adminCreateArticlePage);
-router.get('/admin/articles/:id/edit', ensureMainAdminOnly, pages.adminEditArticlePage);
+router.get('/jpsme_admin/articles', ensureMainAdminOnly, pages.adminArticlesPage);
+router.get('/jpsme_admin/articles/new', ensureMainAdminOnly, pages.adminCreateArticlePage);
+router.get('/jpsme_admin/articles/:id/edit', ensureMainAdminOnly, pages.adminEditArticlePage);
 //end
 
 // A stand-in for another system, for testing the integration API locally.
@@ -209,10 +209,10 @@ router.get('/reset-password', withCsrfToken, pages.resetPasswordPage);
 
 router.get('/integration-demo', withCsrfToken, pages.integrationDemoPage);
 
-router.get('/admin/logout', (req, res) => {
+router.get('/jpsme_admin/logout', (req, res) => {
   req.session.destroy(() => {
     res.clearCookie('jpsme.sid');
-    res.redirect('/admin/login');
+    res.redirect('/jpsme_admin/login');
   });
 });
 

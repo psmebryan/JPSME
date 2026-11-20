@@ -114,8 +114,8 @@ async function presidentCanOpen(path) {
 // Where a limited admin lands when a page is not theirs.
 async function homeFor(user) {
   const mods = await modulesFor(user);
-  if (user && user.role === 'FINANCE_LOGISTICS' && mods.includes('merchandise')) return '/admin/merch/dashboard';
-  if (mods.includes('dashboard')) return '/admin/dashboard?denied=1';
+  if (user && user.role === 'FINANCE_LOGISTICS' && mods.includes('merchandise')) return '/jpsme_admin/merch/dashboard';
+  if (mods.includes('dashboard')) return '/jpsme_admin/dashboard?denied=1';
   const first = MODULES.find((m) => mods.includes(m.key) && m.home);
   return first ? first.home : '/';
 }

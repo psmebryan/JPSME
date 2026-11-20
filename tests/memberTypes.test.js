@@ -53,7 +53,7 @@ let ipSeq = 0;
 async function signIn(email, context = 'user') {
   ipSeq += 1;
   const ip = `198.51.100.${120 + ipSeq}`;
-  const page = await fetch(`${base}${context === 'admin' ? '/admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
+  const page = await fetch(`${base}${context === 'admin' ? '/jpsme_admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
   let cookie = (page.headers.get('set-cookie') || '').split(';')[0];
   const token = ((await page.text()).match(/name="csrf-token" content="([^"]*)"/) || [])[1];
   const res = await fetch(`${base}/api/auth/login`, {
@@ -241,17 +241,17 @@ async function main() {
       const none = await ids('memberType=NONE');
       assert(none.includes(chapterAdmin.id) && !none.includes(alice.id) && !none.includes(bob.id), 'no type');
       assert.strictEqual((await A.get('/api/admin/members?memberType=abc')).status, 422, 'bad value refused');
-      const page = await A.get('/admin/users/all');
+      const page = await A.get('/jpsme_admin/users/all');
       assert(page.text.includes('name="memberType"') && page.text.includes('Non-Member / Guest'), 'filter on the page');
     });
 
     await test('the admin and member pages render', async () => {
-      for (const p of ['/admin/master/member-types', `/admin/users/${bob.id}/edit`, '/admin/events/new',
-        `/admin/events/${event.id}/edit`, `/admin/events/${event.id}/registrations`]) {
+      for (const p of ['/jpsme_admin/master/member-types', `/jpsme_admin/users/${bob.id}/edit`, '/jpsme_admin/events/new',
+        `/jpsme_admin/events/${event.id}/edit`, `/jpsme_admin/events/${event.id}/registrations`]) {
         const r = await A.get(p);
         assert.strictEqual(r.status, 200, `${p} rendered ${r.status}`);
       }
-      const ml = await A.get('/admin/master/member-types');
+      const ml = await A.get('/jpsme_admin/master/member-types');
       assert(['Add Member Type', 'Search member types', 'data-toggle-active', 'Channel fee', 'Lifetime', `${TAG} Student - RENEWAL`].every((x) => ml.text.includes(x)), 'member type master shows the add button, search, toggles, validity and rows');
     });
 

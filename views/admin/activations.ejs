@@ -58,7 +58,7 @@
   <p class="mt-2 text-xs text-gray-500">
     The template is the same Members sheet with nothing in it, and it explains the rules on a second
     tab. To edit members who are already here, export from
-    <a href="/admin/settings" class="text-indigo-600 hover:underline">Settings</a> instead.
+    <a href="/jpsme_admin/settings" class="text-indigo-600 hover:underline">Settings</a> instead.
   </p>
 
   <div class="mt-4 pt-4 border-t border-gray-200">
@@ -424,7 +424,7 @@ onReady(function () {
           + '<td>' + (CHANNEL === 'mergo' && row.eligibleForMergo
             ? '<input type="checkbox" data-select-user="' + row.id + '" aria-label="Select ' + esc(name) + '"' + checked + '>'
             : '<span class="text-gray-300">&mdash;</span>') + '</td>'
-          + '<td><a class="font-medium text-indigo-700 hover:underline" href="/admin/users/' + row.id + '/edit">' + (name || '(no name)') + '</a>'
+          + '<td><a class="font-medium text-indigo-700 hover:underline" href="/jpsme_admin/users/' + row.id + '/edit">' + (name || '(no name)') + '</a>'
           + '<span class="block text-xs text-gray-500">' + esc(row.email) + '</span>'
           + (row.organization ? '<span class="block text-xs text-gray-400">' + esc(row.organization) + '</span>' : '')
           + '</td>'
@@ -775,7 +775,7 @@ onReady(function () {
             return d.accounts.map(function (a, i) {
               return '<tr class="admin-tr">'
                 + '<td class="admin-td">' + (i === 0 ? esc(d.inbox) : '') + '</td>'
-                + '<td class="admin-td"><a class="text-indigo-700 hover:underline" href="/admin/users/' + Number(a.id) + '/edit">#'
+                + '<td class="admin-td"><a class="text-indigo-700 hover:underline" href="/jpsme_admin/users/' + Number(a.id) + '/edit">#'
                 + Number(a.id) + ' ' + esc(a.email) + '</a><span class="block text-xs text-gray-500">' + esc(a.name) + '</span></td>'
                 + '<td class="admin-td">' + (a.activated ? 'Yes' : 'No') + '</td>'
                 + '<td class="admin-td">' + Number(a.registrations) + '</td>'

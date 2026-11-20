@@ -19,8 +19,8 @@
         <p class="admin-subtitle">Stock on hand, changed only by recorded movements</p>
       </div>
       <div class="flex gap-2">
-        <a href="/admin/merch/products" class="btn-secondary px-4 py-2.5">Products</a>
-        <a href="/admin/merch/inventory/export.xlsx<%= qs ? '?' + qs : '' %>" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-export>
+        <a href="/jpsme_admin/merch/products" class="btn-secondary px-4 py-2.5">Products</a>
+        <a href="/jpsme_admin/merch/inventory/export.xlsx<%= qs ? '?' + qs : '' %>" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-export>
           <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg>
           Export XLS
         </a>
@@ -38,7 +38,7 @@
         <% if (seeCost) { %><div class="rounded-lg border border-slate-200 px-4 py-3" data-total="value"><p class="text-xs font-medium uppercase tracking-wide text-slate-500">Value at cost</p><p class="mt-1 text-2xl font-semibold tabular-nums text-slate-900"><%= peso(totals.valueCentavos) %></p><% if (totals.costMissing) { %><p class="text-xs text-amber-700"><%= totals.costMissing %> without a cost yet</p><% } %></div><% } %>
       </div>
 
-      <form method="get" action="/admin/merch/inventory" id="inv-filters" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_auto_auto] lg:items-end">
+      <form method="get" action="/jpsme_admin/merch/inventory" id="inv-filters" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_auto_auto] lg:items-end">
         <div>
           <label for="if-q" class="form-label">Search</label>
           <input id="if-q" name="q" type="search" value="<%= f.q %>" maxlength="80" placeholder="Product, variant or SKU" class="form-input">
@@ -60,7 +60,7 @@
           </select>
         </div>
         <label class="flex items-center gap-2 pb-2 text-sm text-slate-700"><input type="checkbox" name="showOff" value="1" <%= f.showOff ? 'checked' : '' %> data-autosubmit> Include switched-off</label>
-        <span class="flex gap-2"><button type="submit" class="btn-primary px-4 py-2">Search</button><a href="/admin/merch/inventory" class="btn-secondary px-3 py-2">Clear</a></span>
+        <span class="flex gap-2"><button type="submit" class="btn-primary px-4 py-2">Search</button><a href="/jpsme_admin/merch/inventory" class="btn-secondary px-3 py-2">Clear</a></span>
       </form>
 
       <div class="overflow-x-auto">
@@ -80,7 +80,7 @@
           <tbody class="admin-tbody">
             <% rows.forEach((r) => { %>
               <tr class="admin-tr" data-row="<%= r.id %>" data-label="<%= r.productName %> · <%= r.label %>" data-on-hand="<%= r.onHand %>">
-                <td class="admin-td"><a href="/admin/merch/products/<%= r.productId %>" class="font-medium text-slate-900 hover:text-indigo-700"><%= r.productName %></a></td>
+                <td class="admin-td"><a href="/jpsme_admin/merch/products/<%= r.productId %>" class="font-medium text-slate-900 hover:text-indigo-700"><%= r.productName %></a></td>
                 <td class="admin-td"><%= r.label %><% if (!r.isActive) { %> <span class="badge-slate">Off</span><% } %></td>
                 <td class="admin-td font-mono text-xs"><%= r.sku %></td>
                 <td class="admin-td text-right text-base font-semibold tabular-nums"><%= r.onHand %></td>
@@ -98,7 +98,7 @@
           </tbody>
         </table>
         <% if (!rows.length) { %>
-          <p class="py-8 text-center text-sm text-slate-500">No variants match. Add products and their variants on the <a href="/admin/merch/products" class="text-indigo-600 hover:underline">Products</a> page.</p>
+          <p class="py-8 text-center text-sm text-slate-500">No variants match. Add products and their variants on the <a href="/jpsme_admin/merch/products" class="text-indigo-600 hover:underline">Products</a> page.</p>
         <% } %>
       </div>
       <p class="text-xs text-slate-500">

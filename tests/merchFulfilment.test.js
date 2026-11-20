@@ -56,7 +56,7 @@ let ipSeq = 0;
 async function signIn(email, context = 'user') {
   ipSeq += 1;
   const ip = `198.51.100.${50 + ipSeq}`;
-  const page = await fetch(`${base}${context === 'admin' ? '/admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
+  const page = await fetch(`${base}${context === 'admin' ? '/jpsme_admin/login' : '/login'}`, { headers: { 'X-Forwarded-For': ip } });
   let cookie = (page.headers.get('set-cookie') || '').split(';')[0];
   const token = ((await page.text()).match(/name="csrf-token" content="([^"]*)"/) || [])[1];
   const res = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie, 'X-CSRF-Token': token, 'X-Forwarded-For': ip }, body: JSON.stringify({ email, password: PASSWORD, context }) });
@@ -292,14 +292,14 @@ async function main() {
       const r = await Ad('POST', '/api/admin/merch/orders/bulk', { action: 'pack', orderNumbers: [...made, annDelivery] });
       assert.deepStrictEqual([r.json.data.done.sort(), r.json.data.failed.map((f) => f.orderNumber)], [made.sort(), [annDelivery]]);
       assert.strictEqual((await Ad('POST', '/api/admin/merch/orders/bulk', { action: 'deliver', orderNumbers: made })).status, 422, 'only pack / ready in bulk');
-      const print = await Ad('GET', `/admin/merch/orders/print?orders=${made.join(',')}`);
+      const print = await Ad('GET', `/jpsme_admin/merch/orders/print?orders=${made.join(',')}`);
       assert(print.text.includes('data-pick-list') && (print.text.match(/data-slip=/g) || []).length === 2);
       assert(/<td class="py-1.5 text-right text-base font-bold">2<\/td>/.test(print.text), 'pick list adds up the pins');
-      const x = await Ad('GET', `/admin/merch/orders/export.xlsx?q=${encodeURIComponent(TAG.toUpperCase())}`);
+      const x = await Ad('GET', `/jpsme_admin/merch/orders/export.xlsx?q=${encodeURIComponent(TAG.toUpperCase())}`);
       const wb = new ExcelJS.Workbook();
       await wb.xlsx.load(x.buf);
       assert(wb.getWorksheet('Orders').rowCount >= 6);
-      const list = await Ad('GET', '/admin/merch/orders');
+      const list = await Ad('GET', '/jpsme_admin/merch/orders');
       assert(list.text.includes(annDelivery) && list.text.includes('data-count="PAID"'));
     });
 
@@ -334,11 +334,11 @@ async function main() {
     });
 
     await test('admin pages render; members are kept out', async () => {
-      for (const p of ['/admin/merch/orders', `/admin/merch/orders/${annDelivery}`, '/admin/merch/pickup', '/admin/merch/fulfilment']) {
+      for (const p of ['/jpsme_admin/merch/orders', `/jpsme_admin/merch/orders/${annDelivery}`, '/jpsme_admin/merch/pickup', '/jpsme_admin/merch/fulfilment']) {
         assert.strictEqual((await Ad('GET', p)).status, 200, p);
       }
-      assert((await Ad('GET', '/admin/merch/fulfilment')).text.includes(`${TAG} Zone`));
-      assert.notStrictEqual((await B('GET', '/admin/merch/orders')).status, 200);
+      assert((await Ad('GET', '/jpsme_admin/merch/fulfilment')).text.includes(`${TAG} Zone`));
+      assert.notStrictEqual((await B('GET', '/jpsme_admin/merch/orders')).status, 200);
       assert.strictEqual((await B('POST', `/api/admin/merch/orders/${annDelivery}/steps/pack`)).status, 403);
       assert.strictEqual((await B('PUT', `/api/admin/merch/zones/${zone.id}`, { fee: '0' })).status, 403);
     });

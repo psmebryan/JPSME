@@ -16,10 +16,10 @@
 <div class="w-full space-y-6" id="merch-product" data-product-id="<%= p.id %>" data-max-photos="<%= maxPhotos %>">
   <div class="flex flex-wrap items-center justify-between gap-3">
     <div>
-      <a href="/admin/merch/products" class="text-sm text-indigo-600 hover:underline">&larr; All products</a>
+      <a href="/jpsme_admin/merch/products" class="text-sm text-indigo-600 hover:underline">&larr; All products</a>
       <h1 class="admin-h1 mt-1"><%= p.name %></h1>
     </div>
-    <a href="/admin/merch/inventory?product=<%= p.id %>" class="btn-secondary px-4 py-2">Stock for this product</a>
+    <a href="/jpsme_admin/merch/inventory?product=<%= p.id %>" class="btn-secondary px-4 py-2">Stock for this product</a>
   </div>
 
   <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
@@ -266,7 +266,7 @@
   });
   on(root.querySelector('[data-remove-product]'), 'click', async () => {
     if (!confirm('Remove this product and its photos? A product with stock history cannot be removed; switch it off instead.')) return;
-    try { await apiFetch(base, { method: 'DELETE' }); window.location.href = '/admin/merch/products'; } catch (err) { fail(err); }
+    try { await apiFetch(base, { method: 'DELETE' }); window.location.href = '/jpsme_admin/merch/products'; } catch (err) { fail(err); }
   });
 
   // --- photos ---

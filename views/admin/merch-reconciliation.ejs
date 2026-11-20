@@ -23,10 +23,10 @@
         <p class="admin-subtitle">Each day's store payments checked against PayMongo</p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
-        <a href="/admin/merch/reconciliation?month=<%= prev %>" class="btn-secondary px-3 py-2" aria-label="Previous month">&larr;</a>
+        <a href="/jpsme_admin/merch/reconciliation?month=<%= prev %>" class="btn-secondary px-3 py-2" aria-label="Previous month">&larr;</a>
         <span class="min-w-[9rem] text-center font-semibold" data-month="<%= month %>"><%= label %></span>
-        <% if (next) { %><a href="/admin/merch/reconciliation?month=<%= next %>" class="btn-secondary px-3 py-2" aria-label="Next month">&rarr;</a><% } else { %><span class="btn-secondary px-3 py-2 opacity-40" aria-hidden="true">&rarr;</span><% } %>
-        <a href="/admin/merch/month-end.xlsx?month=<%= month %>" class="btn-primary px-4 py-2" data-month-end>Month-end pack (XLS)</a>
+        <% if (next) { %><a href="/jpsme_admin/merch/reconciliation?month=<%= next %>" class="btn-secondary px-3 py-2" aria-label="Next month">&rarr;</a><% } else { %><span class="btn-secondary px-3 py-2 opacity-40" aria-hidden="true">&rarr;</span><% } %>
+        <a href="/jpsme_admin/merch/month-end.xlsx?month=<%= month %>" class="btn-primary px-4 py-2" data-month-end>Month-end pack (XLS)</a>
       </div>
     </div>
 

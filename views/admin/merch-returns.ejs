@@ -14,12 +14,12 @@
     </div>
     <div class="space-y-5 px-6 py-5">
       <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
-        <a href="/admin/merch/returns" class="rounded-lg border px-4 py-3 <%= !group ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50' %>">
+        <a href="/jpsme_admin/merch/returns" class="rounded-lg border px-4 py-3 <%= !group ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50' %>">
           <p class="text-xs font-medium uppercase tracking-wide text-slate-500">All open</p>
           <p class="mt-1 text-2xl font-semibold tabular-nums"><%= Object.entries(counts).filter(([k]) => k !== 'closed').reduce((t, [, v]) => t + v, 0) %></p>
         </a>
         <% Object.entries(groups).forEach(([k, g]) => { %>
-          <a href="/admin/merch/returns?group=<%= k %>" class="rounded-lg border px-4 py-3 <%= group === k ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50' %>" data-group="<%= k %>">
+          <a href="/jpsme_admin/merch/returns?group=<%= k %>" class="rounded-lg border px-4 py-3 <%= group === k ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50' %>" data-group="<%= k %>">
             <p class="text-xs font-medium uppercase tracking-wide text-slate-500"><%= g.label %></p>
             <p class="mt-1 text-2xl font-semibold tabular-nums <%= (k === 'failed' || k === 'second') && counts[k] ? 'text-red-700' : '' %>"><%= counts[k] || 0 %></p>
           </a>
@@ -31,8 +31,8 @@
           <tbody class="admin-tbody">
             <% returns.forEach((r) => { %>
               <tr class="admin-tr" data-return-row="<%= r.returnNumber %>">
-                <td class="admin-td whitespace-nowrap"><a href="/admin/merch/returns/<%= r.returnNumber %>" class="font-mono text-sm font-medium text-indigo-700 hover:underline"><%= r.returnNumber %></a><br><span class="text-xs text-slate-500"><%= r.kindLabel %></span></td>
-                <td class="admin-td whitespace-nowrap"><a href="/admin/merch/orders/<%= r.orderNumber %>" class="font-mono text-xs text-slate-600 hover:underline"><%= r.orderNumber %></a></td>
+                <td class="admin-td whitespace-nowrap"><a href="/jpsme_admin/merch/returns/<%= r.returnNumber %>" class="font-mono text-sm font-medium text-indigo-700 hover:underline"><%= r.returnNumber %></a><br><span class="text-xs text-slate-500"><%= r.kindLabel %></span></td>
+                <td class="admin-td whitespace-nowrap"><a href="/jpsme_admin/merch/orders/<%= r.orderNumber %>" class="font-mono text-xs text-slate-600 hover:underline"><%= r.orderNumber %></a></td>
                 <td class="admin-td"><%= r.buyerName %></td>
                 <td class="admin-td"><%= r.reasonLabel %></td>
                 <td class="admin-td max-w-[240px] truncate"><%= r.items.map((i) => `${i.quantity} × ${i.productName} (${i.label})${i.newVariant ? ` → ${i.newVariant.label}` : ''}`).join(', ') %></td>

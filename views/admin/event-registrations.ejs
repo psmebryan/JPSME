@@ -15,7 +15,7 @@ function canResend(r) { return r.status === 'REGISTERED' && Boolean(r.qrToken); 
 <div class="w-full">
   <div class="mb-5 flex flex-wrap items-end justify-between gap-4">
     <div class="min-w-0">
-      <a href="/admin/events" class="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-indigo-700">
+      <a href="/jpsme_admin/events" class="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-indigo-700">
         <span aria-hidden="true">&larr;</span> Back to events
       </a>
       <h1 class="admin-h1 mt-1">Registrations</h1>
@@ -25,15 +25,15 @@ function canResend(r) { return r.status === 'REGISTERED' && Boolean(r.qrToken); 
     </div>
     <nav class="flex flex-wrap gap-2" aria-label="Event tools">
       <% if (isMainAdmin) { %>
-        <a href="/admin/invitations?eventId=<%= event.id %>" class="btn-secondary text-sm">Manage invitations</a>
+        <a href="/jpsme_admin/invitations?eventId=<%= event.id %>" class="btn-secondary text-sm">Manage invitations</a>
       <% } %>
-      <a href="/admin/events/<%= event.id %>/attendance" class="btn-secondary text-sm">Event day</a>
-      <a href="/admin/events/<%= event.id %>/certificate" class="btn-secondary text-sm">Manage certificates</a>
-      <a href="/admin/events/<%= event.id %>/email" class="btn-secondary text-sm">Manage email</a>
+      <a href="/jpsme_admin/events/<%= event.id %>/attendance" class="btn-secondary text-sm">Event day</a>
+      <a href="/jpsme_admin/events/<%= event.id %>/certificate" class="btn-secondary text-sm">Manage certificates</a>
+      <a href="/jpsme_admin/events/<%= event.id %>/email" class="btn-secondary text-sm">Manage email</a>
     </nav>
   </div>
 
-  <form method="GET" action="/admin/events/<%= event.id %>/registrations" class="mb-4 admin-card p-4">
+  <form method="GET" action="/jpsme_admin/events/<%= event.id %>/registrations" class="mb-4 admin-card p-4">
     <div class="grid gap-3 sm:grid-cols-[1fr_200px_auto]">
       <input
         type="search"

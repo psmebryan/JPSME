@@ -23,9 +23,9 @@
 %>
 <div class="w-full space-y-6" id="merch-return" data-return="<%= r.returnNumber %>">
   <div>
-    <a href="/admin/merch/returns" class="text-sm text-indigo-600 hover:underline">&larr; Refunds &amp; Exchanges</a>
+    <a href="/jpsme_admin/merch/returns" class="text-sm text-indigo-600 hover:underline">&larr; Refunds &amp; Exchanges</a>
     <h1 class="admin-h1 mt-1"><%= r.kindLabel %> <span class="font-mono"><%= r.returnNumber %></span> <span class="<%= r.open ? 'badge-amber' : 'badge-slate' %> align-middle text-sm"><%= r.statusLabel %></span></h1>
-    <p class="admin-subtitle">Order <a href="/admin/merch/orders/<%= r.orderNumber %>" class="font-mono text-indigo-600 hover:underline"><%= r.orderNumber %></a> · <%= r.buyerName %> · <%= order.fulfilment === 'PICKUP' ? 'pickup' : 'delivery' %> · paid <%= peso(r.paidCentavos || 0) %></p>
+    <p class="admin-subtitle">Order <a href="/jpsme_admin/merch/orders/<%= r.orderNumber %>" class="font-mono text-indigo-600 hover:underline"><%= r.orderNumber %></a> · <%= r.buyerName %> · <%= order.fulfilment === 'PICKUP' ? 'pickup' : 'delivery' %> · paid <%= peso(r.paidCentavos || 0) %></p>
   </div>
 
   <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">

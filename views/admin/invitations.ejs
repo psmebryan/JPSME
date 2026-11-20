@@ -88,7 +88,7 @@ function esc(value) {
 }
 function invitationRowHtml(inv, includeEventColumn) {
   const eventCell = includeEventColumn
-    ? `<td class="admin-td max-w-[180px] truncate"><a href="/admin/invitations?eventId=${inv.event.id}" class="text-indigo-600 hover:underline">${esc(inv.event.title)}</a></td>`
+    ? `<td class="admin-td max-w-[180px] truncate"><a href="/jpsme_admin/invitations?eventId=${inv.event.id}" class="text-indigo-600 hover:underline">${esc(inv.event.title)}</a></td>`
     : '';
   const actionsCell = includeEventColumn ? '' : `
     <td class="admin-td text-right">
@@ -306,7 +306,7 @@ function sortArrowHeader(label, key) {
           <% if (total > 0) { %>
             <a href="/api/events/<%= selectedEvent.id %>/invitations/export" class="text-indigo-600 hover:underline">Export to Excel &#8595;</a>
           <% } %>
-          <a href="/admin/events/<%= selectedEvent.id %>/registrations" class="text-indigo-600 hover:underline">View registrants &rarr;</a>
+          <a href="/jpsme_admin/events/<%= selectedEvent.id %>/registrations" class="text-indigo-600 hover:underline">View registrants &rarr;</a>
         </div>
       </div>
       <% if (total === 0) { %>
@@ -405,9 +405,9 @@ function sortArrowHeader(label, key) {
 <script nonce="<%= cspNonce %>">
   document.getElementById('invitation-event-select')?.addEventListener('change', function () {
     if (this.value) {
-      window.location.href = `/admin/invitations?eventId=${this.value}`;
+      window.location.href = `/jpsme_admin/invitations?eventId=${this.value}`;
     } else {
-      window.location.href = '/admin/invitations';
+      window.location.href = '/jpsme_admin/invitations';
     }
   });
 </script>

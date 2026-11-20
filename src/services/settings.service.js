@@ -26,7 +26,7 @@ const OG_IMAGE_KEY = 'site_og_image';
 // Stored in centavos (PHP's smallest unit, matching PayMongo's own amount
 // convention) so payment code never has to deal with float currency math.
 const MEMBERSHIP_FEE_KEY = 'membership_fee_centavos';
-const DEFAULT_MEMBERSHIP_FEE_CENTAVOS = 50000; // placeholder ₱500.00 — set the real fee from /admin/settings before going live
+const DEFAULT_MEMBERSHIP_FEE_CENTAVOS = 50000; // placeholder ₱500.00 — set the real fee from /jpsme_admin/settings before going live
 
 // Kill switch: lets a MAIN_ADMIN stop new payments (membership or event fees)
 // from being created — e.g. during a PayMongo outage — without taking the

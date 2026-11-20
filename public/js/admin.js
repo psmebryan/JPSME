@@ -1015,7 +1015,7 @@ function memberRowHtml(u, selectedUserIds) {
       <td class="admin-td">${membershipPaymentBadge(u)}</td>
       <td class="admin-td text-right relative">
         ${rowMenuHtml([
-          canEdit ? `<a href="/admin/users/${u.id}/edit" class="${ROW_MENU_ITEM}">Edit</a>` : '',
+          canEdit ? `<a href="/jpsme_admin/users/${u.id}/edit" class="${ROW_MENU_ITEM}">Edit</a>` : '',
           assignAllowed ? `<button type="button" data-assign-toggle="${u.id}" class="${ROW_MENU_ITEM}">Assign organization</button>` : '',
           canEdit ? `<button type="button" data-delete-user="${u.id}" class="${ROW_MENU_ITEM} text-red-600">Delete</button>` : '',
         ])}
@@ -2061,7 +2061,7 @@ function fmtDate(date) {
 }
 function invitationRowHtml(inv, includeEventColumn) {
   const eventCell = includeEventColumn
-    ? `<td class="admin-td max-w-[180px] truncate"><a href="/admin/invitations?eventId=${inv.event.id}" class="text-indigo-600 hover:underline">${escapeHtml(inv.event.title)}</a></td>`
+    ? `<td class="admin-td max-w-[180px] truncate"><a href="/jpsme_admin/invitations?eventId=${inv.event.id}" class="text-indigo-600 hover:underline">${escapeHtml(inv.event.title)}</a></td>`
     : '';
   const actionsCell = includeEventColumn ? '' : `
     <td class="admin-td text-right">
@@ -2234,7 +2234,7 @@ function initOrganizationTree() {
           <span class="shrink-0 relative">
             ${rowMenuHtml([
               `<button type="button" class="${ROW_MENU_ITEM}" data-add-child="${c.id}" data-parent-name="${escapeHtml(c.name)}">+ Add child</button>`,
-              `<a href="/admin/organizations/${c.id}/edit" data-admin-link class="${ROW_MENU_ITEM}">Edit</a>`,
+              `<a href="/jpsme_admin/organizations/${c.id}/edit" data-admin-link class="${ROW_MENU_ITEM}">Edit</a>`,
               `<button type="button" class="${ROW_MENU_ITEM} text-amber-700" data-toggle-active="${c.id}" data-active="${c.isActive ? '1' : '0'}" data-org-name="${escapeHtml(c.name)}">${c.isActive ? 'Deactivate' : 'Reactivate'}</button>`,
               `<button type="button" class="${ROW_MENU_ITEM} text-red-600" data-delete-org="${c.id}" data-org-name="${escapeHtml(c.name)}">Delete</button>`,
             ])}

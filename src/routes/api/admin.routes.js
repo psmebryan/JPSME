@@ -230,6 +230,16 @@ router.put(
   body('modules').isArray({ max: 50 }).withMessage('modules must be a list'),
   adminApi.updatePresidentAccess
 );
+// Maintenance mode on/off, with an optional countdown and message. Under
+// /settings: main admin only.
+router.put(
+  '/settings/maintenance',
+  verifyCsrfToken,
+  body('on').isBoolean().withMessage('on must be true or false'),
+  body('durationMinutes').optional({ values: 'falsy' }).isInt({ min: 1, max: 10080 }).withMessage('Enter a duration from 1 minute to 7 days, or leave it empty'),
+  body('message').optional().isString().isLength({ max: 300 }).withMessage('Keep the message under 300 characters'),
+  adminApi.updateMaintenance
+);
 // Lifts a flood-guard block (floodGuard.middleware). Under /settings: main
 // admin only. The address goes in the body, not the path (IPv6 has colons).
 router.post(

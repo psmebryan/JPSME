@@ -22,14 +22,14 @@
         <h1 class="admin-h1">Merchandise Reports</h1>
         <p class="admin-subtitle">Sales on the day PayMongo took the payment; refunds on the day PayMongo confirmed them</p>
       </div>
-      <a href="/admin/merch/reports/export.xlsx?<%= qs %>" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-export>Export XLS</a>
+      <a href="/jpsme_admin/merch/reports/export.xlsx?<%= qs %>" class="btn-primary inline-flex items-center gap-2 px-4 py-2.5" data-export>Export XLS</a>
     </div>
     <div class="space-y-5 px-6 py-5">
-      <form method="get" action="/admin/merch/reports" class="flex flex-wrap items-end gap-3" id="period-form">
+      <form method="get" action="/jpsme_admin/merch/reports" class="flex flex-wrap items-end gap-3" id="period-form">
         <div><label for="mr-from" class="form-label">From</label><input id="mr-from" name="from" type="date" value="<%= period.from %>" class="form-input"></div>
         <div><label for="mr-to" class="form-label">To</label><input id="mr-to" name="to" type="date" value="<%= period.to %>" class="form-input"></div>
         <button type="submit" class="btn-primary px-4 py-2">Show</button>
-        <a href="/admin/merch/reports" class="btn-secondary px-3 py-2">This month</a>
+        <a href="/jpsme_admin/merch/reports" class="btn-secondary px-3 py-2">This month</a>
       </form>
 
       <div class="grid grid-cols-2 gap-3 md:grid-cols-4 <%= showCost ? 'xl:grid-cols-6' : 'xl:grid-cols-5' %>" data-summary>
@@ -97,7 +97,7 @@
           <tbody class="admin-tbody">
             <% returns.forEach((r) => { %>
               <tr class="admin-tr">
-                <td class="admin-td whitespace-nowrap"><a href="/admin/merch/returns/<%= r.returnNumber %>" class="font-mono text-xs text-indigo-700 hover:underline"><%= r.returnNumber %></a><span class="block text-xs text-slate-500"><%= r.kind %> · <%= r.orderNumber %></span></td>
+                <td class="admin-td whitespace-nowrap"><a href="/jpsme_admin/merch/returns/<%= r.returnNumber %>" class="font-mono text-xs text-indigo-700 hover:underline"><%= r.returnNumber %></a><span class="block text-xs text-slate-500"><%= r.kind %> · <%= r.orderNumber %></span></td>
                 <td class="admin-td"><%= r.reason %></td>
                 <td class="admin-td text-xs"><%= r.status %></td>
                 <td class="admin-td text-right tabular-nums"><%= r.refundCentavos ? peso(r.refundCentavos) : '—' %></td>

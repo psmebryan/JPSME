@@ -290,7 +290,7 @@ function buildAdminEventsWhere({ search, modality, published }) {
 }
 
 /**
- * Admin /admin/events page listing.
+ * Admin /jpsme_admin/events page listing.
  * Respects search/modality/published filters across all three sections
  * (featured/upcoming/ended) AND the flat management table, which additionally
  * includes drafts (no isPublished filter applied unless the admin picks one)

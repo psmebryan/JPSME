@@ -19,11 +19,11 @@ function modalityBadgeClass(m) {
   <h1 class="admin-h1">Manage Events</h1>
 
   <div class="flex flex-col sm:flex-row gap-3">
-    <a href="/admin/events/new" class="btn-primary">Add Event</a>
+    <a href="/jpsme_admin/events/new" class="btn-primary">Add Event</a>
   </div>
 </div>
 
-<form method="GET" action="/admin/events" class="mb-8 admin-card p-4">
+<form method="GET" action="/jpsme_admin/events" class="mb-8 admin-card p-4">
   <div class="grid gap-3 md:grid-cols-[1.2fr_180px_180px_auto]">
     <input
       type="search"
@@ -120,7 +120,7 @@ function modalityBadgeClass(m) {
                 Register
               </button>
             <% } else { %>
-              <a href="/admin/events/<%= event.id %>/registrations" class="btn-secondary w-full">View registrations</a>
+              <a href="/jpsme_admin/events/<%= event.id %>/registrations" class="btn-secondary w-full">View registrations</a>
             <% } %>
           </div>
         </div>
@@ -226,10 +226,10 @@ function modalityBadgeClass(m) {
             <td class="admin-td"><span class="<%= event.featured ? 'badge-amber' : 'badge-slate' %>"><%= event.featured ? 'Yes' : 'No' %></span></td>
             <td class="admin-td text-right relative">
               <%- include('../partials/row-menu', { items: [
-                `<a href="/admin/events/${event.id}/edit" class="${MENU_ITEM}">Edit</a>`,
-                `<a href="/admin/events/${event.id}/registrations" class="${MENU_ITEM}">Registrations</a>`,
-                `<a href="/admin/events/${event.id}/certificate" class="${MENU_ITEM}">Certificate</a>`,
-                `<a href="/admin/events/${event.id}/email" class="${MENU_ITEM}">Email</a>`,
+                `<a href="/jpsme_admin/events/${event.id}/edit" class="${MENU_ITEM}">Edit</a>`,
+                `<a href="/jpsme_admin/events/${event.id}/registrations" class="${MENU_ITEM}">Registrations</a>`,
+                `<a href="/jpsme_admin/events/${event.id}/certificate" class="${MENU_ITEM}">Certificate</a>`,
+                `<a href="/jpsme_admin/events/${event.id}/email" class="${MENU_ITEM}">Email</a>`,
                 `<button type="button" class="${MENU_ITEM} text-red-600" data-delete-event="${event.id}" data-event-title="${esc(event.title)}">Delete</button>`,
               ] }) %>
             </td>

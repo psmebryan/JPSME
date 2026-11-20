@@ -248,20 +248,20 @@ async function readiness() {
   const ticks = grants.flatMap((g) => { try { return JSON.parse(g.modules); } catch (e) { return []; } });
   const pm = paymongoMode();
   const items = [
-    { key: 'products', level: 'must', ok: variants.length > 0, text: 'At least one product on sale with a variant', detail: `${products.length} product(s), ${variants.length} variant(s) on sale`, href: '/admin/merch/products' },
-    { key: 'prices', level: 'must', ok: variants.length > 0 && noPrice === 0, text: 'Every variant on sale has both prices', detail: noPrice ? `${noPrice} variant(s) still TBD` : 'All set', href: '/admin/merch/products' },
-    { key: 'photos', level: 'should', ok: products.length > 0 && noPhoto === 0, text: 'Every product on sale has a photo', detail: noPhoto ? `${noPhoto} product(s) without a photo` : 'All set', href: '/admin/merch/products' },
-    { key: 'costs', level: 'should', ok: variants.length > 0 && noCost === 0, text: 'Unit cost set for every variant (for profit)', detail: noCost ? `${noCost} variant(s) without a cost` : 'All set', href: '/admin/merch/products' },
-    { key: 'count', level: 'must', ok: sheet.rows.some((r) => r.active) && sheet.neverCounted === 0, text: 'Physical stock count done (the opening stock)', detail: sheet.neverCounted ? `${sheet.neverCounted} variant(s) never counted` : 'Every variant counted', href: '/admin/merch/count' },
-    { key: 'delivery', level: 'must', ok: zones.length > 0 || points > 0, text: 'A way to get orders to buyers', detail: `${zones.length} delivery zone(s) with a fee, ${points} pickup point(s)`, href: '/admin/merch/fulfilment' },
-    { key: 'psgc', level: zones.length ? 'must' : 'should', ok: psgc > 0, text: 'Address list (PSA PSGC) imported', detail: psgc ? `${psgc} regions` : 'Not imported', href: '/admin/merch/fulfilment' },
-    { key: 'payments', level: 'must', ok: paymentsOn, text: 'Online payments switched on', detail: paymentsOn ? 'On' : 'Off in Site Settings', href: '/admin/settings' },
+    { key: 'products', level: 'must', ok: variants.length > 0, text: 'At least one product on sale with a variant', detail: `${products.length} product(s), ${variants.length} variant(s) on sale`, href: '/jpsme_admin/merch/products' },
+    { key: 'prices', level: 'must', ok: variants.length > 0 && noPrice === 0, text: 'Every variant on sale has both prices', detail: noPrice ? `${noPrice} variant(s) still TBD` : 'All set', href: '/jpsme_admin/merch/products' },
+    { key: 'photos', level: 'should', ok: products.length > 0 && noPhoto === 0, text: 'Every product on sale has a photo', detail: noPhoto ? `${noPhoto} product(s) without a photo` : 'All set', href: '/jpsme_admin/merch/products' },
+    { key: 'costs', level: 'should', ok: variants.length > 0 && noCost === 0, text: 'Unit cost set for every variant (for profit)', detail: noCost ? `${noCost} variant(s) without a cost` : 'All set', href: '/jpsme_admin/merch/products' },
+    { key: 'count', level: 'must', ok: sheet.rows.some((r) => r.active) && sheet.neverCounted === 0, text: 'Physical stock count done (the opening stock)', detail: sheet.neverCounted ? `${sheet.neverCounted} variant(s) never counted` : 'Every variant counted', href: '/jpsme_admin/merch/count' },
+    { key: 'delivery', level: 'must', ok: zones.length > 0 || points > 0, text: 'A way to get orders to buyers', detail: `${zones.length} delivery zone(s) with a fee, ${points} pickup point(s)`, href: '/jpsme_admin/merch/fulfilment' },
+    { key: 'psgc', level: zones.length ? 'must' : 'should', ok: psgc > 0, text: 'Address list (PSA PSGC) imported', detail: psgc ? `${psgc} regions` : 'Not imported', href: '/jpsme_admin/merch/fulfilment' },
+    { key: 'payments', level: 'must', ok: paymentsOn, text: 'Online payments switched on', detail: paymentsOn ? 'On' : 'Off in Site Settings', href: '/jpsme_admin/settings' },
     { key: 'paymongo', level: 'must', ok: pm === 'live', text: 'PayMongo live keys on this server', detail: { live: 'Live keys', test: 'Test keys: no real money moves', missing: 'No key set', unknown: 'Key not recognised' }[pm], href: null },
-    { key: 'finance', level: 'should', ok: ticks.includes('merchFinance'), text: 'Someone has Finance tasks', detail: ticks.includes('merchFinance') ? 'Yes' : 'Only the main admin for now', href: '/admin/settings' },
-    { key: 'logistics', level: 'should', ok: ticks.includes('merchLogistics'), text: 'Someone has Logistics tasks', detail: ticks.includes('merchLogistics') ? 'Yes' : 'Only the main admin for now', href: '/admin/settings' },
-    { key: 'limit', level: 'should', ok: limit !== '' && limit !== null, text: 'Refund approval limit set', detail: limit ? `₱${(Number(limit) / 100).toLocaleString('en-PH')}` : 'Every refund needs one approval only', href: '/admin/merch/fulfilment' },
+    { key: 'finance', level: 'should', ok: ticks.includes('merchFinance'), text: 'Someone has Finance tasks', detail: ticks.includes('merchFinance') ? 'Yes' : 'Only the main admin for now', href: '/jpsme_admin/settings' },
+    { key: 'logistics', level: 'should', ok: ticks.includes('merchLogistics'), text: 'Someone has Logistics tasks', detail: ticks.includes('merchLogistics') ? 'Yes' : 'Only the main admin for now', href: '/jpsme_admin/settings' },
+    { key: 'limit', level: 'should', ok: limit !== '' && limit !== null, text: 'Refund approval limit set', detail: limit ? `₱${(Number(limit) / 100).toLocaleString('en-PH')}` : 'Every refund needs one approval only', href: '/jpsme_admin/merch/fulfilment' },
     { key: 'board', level: 'must', ok: softOrders > 0, text: 'The Board has placed real orders in the soft launch', detail: `${softOrders} paid order(s) by testers`, href: null },
-    { key: 'feedback', level: 'must', ok: feedbackOpen === 0, text: 'Every reported problem fixed', detail: feedbackOpen ? `${feedbackOpen} still open` : 'None open', href: '/admin/merch/feedback' },
+    { key: 'feedback', level: 'must', ok: feedbackOpen === 0, text: 'Every reported problem fixed', detail: feedbackOpen ? `${feedbackOpen} still open` : 'None open', href: '/jpsme_admin/merch/feedback' },
   ];
   return {
     mode,
