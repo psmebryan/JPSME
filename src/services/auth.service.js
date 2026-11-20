@@ -1,6 +1,7 @@
 const bcrypt = require("bcryptjs");
 const prisma = require("../config/prisma");
 const AppError = require("../utils/AppError");
+const { safeRedirectPath } = require("../utils/safeRedirect");
 const { findUserByEmail } = require("../utils/emailIdentity");
 const { queueVerificationCode } = require("./emailVerification.service");
 const sheetsSyncService = require("./sheetsSync.service");
@@ -31,11 +32,10 @@ function toPublicUser(user) {
 // Only a same-site relative path is ever honored — same guard as the client-side
 // login redirect in public/js/auth.js, applied here too since this one persists
 // to the database and could otherwise be replayed as an open redirect much later.
+// Same-site paths only; see utils/safeRedirect for why "/" but not "//" was
+// not enough.
 function sanitizeRedirectPath(path) {
-  if (typeof path === 'string' && path.startsWith('/') && !path.startsWith('//')) {
-    return path.slice(0, 500);
-  }
-  return null;
+  return safeRedirectPath(path);
 }
 
 async function registerUser({
@@ -190,7 +190,9 @@ async function finalizeLogin(user, { context = "user" } = {}) {
   // immediately so it doesn't fire on every future login.
   let postApprovalRedirectUrl = null;
   if (user.role === "USER" && user.status === "APPROVED" && user.postApprovalRedirectUrl) {
-    postApprovalRedirectUrl = user.postApprovalRedirectUrl;
+    // Checked again on the way out: a value saved before the stricter check
+    // existed must not be handed to the browser as a destination.
+    postApprovalRedirectUrl = safeRedirectPath(user.postApprovalRedirectUrl);
     await prisma.user.update({ where: { id: user.id }, data: { postApprovalRedirectUrl: null } });
   }
 
