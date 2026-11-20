@@ -1,10 +1,10 @@
 <% const _backHref = typeof restricted !== 'undefined' && restricted ? '/admin/organization-members' : '/admin/users/all'; %>
-<div class="max-w-2xl mx-auto mb-3">
+<div class="w-full mb-3">
   <a href="<%= _backHref %>" class="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-indigo-700">
     <span aria-hidden="true">&larr;</span> <%= typeof restricted !== 'undefined' && restricted ? 'Back to members' : 'Back to users' %>
   </a>
 </div>
-<div class="max-w-2xl mx-auto admin-card p-6">
+<div class="w-full admin-card p-6">
   <h1 class="admin-h1 mb-4"><%= typeof restricted !== 'undefined' && restricted ? 'Edit Member' : 'Edit User' %></h1>
   <form id="user-edit-form" method="POST" action="/api/admin/users/<%= user.id %>">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
@@ -110,7 +110,7 @@
     means every future reset link arrives somewhere else. The API enforces the
     same thing — this only decides whether the controls are drawn. %>
 <% if (!(typeof restricted !== 'undefined' && restricted)) { %>
-<div class="max-w-2xl mx-auto mt-6 admin-card p-6" data-creds data-user-id="<%= user.id %>">
+<div class="w-full mt-6 admin-card p-6" data-creds data-user-id="<%= user.id %>">
   <h2 class="text-sm font-semibold text-slate-900">Sign-in details</h2>
 
   <%# An imported account that has never been activated is a different thing from

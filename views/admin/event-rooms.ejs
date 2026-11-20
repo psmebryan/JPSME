@@ -15,7 +15,7 @@ function pct(occupancy, capacity) {
   return Math.min(100, Math.round((occupancy / capacity) * 100));
 }
 %>
-<div class="max-w-6xl mx-auto" data-rooms-root data-event-id="<%= event.id %>">
+<div class="w-full" data-rooms-root data-event-id="<%= event.id %>">
 
   <%- include('../partials/event-ops-nav', { event, active: 'rooms' }) %>
 

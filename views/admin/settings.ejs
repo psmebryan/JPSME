@@ -222,7 +222,9 @@
 
 <%# No membership fee here: each member type's amount on the Master List is
     the fee. This rate is the channel fee added on top of it at checkout. %>
-<div class="admin-card p-6 max-w-md">
+<%# The small one-setting cards sit side by side, so the page uses the width. %>
+<div class="grid grid-cols-1 items-start gap-6 lg:grid-cols-2 2xl:grid-cols-4">
+<div class="admin-card p-6">
   <h2 class="font-semibold mb-1">PayMongo Channel Fee</h2>
   <p class="mb-4 text-xs text-slate-500">
     PayMongo deducts this percentage from every GCash charge before crediting JPSME. Set here so the payer
@@ -250,7 +252,7 @@
   </form>
 </div>
 
-<div id="membership-required-module" class="admin-card p-6 max-w-md mt-6">
+<div id="membership-required-module" class="admin-card p-6">
   <h2 class="font-semibold mb-1">Membership payment</h2>
   <p class="mb-4 text-xs text-slate-500">
     When optional, anyone can register and use the site straight away and may settle the
@@ -266,7 +268,7 @@
   </label>
 </div>
 
-<div id="payments-enabled-module" class="admin-card p-6 max-w-md mt-6" data-enabled="<%= paymentsEnabled ? '1' : '0' %>">
+<div id="payments-enabled-module" class="admin-card p-6" data-enabled="<%= paymentsEnabled ? '1' : '0' %>">
   <h2 class="font-semibold mb-1">Payments</h2>
   <p class="mb-4 text-xs text-slate-500">Kill switch for new payment checkouts (membership and event fees). Disabling this does not affect payments already in progress — their webhook confirmation still works normally.</p>
   <label class="flex items-center gap-3 cursor-pointer">
@@ -277,7 +279,7 @@
   </label>
 </div>
 
-<div id="registration-emails-module" class="admin-card p-6 max-w-md mt-6">
+<div id="registration-emails-module" class="admin-card p-6">
   <h2 class="font-semibold mb-1">Event registration emails</h2>
   <p class="mb-4 text-xs text-slate-500">
     The confirmation email (with the e-ticket) sent when someone registers for an event. Turn it off when the
@@ -291,13 +293,14 @@
     </span>
   </label>
 </div>
+</div>
 
 <%# Flood guard (src/middleware/floodGuard.middleware.js): an IP that sends too
     many requests too fast is refused for a while. Listed here so a block that
     caught a real network (a campus, a venue) can be lifted at once. %>
 <% const fg = locals.floodGuard; %>
 <% if (fg) { %>
-<div id="blocked-ips-module" class="admin-card p-6 max-w-2xl mt-6">
+<div id="blocked-ips-module" class="admin-card p-6 mt-6">
   <h2 class="font-semibold mb-1">Blocked IP addresses</h2>
   <p class="mb-4 text-xs text-slate-500">
     <% if (fg.enabled) { %>
@@ -352,7 +355,7 @@
 </script>
 <% } %>
 
-<div id="data-export-module" class="admin-card p-6 max-w-2xl mt-6">
+<div id="data-export-module" class="admin-card p-6 mt-6">
   <h2 class="font-semibold mb-1">Data export</h2>
   <p class="mb-4 text-xs text-slate-500">
     Download everything as one Excel workbook &mdash; organizations, members, events,

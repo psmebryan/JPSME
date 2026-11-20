@@ -18,7 +18,7 @@ const revoked = staff.filter(function (g) { return g.revokedAt; });
 const activeIds = active.map(function (g) { return g.userId; });
 const available = grantable.filter(function (u) { return activeIds.indexOf(u.id) === -1; });
 %>
-<div class="max-w-4xl mx-auto" data-checkin-staff <% if (event) { %>data-event-id="<%= event.id %>"<% } %>>
+<div class="w-full" data-checkin-staff <% if (event) { %>data-event-id="<%= event.id %>"<% } %>>
   <a href="/admin/check-in" class="text-sm text-indigo-600 hover:underline">&larr; Back to check-in</a>
   <h1 class="admin-h1 mt-1">Check-in staff</h1>
   <p class="admin-subtitle">
