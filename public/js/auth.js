@@ -8,6 +8,21 @@ function escapeHtml(value) {
   ));
 }
 
+// Where to go after signing in (?next=): a path on this site only. A backslash,
+// tab or newline would let "/\evil.com" leave the site, so they are refused,
+// and the resolved address must still be this site. Same rule as the server's
+// utils/safeRedirect.js.
+function isSameSitePath(value) {
+  if (typeof value !== 'string' || !value || value.length > 500) return false;
+  if (!value.startsWith('/') || value.startsWith('//')) return false;
+  if (/[\\\s\u0000-\u001f\u007f]/.test(value)) return false;
+  try {
+    return new URL(value, window.location.origin).origin === window.location.origin;
+  } catch (err) {
+    return false;
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const loginForm = document.getElementById('login-form');
   const registerForm = document.getElementById('register-form');
@@ -40,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
           // to this event") takes priority since it survives the days-long
           // gap until approval, when the URL's own ?next= is long gone.
           const next = user.postApprovalRedirectUrl || new URLSearchParams(window.location.search).get('next');
-          if (next && next.startsWith('/') && !next.startsWith('//')) {
+          if (isSameSitePath(next)) {
             destination = next;
           } else if (user.isFirstLogin) {
             // First login after registering, and nowhere specific they were

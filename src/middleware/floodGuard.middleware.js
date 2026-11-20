@@ -29,6 +29,7 @@
 // backstop; Cloudflare's rate limiting rule is the shared one.
 
 const net = require('net');
+const { redactUrl } = require('../utils/redactUrl');
 
 // Cloudflare's edge ranges (https://www.cloudflare.com/ips/). A request whose
 // proxy-resolved address is one of these came through Cloudflare, so the
@@ -148,7 +149,7 @@ function createFloodGuard({ logger, now = () => Date.now() } = {}) {
       blocked.set(ip, { until, since: t, requests: 1 });
       if (logger) {
         logger.warn('flood guard: IP blocked', {
-          ip, requests: c.count, windowSeconds: opts.windowMs / 1000, blockMinutes: opts.blockMs / 60000, method: req.method, path: req.originalUrl.slice(0, 200),
+          ip, requests: c.count, windowSeconds: opts.windowMs / 1000, blockMinutes: opts.blockMs / 60000, method: req.method, path: redactUrl(req.originalUrl).slice(0, 200),
         });
       }
       return refuse(req, res, until);

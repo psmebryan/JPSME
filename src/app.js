@@ -14,6 +14,7 @@ const pagesRoutes = require('./routes/pages.routes');
 const apiRoutes = require('./routes/api');
 const { issueCsrfToken } = require('./middleware/csrf.middleware');
 const { createFloodGuard, realClientIp } = require('./middleware/floodGuard.middleware');
+const { redactUrl } = require('./utils/redactUrl');
 const AppError = require('./utils/AppError');
 const settingsService = require('./services/settings.service');
 const adminAccessService = require('./services/adminAccess.service');
@@ -33,6 +34,17 @@ if (config.trustProxy) {
 // instead of a Cloudflare edge shared by many visitors. Only for requests that
 // really came from a Cloudflare range; see floodGuard.middleware.
 app.use(realClientIp);
+
+// Flood guard: an IP sending more than FLOOD_MAX_REQUESTS (100) requests in
+// FLOOD_WINDOW_SECONDS (10) is refused with 429 for FLOOD_BLOCK_MINUTES (15).
+// First of all, before the health checks too: /health/db runs a query, so
+// one address calling it in a loop could otherwise tie up the database. An
+// uptime monitor checks once every half minute or so, far below the limit.
+// It creates no session and logs only a block. Main admins see and lift
+// blocks in Settings. See floodGuard.middleware.
+const floodGuard = createFloodGuard({ logger });
+app.locals.floodGuard = floodGuard;
+app.use(floodGuard);
 
 // Health checks — mounted before every other middleware (session, CSRF,
 // helmet, static) on purpose: a load balancer or uptime monitor can hit
@@ -93,15 +105,6 @@ app.get('/health/dependencies', (req, res, next) => {
   });
 });
 
-// Flood guard: an IP sending more than FLOOD_MAX_REQUESTS (100) requests in
-// FLOOD_WINDOW_SECONDS (10) is refused with 429 for FLOOD_BLOCK_MINUTES (15).
-// Before the request log, the session and everything else, so a flood costs
-// next to nothing and does not fill the log. Main admins see and lift blocks
-// in Settings. See floodGuard.middleware.
-const floodGuard = createFloodGuard({ logger });
-app.locals.floodGuard = floodGuard;
-app.use(floodGuard);
-
 // Every request gets a correlation id — generated fresh, or reused from an
 // upstream X-Request-Id header if one arrives already set (e.g. from a
 // future reverse proxy/load balancer) — echoed back as a response header so
@@ -126,7 +129,7 @@ app.use((req, res, next) => {
   res.on('finish', () => {
     req.log.info('request completed', {
       method: req.method,
-      path: req.originalUrl,
+      path: redactUrl(req.originalUrl),
       status: res.statusCode,
       durationMs: Date.now() - startedAt,
     });
@@ -447,7 +450,7 @@ app.use((err, req, res, next) => {
     ? err.message
     : (isBodyParseError ? 'Invalid JSON in request body' : 'Something went wrong. Please try again.');
   if (statusCode >= 500) {
-    (req.log || logger).error('unhandled request error', { err, method: req.method, path: req.originalUrl });
+    (req.log || logger).error('unhandled request error', { err, method: req.method, path: redactUrl(req.originalUrl) });
   }
 
   if (req.path.startsWith('/api/')) {

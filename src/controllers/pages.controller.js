@@ -39,6 +39,7 @@ const merchReturnsService = require('../services/merchReturns.service');
 const merchFinanceService = require('../services/merchFinance.service');
 const merchLaunchService = require('../services/merchLaunch.service');
 const merchRedact = require('../utils/merchRedact');
+const { safeRedirectPath } = require('../utils/safeRedirect');
 const membershipMasterService = require('../services/membershipMaster.service');
 const reportsService = require('../services/reports.service');
 const AppError = require('../utils/AppError');
@@ -141,9 +142,7 @@ const registerPage = asyncHandler(async (req, res) => {
   // just gets embedded as a hidden field and re-validated/sanitized again
   // server-side at actual registration time (auth.service.js), so a bad
   // value here is harmless either way.
-  const next = typeof req.query.next === 'string' && req.query.next.startsWith('/') && !req.query.next.startsWith('//')
-    ? req.query.next
-    : '';
+  const next = safeRedirectPath(req.query.next) || '';
   res.render('register', { title: 'Create Account', organizations: seed.organizations, next });
 });
 
