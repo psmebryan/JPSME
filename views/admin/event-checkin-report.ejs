@@ -28,7 +28,7 @@ function qs(overrides) {
     .map(function (e) { return encodeURIComponent(e[0]) + '=' + encodeURIComponent(e[1]); }).join('&');
 }
 %>
-<div class="max-w-6xl mx-auto">
+<div class="w-full">
   <%- include('../partials/event-ops-nav', { event, active: 'report' }) %>
 
   <div class="mt-5 flex flex-wrap items-start justify-between gap-3">

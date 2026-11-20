@@ -24,7 +24,7 @@ const pathLabel = [...ancestors, organization].map(o => o.name).join(' › ');
   </div>
 <% } %>
 
-<form action="/admin/organizations/<%= organization.id %>" method="POST" class="admin-card p-5 grid gap-4 sm:grid-cols-2 max-w-3xl">
+<form action="/admin/organizations/<%= organization.id %>" method="POST" class="admin-card p-5 grid gap-4 sm:grid-cols-2">
   <input type="hidden" name="_csrf" value="<%= csrfToken %>">
   <input type="hidden" name="currentParentId" value="<%= organization.parentId || '' %>">
 
@@ -90,7 +90,7 @@ const pathLabel = [...ancestors, organization].map(o => o.name).join(' › ');
   </div>
 </form>
 
-<section class="admin-card p-5 mt-6 max-w-3xl">
+<section class="admin-card p-5 mt-6">
   <h2 class="text-lg font-semibold text-slate-800 mb-3">
     Sub-organizations (<%= children.length %>)
   </h2>
@@ -111,7 +111,7 @@ const pathLabel = [...ancestors, organization].map(o => o.name).join(' › ');
 </section>
 
 <% if (!children.length && organization.parentId) { %>
-  <form action="/admin/organizations/<%= organization.id %>/delete" method="POST" class="mt-6 max-w-3xl"
+  <form action="/admin/organizations/<%= organization.id %>/delete" method="POST" class="mt-6"
         data-confirm="Delete this organization? This cannot be undone.">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
     <button type="submit" class="text-sm text-red-600 hover:underline">Delete this organization</button>

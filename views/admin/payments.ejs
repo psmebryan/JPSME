@@ -17,7 +17,7 @@ function peso(centavos) {
 %>
 <%# canAct false: Finance & Logistics, who may look but not refund or reconcile here. %>
 <% const canAct = locals.canAct !== false; %>
-<div id="payments-module" class="max-w-6xl" data-is-main-admin="<%= isMainAdmin ? '1' : '0' %>" data-can-act="<%= canAct ? '1' : '0' %>">
+<div id="payments-module" class="w-full" data-is-main-admin="<%= isMainAdmin ? '1' : '0' %>" data-can-act="<%= canAct ? '1' : '0' %>">
   <div class="mb-6">
     <h1 class="admin-h1">Payments</h1>
     <p class="admin-subtitle"><%= isMainAdmin ? 'All membership and event-fee payments.' : 'Payments for your chapter.' %></p>
